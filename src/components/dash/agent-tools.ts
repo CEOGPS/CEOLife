@@ -24,7 +24,7 @@ export const AGENT_SKILLS: Skill[] = [
   { id: "stack", group: "Code", name: "React, Node, TypeScript, Cloudflare", live: true, note: "Advises on this stack. It does not edit the repo from the dock." },
   { id: "playwright", group: "Browser", name: "Playwright / Puppeteer", live: false, note: "No browser driver is connected." },
   { id: "perplexity", group: "Browser", name: "Perplexity", live: false, note: "Needs a Perplexity key. Web search is the live fallback." },
-  { id: "apify", group: "Browser", name: "Apify", live: false, note: "Needs an Apify token." },
+  { id: "apify", group: "Browser", name: "Apify", live: true, note: "Board key. /apify searches the store. It does not start a run." },
   { id: "python", group: "Code", name: "Python interpreter", live: false, note: "No sandbox is connected. Pasted code is reviewed, not executed." },
   { id: "shell", group: "Code", name: "Shell / computer use", live: false, note: "The dock cannot run commands on your computer." },
   { id: "git", group: "Code", name: "Git / GitHub write", live: false, note: "Public GitHub search works. Commits and pull requests do not." },
@@ -89,7 +89,7 @@ function youtubeAsk(text: string) {
 }
 
 export function skillBrief() {
-  return "Live commands: /search, /page, /contacts, /finance, /quote, /youtube, /task, /note, /csv, /check, /open, /skill. /check calls the key service for every saved key and reports the real result. /open moves to a dashboard panel. A loaded skill is guidance. Never claim a shell, browser driver, SSH session, deploy, or send action ran unless a live command returned it.";
+  return "Live commands: /search, /page, /apify, /contacts, /finance, /quote, /youtube, /task, /note, /csv, /check, /open, /skill. /check calls the key service for every saved key and reports the real result. /open moves to a dashboard panel. A loaded skill is guidance. Never claim a shell, browser driver, SSH session, deploy, or send action ran unless a live command returned it.";
 }
 
 function csvSummary(text: string) {
@@ -106,6 +106,22 @@ export async function runAgentTool(data: Memory, text: string): Promise<ToolHit 
     const result = await lookup({ data: { query: search[1].slice(0, 180), kind: "web", key: data.keys.find((row) => row.name === "Dogpile")?.value || "" } });
     const hits = result.hits.slice(0, 8).map((hit) => `${hit.title} — ${hit.url}`).join("\n");
     return { text: `Web search for ${search[1]}:\n${hits || result.note || "No results."}` };
+  }
+  const apify = line.match(/^\/apify\b\s*(.*)/i);
+  if (apify) {
+    const key = data.keys.find((row) => row.name === "Apify")?.value || "";
+    if (!key) return { text: "No Apify key is saved on the board." };
+    const q = (apify[1] || "").trim().slice(0, 80);
+    const url = q
+      ? `https://api.apify.com/v2/store?limit=5&search=${encodeURIComponent(q)}`
+      : "https://api.apify.com/v2/users/me";
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15000) });
+    const body = await response.json().catch(() => ({})) as { data?: { username?: string; items?: { title?: string; name?: string; username?: string }[] }; error?: { message?: string } };
+    if (!response.ok) return { text: `Apify HTTP ${response.status}: ${body.error?.message || "request failed"}` };
+    if (!q) return { text: `Apify account ${body.data?.username || "connected"}.` };
+    const items = body.data?.items || [];
+    const lines = items.slice(0, 5).map((row) => `${row.title || row.name || "actor"} — ${row.username || ""}/${row.name || ""}`.trim());
+    return { text: lines.length ? `Apify store:\n${lines.join("\n")}` : `Apify store returned nothing for ${q}.` };
   }
   const page = line.match(/^(?:\/page|\/scrape|read page)\s+(https?:\/\/\S+)/i);
   if (page) {
