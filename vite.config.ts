@@ -142,6 +142,24 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+
+/** Pages rejects main and assets. Nitro copies them from wrangler.jsonc into dist/_worker.js/wrangler.json. */
+function pagesWranglerPlugin(): Plugin {
+  return {
+    name: "lifeos-pages-wrangler",
+    apply: "build",
+    closeBundle() {
+      const file = join(process.cwd(), "dist/_worker.js/wrangler.json");
+      if (!existsSync(file)) return;
+      const config = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+      delete config.main;
+      delete config.assets;
+      if (typeof config.pages_build_output_dir !== "string") config.pages_build_output_dir = "..";
+      writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
+    },
+  };
+}
+
 /** SSR `styles.css?url` is hashed separately from the client file. Publish the client CSS under the SSR name so the document link is not a 404. */
 function publishSsrCssPlugin(): Plugin {
   return {
@@ -211,6 +229,7 @@ export default defineConfig(({ command, isPreview }) => ({
             // false, so removing this silently unwires /?install=1 on deploys.
             serverDir: "./server",
           }),
+          pagesWranglerPlugin(),
           publishSsrCssPlugin(),
         ]
       : []),
