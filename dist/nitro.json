@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-12T02:52:20.224Z",
+  "preset": "cloudflare-pages",
+  "framework": {
+    "name": "nitro",
+    "version": "3.0.260610-beta"
+  },
+  "versions": {
+    "nitro": "3.0.260610-beta"
+  },
+  "serverEntry": "_worker.js/index.js",
+  "publicDir": "",
+  "commands": {
+    "preview": "npx wrangler --cwd ./ pages dev",
+    "deploy": "npx wrangler --cwd ./ pages deploy"
+  },
+  "config": {
+    "cloudflare": {
+      "deployConfig": true,
+      "nodeCompat": true
+    }
+  }
+}

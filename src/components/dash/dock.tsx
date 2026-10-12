@@ -10,17 +10,13 @@ import { YoutubeBox } from "./media-desk";
 type Update = (recipe: (prev: Memory) => Memory) => void;
 type Mode = "chat" | "image" | "video" | "writer" | "code";
 
-const SKINS = [
-  { id: "nova", label: "Nova", src: "/agents/stills/nova.jpg" },
-  { id: "nyx", label: "Nyx", src: "/agents/stills/nyx.jpg" },
-  { id: "ember", label: "Ember", src: "/agents/stills/ember.jpg" },
-];
 const MODES: Mode[] = ["chat", "image", "video", "writer", "code"];
 
 const MINDS = [
-  { id: "grok", label: "Grok" },
+  { id: "ollama", label: "Ollama" },
   { id: "nvidia", label: "NVIDIA" },
-  { id: "openai", label: "OpenAI" },
+  { id: "huggingface", label: "Hugging Face" },
+  { id: "grok", label: "Grok" },
 ] as const;
 
 function facts(data: Memory, question = "") {
@@ -100,7 +96,6 @@ export function VoiceClone({ data, update, onReady }: { data: Memory; update: Up
 }
 
 export function ErebusDock({ data, update, agent = "Erebus", compact = false }: { data: Memory; update: Update; agent?: "Erebus" | "Kranos"; compact?: boolean }) {
-  const [skin, setSkin] = useState(agent === "Kranos" ? "nyx" : "nova");
   const [mode, setMode] = useState<Mode>("chat");
   const [draft, setDraft] = useState("");
   const [mic, setMic] = useState(false);
@@ -108,7 +103,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
   const [volume, setVolume] = useState(0.8);
   const [clip, setClip] = useState("");
   const [status, setStatus] = useState("Ready");
-  const [mind, setMind] = useState<(typeof MINDS)[number]["id"]>("grok");
+  const [mind, setMind] = useState<(typeof MINDS)[number]["id"]>("ollama");
   const [used, setUsed] = useState("Grok");
   const [levels, setLevels] = useState<number[]>(() => Array(28).fill(6));
   const [voice, setVoice] = useState(() => {
@@ -119,7 +114,9 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
   const hear = useRef<{ stop: () => void } | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const frame = useRef(0);
-  const face = agent === "Kranos" ? SKINS[1] : (SKINS.find((row) => row.id === skin && row.id !== "nyx") || SKINS[0]);
+  const face = agent === "Kranos"
+    ? { id: "kranos", label: "Kranos", src: "/agents/avatars/kranos.mp4" }
+    : { id: "erebus", label: "Erebus", src: "/agents/avatars/erebus.mp4" };
 
   useEffect(() => () => {
     hear.current?.stop();
@@ -286,13 +283,14 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
   const lines = data.thread.filter((row) => (agent === "Kranos" ? row.platform === "kranos" : row.platform !== "kranos"));
   const modes = agent === "Kranos" ? (["chat"] as Mode[]) : MODES;
   const lastReply = [...lines].reverse().find((row) => !row.mine);
+  const talking = status.startsWith("Speaking");
   return (
-    <div className={`erebus-dock flex w-full min-h-0 flex-col overflow-hidden ${compact ? "h-full gap-1.5" : "module-card max-h-[calc(100dvh-5.5rem)] gap-2 p-3"}`}>
+    <div className={`erebus-dock flex w-full min-h-0 flex-col overflow-hidden ${compact ? "h-full gap-1.5" : "module-card h-[calc(100dvh-5.5rem)] gap-2 p-3"}`}>
+      <div className={`az-face ${compact ? "is-compact" : ""}`}>
+        {agent === "Erebus" ? <video src="/agents/avatars/erebus.mp4" poster="/agents/stills/erebus.jpg" autoPlay muted loop playsInline /> : <video src="/agents/avatars/kranos.mp4" poster="/agents/stills/kranos.jpg" autoPlay muted loop playsInline />}
+        <span className={`az-pip ${talking ? "is-talk" : mic ? "is-listen" : ""}`} />
+      </div>
       <div className="flex shrink-0 items-center gap-3">
-        <div className={`az-ring relative shrink-0 overflow-hidden rounded-full ${compact ? "h-14 w-14" : "h-24 w-24"}`}>
-          <img key={face.src} src={face.src} alt="" className="h-full w-full object-cover" />
-          <span className={`az-pip ${status.startsWith("Speaking") ? "is-talk" : mic ? "is-listen" : ""}`} />
-        </div>
         <div className="min-w-0 text-left">
           <p className="font-display text-[11px] tracking-[0.22em]">{agent.toUpperCase()}</p>
           <p className="truncate text-xs text-white/70">{face.label} · {status}</p>
@@ -310,7 +308,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
         {MINDS.map((row) => <button key={row.id} type="button" className={`quiet ${mind === row.id ? "is-on" : ""}`} onClick={() => setMind(row.id)}>{row.label}</button>)}
         <span className="text-xs text-white/45">{used}</span>
       </div>
-      <div className="az-thread min-h-16 w-full min-w-0 flex-1 overflow-y-auto px-3 py-2 text-sm leading-5">
+      <div className="az-thread min-h-0 w-full min-w-0 flex-1 overflow-y-auto px-3 py-2 text-sm leading-5">
         {mode === "chat" ? lines.slice(-12).map((row) => <p key={row.id} className={`py-1 ${row.mine ? "text-right" : ""}`}><span className="text-white/45">{row.who}: </span>{row.text}</p>) : null}
         {!lines.length && mode === "chat" ? <p className="text-sm text-white/40">Ask about the board. I only use what is saved.</p> : null}
         {mode === "video" ? <YoutubeBox apiKey={data.keys.find((row) => row.name === "YouTube")?.value || ""} query={clip} /> : null}
@@ -350,7 +348,6 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
         </label>
         <button type="button" className={`quiet ${muted ? "is-on" : ""}`} onClick={() => { setMuted((value) => !value); window.speechSynthesis?.cancel(); cancelAnimationFrame(frame.current); }}>{muted ? "Muted" : "Sound"}</button>
         <input className="h-1 w-20 accent-violet-300" type="range" min={0} max={1} step={0.05} value={volume} aria-label="Volume" onChange={(event) => setVolume(Number(event.target.value))} />
-        {SKINS.map((row) => <button key={row.id} type="button" className={`quiet ${skin === row.id ? "is-on" : ""}`} onClick={() => setSkin(row.id)}>{row.label}</button>)}
       </div>
       <VoiceClone data={data} update={update} onReady={(id) => {
         setVoice(id);
@@ -402,7 +399,7 @@ export function AgentFloat() {
       return;
     }
     try {
-      const pip = pipRef.current && !pipRef.current.closed ? pipRef.current : await api.requestWindow({ width: 360, height: 640 });
+      const pip = pipRef.current && !pipRef.current.closed ? pipRef.current : await api.requestWindow({ width: 440, height: 760 });
       if (!pip.document.getElementById("lifeos-dock-root")) {
         copyStyles(pip.document);
         const root = pip.document.createElement("div");
@@ -436,7 +433,7 @@ export function AgentFloat() {
     });
   }
   const panel = (
-    <div className={host ? "flex h-full flex-col bg-black p-3" : "az-dock flex h-[min(34rem,calc(100dvh-1rem))] w-[22rem] flex-col overflow-hidden"}>
+    <div className={host ? "flex h-full flex-col bg-black p-3" : "az-dock flex h-[min(46rem,calc(100dvh-1rem))] w-[28rem] max-w-[calc(100vw-1rem)] flex-col overflow-hidden"}>
       <div className="mb-2 flex shrink-0 items-center gap-3" onPointerDown={host ? undefined : down} onPointerMove={host ? undefined : move} onPointerUp={() => { drag.current = null; }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-[11px] tracking-[0.22em]">EREBUS</p>
@@ -469,7 +466,7 @@ export function AgentFloat() {
             if (!moved) void floatOut();
           }}
         >
-          <img src="/agents/stills/nova.jpg" alt="" width="82" height="82" />
+          <img src="/agents/stills/erebus.jpg" alt="" width="54" height="54" />
           <span className="az-live" />
         </button>
       )}

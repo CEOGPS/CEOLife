@@ -1451,8 +1451,6 @@ function ConnectModal({
               />
             </div>
           )}
-
-          }
         </div>
 
         <div className="p-4 border-t flex justify-end gap-2" style={{ borderColor: "oklch(0.55 0.22 20 / 15%)" }}>

@@ -250,7 +250,7 @@ export function Dashboard() {
   return (
     <div className="grid gap-4">
       <PageHead title="Cagednreality" />
-    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem_minmax(0,1.15fr)]">
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_28rem_minmax(0,1.15fr)]">
       <div className="order-2 flex flex-col gap-4 xl:order-1">
         <Card title="Time & Weather">
           <WeatherClock />
@@ -337,7 +337,7 @@ export function Dashboard() {
             </button>
           ))}
         </Card>
-        <Card title="YouTube Player">
+        <Card title="YouTube Player" to="media">
           <YoutubeBox apiKey={data.keys.find((row) => row.name === "YouTube")?.value || ""} />
         </Card>
         <Card title="AI Insights" to="finance">{insights(data).map((tip) => <p key={tip} className="text-sm">{tip}</p>)}</Card>

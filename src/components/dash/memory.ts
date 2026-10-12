@@ -455,11 +455,61 @@ function readVault(): Entry[] {
   }
 }
 
+const SEED_IDS = new Set(["hello", "idea-1", "lead-nextdoor", "lead-group", "n1", "n2", "j1", "j2", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "p1", "p2", "e1", "e2", "s1", "s2", "m1", "m2"]);
+
 function unionById<T extends { id: string }>(local: T[], remote: T[]) {
+  const remoteIds = new Set(remote.map((row) => row.id));
+  const kept = remote.length ? local.filter((row) => !SEED_IDS.has(row.id) || remoteIds.has(row.id)) : local;
   const map = new Map<string, T>();
-  for (const row of local) map.set(row.id, row);
-  for (const row of remote) if (!map.has(row.id)) map.set(row.id, row);
+  for (const row of remote) map.set(row.id, row);
+  for (const row of kept) map.set(row.id, row);
   return [...map.values()];
+}
+
+function absorb(base: Memory, raw: unknown) {
+  const incoming = sanitizeMemory(raw);
+  return {
+    ...base,
+    logo: base.logo || incoming.logo,
+    banner: base.banner || incoming.banner,
+    notes: unionById(base.notes, incoming.notes),
+    tasks: unionById(base.tasks, incoming.tasks),
+    leads: unionById(base.leads, incoming.leads),
+    notifs: unionById(base.notifs, incoming.notifs),
+    jobs: unionById(base.jobs, incoming.jobs),
+    accounts: unionById(base.accounts, incoming.accounts),
+    products: unionById(base.products, incoming.products),
+    expenses: unionById(base.expenses, incoming.expenses),
+    events: unionById(base.events, incoming.events),
+    links: unionById(base.links, incoming.links),
+    tracks: unionById(base.tracks, incoming.tracks),
+    social: unionById(base.social, incoming.social),
+    marketing: unionById(base.marketing, incoming.marketing),
+    contacts: unionById(base.contacts, incoming.contacts),
+    journal: unionById(base.journal, incoming.journal),
+    mail: unionById(base.mail, incoming.mail),
+    thread: unionById(base.thread, incoming.thread),
+    projects: unionById(base.projects, incoming.projects),
+    legal: unionById(base.legal, incoming.legal),
+    media: unionById(base.media, incoming.media),
+    songs: unionById(base.songs, incoming.songs),
+    ideas: unionById(base.ideas, incoming.ideas),
+    deals: unionById(base.deals, incoming.deals),
+    facts: unionById(base.facts, incoming.facts),
+    socialAccounts: unionById(base.socialAccounts, incoming.socialAccounts),
+    socialPosts: unionById(base.socialPosts, incoming.socialPosts),
+    stats: unionById(base.stats, incoming.stats),
+    groups: unionById(base.groups, incoming.groups),
+    query: base.query || incoming.query,
+    fico: base.fico === 712 && incoming.fico !== 712 ? incoming.fico : base.fico,
+    vantage: base.vantage === 698 && incoming.vantage !== 698 ? incoming.vantage : base.vantage,
+    emailHub: {
+      accounts: unionById(base.emailHub.accounts, incoming.emailHub.accounts),
+      lists: unionById(base.emailHub.lists, incoming.emailHub.lists),
+      campaigns: unionById(base.emailHub.campaigns, incoming.emailHub.campaigns),
+      domains: unionById(base.emailHub.domains, incoming.emailHub.domains),
+    },
+  };
 }
 
 function read(): Memory {
@@ -580,22 +630,25 @@ async function loadBrandLocal(): Promise<BrandLocal | null> {
 }
 
 function readKeysLocal(): KeyRow[] {
-  try {
-    const rows = JSON.parse(localStorage.getItem(KEYS_KEY) || "[]");
-    return Array.isArray(rows) ? rows.filter((row) => row?.name && row?.value).map((row) => ({ id: String(row.id || row.name), name: String(row.name), value: String(row.value) })) : [];
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 function saveKeysLocal(keys: KeyRow[]) {
-  try { localStorage.setItem(KEYS_KEY, JSON.stringify(keys)); } catch { /* keys stay in the cloud copy */ }
+  void keys;
+  try { localStorage.removeItem(KEYS_KEY); } catch { /* do not keep key values in the browser */ }
 }
 
 function unionKeys(primary: KeyRow[], extra: KeyRow[]) {
   const map = new Map<string, KeyRow>();
+  const link = (value: string) => /^https?:\/\//i.test(value.trim());
   for (const row of extra) if (row.name && row.value) map.set(row.name, row);
-  for (const row of primary) if (row.name && row.value) map.set(row.name, row);
+  for (const row of primary) {
+    if (!row.name || !row.value) continue;
+    const previous = map.get(row.name);
+    if (previous && link(row.value) && !link(previous.value)) continue;
+    if (previous && !link(row.value) && !link(previous.value) && row.value.length + 8 < previous.value.length) continue;
+    map.set(row.name, row);
+  }
   return [...map.values()];
 }
 
@@ -609,6 +662,7 @@ function mergeMedia(local: Entry[], stored: Entry[]) {
   return [...map.values()];
 }
 
+const SHARED = "lifeos-shared";
 let memory = seed();
 let statusText = "This browser";
 if (typeof window !== "undefined") window.addEventListener("pagehide", () => {
@@ -678,25 +732,32 @@ function schedulePush() {
 
 async function pushNow() {
   try {
-    const { pushBoard } = await import("@/lib/lifeos/sync");
-    const { pushCloud, pushBrand, pushKeys } = await import("@/lib/lifeos/board-store");
-    const copy = { ...memory, keys: [], vault: [] };
-    const result = await pushBoard({ data: { device: deviceId(), payload: JSON.stringify(copy) } });
-    await pushCloud(deviceId(), copy).catch(() => false);
-    await pushBrand(memory.banner, memory.logo).catch(() => false);
-    await pushKeys(memory.keys).catch(() => false);
-    if (result.at) localStorage.setItem(AT, String(result.at));
-    statusText = "Synced";
-  } catch {
-    try {
-      const { pushCloud, pushBrand, pushKeys } = await import("@/lib/lifeos/board-store");
-      const ok = await pushCloud(deviceId(), { ...memory, keys: [], vault: [] });
-      await pushBrand(memory.banner, memory.logo).catch(() => false);
-      await pushKeys(memory.keys).catch(() => false);
-      statusText = ok ? "Synced" : "Saved on this browser";
-    } catch {
-      statusText = "Saved on this browser";
+    const { pushCloud, pushBrand, pushKeys, pullCloud, pullKeys } = await import("@/lib/lifeos/board-store");
+    const cloud = await pullCloud(SHARED);
+    if (!cloud) {
+      statusText = "Saved on this browser. The shared board was left unchanged.";
+      emit();
+      return;
     }
+    const localAt = Number(localStorage.getItem(AT) || 0);
+    if (cloud.doc && cloud.at && localAt && cloud.at > localAt + 1500) {
+      const incoming = sanitizeMemory(cloud.doc);
+      memory = { ...incoming, keys: memory.keys.length ? memory.keys : incoming.keys, vault: memory.vault.length ? memory.vault : incoming.vault, banner: incoming.banner || memory.banner, logo: incoming.logo || memory.logo };
+      rememberLocal();
+      statusText = "Loaded the newer board.";
+      emit();
+      return;
+    }
+    if (cloud.doc) memory = absorb(memory, cloud.doc);
+    const cloudKeys = await pullKeys().catch(() => []);
+    if (cloudKeys.length) memory = { ...memory, keys: unionKeys(memory.keys, cloudKeys) };
+    const copy = { ...memory, keys: [], vault: [] };
+    const ok = await pushCloud(SHARED, copy);
+    await pushBrand(memory.banner, memory.logo).catch(() => false);
+    if (memory.keys.length) await pushKeys(memory.keys).catch(() => false);
+    statusText = ok ? "Synced" : "Saved on this browser. The shared board was left unchanged.";
+  } catch {
+    statusText = "Saved on this browser. The shared board was left unchanged.";
   }
   emit();
 }
@@ -714,61 +775,23 @@ export async function hydrateMemory() {
     if (savedKeys.length) memory = { ...memory, keys: unionKeys(savedKeys, memory.keys) };
   } catch { /* indexedDB unavailable */ }
   try {
-    const { pullBoard } = await import("@/lib/lifeos/sync");
     const { pullCloud, pullBrand, pullKeys } = await import("@/lib/lifeos/board-store");
-    const remote = await pullBoard({ data: deviceId() }).catch(() => null);
-    const cloud = await pullCloud(deviceId()).catch(() => null);
+    const cloud = await pullCloud(SHARED).catch(() => null);
     const brand = await pullBrand().catch(() => null);
     const cloudKeys = await pullKeys().catch(() => []);
     if (cloudKeys.length) memory = { ...memory, keys: unionKeys(memory.keys, cloudKeys) };
     const localAt = Number(localStorage.getItem(AT) || 0);
-    const cloudAt = cloud?.at || 0;
-    const remoteAt = remote?.at || 0;
-    const newest = cloudAt > remoteAt ? { payload: JSON.stringify(cloud?.doc), at: cloudAt } : remote;
-    if (newest?.payload && newest.at > localAt) {
-      const incoming = sanitizeMemory(JSON.parse(newest.payload));
-      incoming.logo = memory.logo || incoming.logo || brand?.logo || "";
-      incoming.banner = memory.banner || incoming.banner || brand?.banner || "";
-      incoming.notes = unionById(memory.notes, incoming.notes);
-      incoming.tasks = unionById(memory.tasks, incoming.tasks);
-      incoming.leads = unionById(memory.leads, incoming.leads);
-      incoming.notifs = unionById(memory.notifs, incoming.notifs);
-      incoming.jobs = unionById(memory.jobs, incoming.jobs);
-      incoming.accounts = unionById(memory.accounts, incoming.accounts);
-      incoming.products = unionById(memory.products, incoming.products);
-      incoming.expenses = unionById(memory.expenses, incoming.expenses);
-      incoming.events = unionById(memory.events, incoming.events);
-      incoming.links = unionById(memory.links, incoming.links);
-      incoming.tracks = unionById(memory.tracks, incoming.tracks);
-      incoming.social = unionById(memory.social, incoming.social);
-      incoming.marketing = unionById(memory.marketing, incoming.marketing);
-      incoming.contacts = unionById(memory.contacts, incoming.contacts);
-      incoming.journal = unionById(memory.journal, incoming.journal);
-      incoming.mail = unionById(memory.mail, incoming.mail);
-      incoming.thread = unionById(memory.thread, incoming.thread);
-      incoming.projects = unionById(memory.projects, incoming.projects);
-      incoming.legal = unionById(memory.legal, incoming.legal);
-      incoming.media = unionById(memory.media, incoming.media);
-      incoming.songs = unionById(memory.songs, incoming.songs);
-      incoming.ideas = unionById(memory.ideas, incoming.ideas);
-      incoming.keys = memory.keys;
-      incoming.query = memory.query || incoming.query;
-      incoming.vault = readVault().length ? readVault() : memory.vault;
-      incoming.emailHub = {
-        accounts: unionById(memory.emailHub.accounts, incoming.emailHub.accounts),
-        lists: unionById(memory.emailHub.lists, incoming.emailHub.lists),
-        campaigns: unionById(memory.emailHub.campaigns, incoming.emailHub.campaigns),
-        domains: unionById(memory.emailHub.domains, incoming.emailHub.domains),
-      };
-      memory = incoming;
-      rememberLocal();
-      statusText = "Synced";
-    } else {
-      if (brand?.banner && !memory.banner) memory = { ...memory, banner: brand.banner };
-      if (brand?.logo && !memory.logo) memory = { ...memory, logo: brand.logo };
-      if ((brand?.banner && !localStorage.getItem(BANNER_KEY)) || (brand?.logo && !localStorage.getItem(LOGO_KEY))) rememberLocal();
-      statusText = "Saved on this browser";
+    if (cloud?.doc && (!localAt || (cloud.at && cloud.at >= localAt))) {
+      const incoming = sanitizeMemory(cloud.doc);
+      memory = { ...incoming, keys: memory.keys.length ? memory.keys : incoming.keys, vault: memory.vault.length ? memory.vault : incoming.vault, banner: incoming.banner || memory.banner, logo: incoming.logo || memory.logo };
+    } else if (cloud?.doc) {
+      memory = absorb(memory, cloud.doc);
     }
+    if (brand?.banner) memory = { ...memory, banner: memory.banner || brand.banner };
+    if (brand?.logo) memory = { ...memory, logo: memory.logo || brand.logo };
+    memory.vault = readVault().length ? readVault() : memory.vault;
+    rememberLocal();
+    statusText = "Synced";
   } catch {
     statusText = "Saved on this browser";
   }

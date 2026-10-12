@@ -1,0 +1,741 @@
+diff --git a/src/components/dash/analytics-desk.tsx b/src/components/dash/analytics-desk.tsx
+index d3c3bfd..f21acdc 100644
+--- a/src/components/dash/analytics-desk.tsx
++++ b/src/components/dash/analytics-desk.tsx
+@@ -33,13 +33,13 @@ export function AnalyticsDesk({ data, update }: { data: Memory; update: Update }
+     saveKey(update, "Google Analytics", property.trim());
+     saveKey(update, "Search Console", site.trim());
+     saveKey(update, "Brilliant Site", bdSite.trim());
+-    const { readOauth, freshGoogleToken } = await import("@/lib/lifeos/oauth");
++    const { readOauth, freshGoogleToken, freshToken } = await import("@/lib/lifeos/oauth");
+     const { pullAnalytics } = await import("@/lib/lifeos/sync");
+     const result = await pullAnalytics({ data: {
+       google: await freshGoogleToken() || readOauth().find((row) => row.provider === "google")?.token || "",
+       property,
+       site,
+-      facebook: readOauth().find((row) => row.provider === "facebook")?.token || "",
++      facebook: readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "",
+       x: keyOf(data, "X"),
+       linkedin: keyOf(data, "LinkedIn"),
+       tiktok: keyOf(data, "TikTok"),
+diff --git a/src/components/dash/integrations-desk.tsx b/src/components/dash/integrations-desk.tsx
+index a01ba39..ddab897 100644
+--- a/src/components/dash/integrations-desk.tsx
++++ b/src/components/dash/integrations-desk.tsx
+@@ -1,6 +1,6 @@
+ import { useEffect, useRef, useState } from "react";
+ import { newId, type Memory } from "./memory";
+-import { disconnectOauth, readOauth, BOARD_EMAILS, catchReturn, confirmSignIn, requestSignIn, sessionToken, signOutSession, startNylas, startOAuth, type OauthProvider } from "@/lib/lifeos/oauth";
++import { disconnectOauth, readOauth, BOARD_EMAILS, catchReturn, confirmSignIn, getSessionToken, pullWorkerLinks, requestSignIn, sessionToken, signOutSession, startNylas, startOAuth, type OauthProvider } from "@/lib/lifeos/oauth";
+ import { sheetKeys } from "@/lib/lifeos/sheet-keys";
+ 
+ const WORKER = (import.meta.env.VITE_WORKER_URL || "https://lifeos1-api.ceogps.workers.dev").replace(/\/$/, "");
+@@ -249,26 +249,23 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
+   }, []);
+   useEffect(() => {
+     const back = catchReturn();
+-    if (back.provider) {
+-      const email = readOauth().find((row) => row.provider === back.provider)?.email || "";
+-      stamp(CARD[back.provider], "connected", email ? `Connected · ${email}` : "Connected");
+-    }
+-    if (back.error) {
+-      setNote(back.error);
+-    }
+-    setAccounts([]);
+-    void fetch(`${WORKER}/api/oauth/linked`, { signal: AbortSignal.timeout(12000) }).then(async (response) => {
+-      if (!response.ok) return;
+-      const body = await response.json() as { accounts?: { provider?: string; email?: string }[] };
+-      const rows: Account[] = [];
+-      for (const item of body.accounts || []) {
+-        if (!item.provider) continue;
+-        rows.push({ provider: item.provider, name: item.provider, email: item.email || "" });
+-        const card = CARD[item.provider as OauthProvider] || item.provider;
+-        stamp(card, "connected", item.email || "Connected");
++    if (back.error) setNote(back.error);
++    let live = true;
++    void pullWorkerLinks().then((rows) => {
++      if (!live) return;
++      const next = asAccounts(rows);
++      setAccounts(next);
++      for (const item of next) {
++        stamp(CARD[item.provider as OauthProvider] || item.provider, "connected", item.email ? `Connected · ${item.email}` : "Connected");
++      }
++      const returned = back.provider;
++      if (returned && !next.some((row) => row.provider === returned)) {
++        const text = `${CARD[returned]} returned, but no saved token was found. Sign in at the top, then connect again.`;
++        stamp(CARD[returned], "error", text);
++        setNote(text);
+       }
+-      setAccounts(rows);
+     }).catch(() => undefined);
++    return () => { live = false; };
+   }, [setAccounts, setNote, signed]);
+ 
+   function stamp(name: string, state: Mark["state"], text: string) {
+@@ -296,24 +293,22 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
+       });
+       return;
+     }
+-    try {
+-      startOAuth(provider, email);
+-    } catch (error) {
++    void startOAuth(provider, email).catch((error: unknown) => {
+       const text = error instanceof Error ? error.message : `${name} did not start.`;
+       stamp(name, "error", text);
+       setNote(text);
+-    }
++    });
+   }
+ 
+   function disconnect(provider: OauthProvider, email?: string) {
+     disconnectOauth(provider, email);
+     stamp(CARD[provider], "saved", "Disconnected");
+     setAccounts(asAccounts(readOauth()));
+-    void fetch(`${WORKER}/api/oauth/disconnect`, {
++    void getSessionToken().then((token) => fetch(`${WORKER}/api/oauth/disconnect`, {
+       method: "POST",
+-      headers: { Authorization: `Bearer ${sessionToken()}`, "Content-Type": "application/json" },
++      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+       body: JSON.stringify({ provider, account_email: email || "" }),
+-    }).catch(() => undefined);
++    })).catch(() => undefined);
+   }
+ 
+   function putKey(name: string, value: string) {
+@@ -332,12 +327,12 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
+     };
+     try {
+       const { readOauth, freshGoogleToken } = await import("@/lib/lifeos/oauth");
+-      const sessions = readOauth().filter((row) => row.provider === "google" && row.token && row.email.toLowerCase() === "chrisgr33ninc@gmail.com");
++      const sessions = readOauth().filter((row) => row.provider === "google" && row.email.toLowerCase() === "chrisgr33ninc@gmail.com");
+       const tokens = sessions.length ? sessions : [{ email: "", token: "" }];
+       let result: { ok: boolean; text: string; site?: string } = { ok: false, text: "Connect Google as chrisgr33ninc@gmail.com.", site: "" };
+       const lines: string[] = [];
+       for (const session of tokens) {
+-        const google = session.token ? await freshGoogleToken(session.email) || session.token : "";
++        const google = session.email ? await freshGoogleToken(session.email) : "";
+         const response = await fetch("/api/keys/account", {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+@@ -443,8 +438,9 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
+         else if (result === "error") failed += 1;
+       }
+     }
+-    if (sessionToken()) {
+-      const response = await fetch(`${WORKER}/api/integrations/health`, { headers: { Authorization: `Bearer ${sessionToken()}` } }).catch(() => null);
++    const healthToken = await getSessionToken();
++    if (healthToken) {
++      const response = await fetch(`${WORKER}/api/integrations/health`, { headers: { Authorization: `Bearer ${healthToken}` } }).catch(() => null);
+       if (response?.ok) {
+         const body = await response.json() as { integrations?: { id?: string; status?: string; oauth?: { provider?: string; emails?: string[] } }[] };
+         const rows: Account[] = [];
+diff --git a/src/lib/lifeos/oauth.ts b/src/lib/lifeos/oauth.ts
+index ae12cd6..3abb044 100644
+--- a/src/lib/lifeos/oauth.ts
++++ b/src/lib/lifeos/oauth.ts
+@@ -30,7 +30,7 @@ function rawOauth(): OauthSession[] {
+   try {
+     const rows = JSON.parse(localStorage.getItem(STORE) || "[]");
+     if (!Array.isArray(rows)) return [];
+-    const clean = rows.filter((row) => row?.provider && isProvider(row.provider)).map((row) => ({
++    const clean = rows.filter((row) => row?.provider && isProvider(row.provider)).map((row: { provider: OauthProvider; name?: string; email?: string }) => ({
+       provider: row.provider,
+       name: row.name || CARD[row.provider],
+       email: row.email || "",
+@@ -106,6 +106,40 @@ export async function confirmSignIn(email: string, code: string) {
+ 
+ export function signOutSession() {
+   localStorage.removeItem(SESSION);
++  localStorage.removeItem(STORE);
++}
++
++type StoredSession = { access_token?: string; refresh_token?: string; expires_at?: number; user?: unknown; currentSession?: { access_token?: string } };
++
++/** Returns a valid Supabase access token, refreshing it first when it is about to expire. */
++export async function getSessionToken(): Promise<string> {
++  try {
++    const raw = JSON.parse(localStorage.getItem(SESSION) || "{}") as StoredSession;
++    const access = raw.access_token || raw.currentSession?.access_token || "";
++    if (!access) return "";
++    const expiresAt = raw.expires_at || 0;
++    if (!expiresAt || expiresAt * 1000 - Date.now() > 60_000) return access;
++    if (!raw.refresh_token) return "";
++    const response = await fetch(`${SUPABASE}/auth/v1/token?grant_type=refresh_token`, {
++      method: "POST",
++      headers: { apikey: ANON, "Content-Type": "application/json" },
++      body: JSON.stringify({ refresh_token: raw.refresh_token }),
++    });
++    const body = await response.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; expires_at?: number; expires_in?: number; user?: unknown };
++    if (!response.ok || !body.access_token) {
++      if (response.status === 400 || response.status === 401) localStorage.removeItem(SESSION);
++      return "";
++    }
++    localStorage.setItem(SESSION, JSON.stringify({
++      access_token: body.access_token,
++      refresh_token: body.refresh_token || raw.refresh_token,
++      expires_at: body.expires_at || Math.floor(Date.now() / 1000) + (body.expires_in || 3600),
++      user: body.user || raw.user || null,
++    }));
++    return body.access_token;
++  } catch {
++    return "";
++  }
+ }
+ 
+ export function rememberLink(provider: OauthProvider, email?: string, name?: string) {
+@@ -118,32 +152,40 @@ export function rememberLink(provider: OauthProvider, email?: string, name?: str
+ }
+ 
+ export async function pullWorkerLinks() {
+-  const token = readSessionToken();
++  const token = await getSessionToken();
+   if (!token) return readOauth();
+-  const response = await fetch(`${WORKER}/api/oauth/status`, {
+-    headers: { Authorization: `Bearer ${token}` },
+-    signal: AbortSignal.timeout(12000),
+-  });
+-  if (!response.ok) return readOauth();
+-  const body = await response.json() as { accounts?: { provider?: string; email?: string }[]; statuses?: Record<string, { connected?: boolean; email?: string }> };
+-  const linked = Array.isArray(body.accounts) ? body.accounts : [];
+-  if (linked.length) {
+-    for (const row of linked) {
+-      if (row.provider === "google" || row.provider === "discord" || row.provider === "facebook" || row.provider === "spotify") {
+-        rememberLink(row.provider, row.email || "");
++  try {
++    const response = await fetch(`${WORKER}/api/oauth/status`, {
++      headers: { Authorization: `Bearer ${token}` },
++      signal: AbortSignal.timeout(12000),
++    });
++    if (!response.ok) return readOauth();
++    const body = await response.json() as { accounts?: { provider?: string; email?: string }[]; statuses?: Record<string, { connected?: boolean; email?: string }> };
++    const rows: OauthSession[] = [];
++    const seen = new Set<string>();
++    const add = (provider: string | undefined, email: string) => {
++      if (!provider || !isProvider(provider)) return;
++      const key = `${provider}:${email.toLowerCase()}`;
++      if (seen.has(key)) return;
++      seen.add(key);
++      rows.push({ provider, name: CARD[provider], email, token: "", via: "worker" });
++    };
++    for (const row of body.accounts || []) add(row.provider, row.email || "");
++    if (!rows.length) {
++      for (const provider of ["google", "discord", "facebook", "spotify"] as const) {
++        const status = body.statuses?.[provider];
++        if (status?.connected) add(provider, status.email || "");
+       }
+     }
++    // The worker is the source of truth, so the local cache mirrors it exactly.
++    localStorage.setItem(STORE, JSON.stringify(rows));
++    return rows;
++  } catch {
+     return readOauth();
+   }
+-  for (const provider of ["google", "discord", "facebook", "spotify"] as const) {
+-    const status = body.statuses?.[provider];
+-    if (!status?.connected) continue;
+-    rememberLink(provider, status.email || "");
+-  }
+-  return readOauth();
+ }
+ 
+-export function catchReturn() {
++export function catchReturn(): { provider: OauthProvider | ""; error: string } {
+   const params = new URLSearchParams(window.location.search);
+   const connected = params.get("connected");
+   const error = params.get("oauth_error") || "";
+@@ -161,20 +203,28 @@ export function catchReturn() {
+   return { provider: connected && isProvider(connected) ? connected : "", error };
+ }
+ 
+-export function startOAuth(provider: OauthProvider, email?: string) {
++export async function startOAuth(provider: OauthProvider, email?: string) {
+   const origin = window.location.origin || APP_ORIGIN;
+   const picked = (email || "").trim().toLowerCase();
+   if (picked.endsWith("@icloud.com")) throw new Error("iCloud connects through Nylas, not OAuth.");
+-  const params = new URLSearchParams({ provider, origin });
+-  if (picked) params.set("account_email", picked);
+-  window.location.assign(`${WORKER}/api/oauth/start?${params.toString()}`);
++  const token = await getSessionToken();
++  if (!token) throw new Error("Sign in at the top of Integrations first. Supabase emails you a code.");
++  const response = await fetch(`${WORKER}/api/oauth/start`, {
++    method: "POST",
++    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
++    body: JSON.stringify({ provider, origin, account_email: picked }),
++    signal: AbortSignal.timeout(15000),
++  });
++  const body = await response.json().catch(() => ({})) as { url?: string; error?: string };
++  if (!response.ok || !body.url) throw new Error(body.error || `${CARD[provider]} did not start.`);
++  window.location.assign(body.url);
+ }
+ 
+ export async function startNylas(email?: string) {
+   const origin = window.location.origin || APP_ORIGIN;
+   const account = (email || "").trim().toLowerCase();
+   if (!account.endsWith("@icloud.com")) throw new Error("Nylas is for the iCloud mailbox.");
+-  const token = readSessionToken();
++  const token = await getSessionToken();
+   if (!token) throw new Error("Sign in at the top of Integrations. Supabase emails you a code.");
+   sessionStorage.setItem("lifeos.oauth.mailbox", account);
+   const response = await fetch(`${WORKER}/api/nylas/connect`, {
+@@ -191,6 +241,25 @@ export async function finishOAuth(): Promise<OauthSession | null> {
+   return null;
+ }
+ 
+-export async function freshGoogleToken(_email?: string) {
+-  return "";
++/** Asks the worker for a live access token. The worker refreshes it with the stored refresh token when needed. */
++export async function freshToken(provider: OauthProvider, email?: string) {
++  const token = await getSessionToken();
++  if (!token) return "";
++  try {
++    const response = await fetch(`${WORKER}/api/oauth/token/fresh`, {
++      method: "POST",
++      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
++      body: JSON.stringify({ provider, email: email || "" }),
++      signal: AbortSignal.timeout(15000),
++    });
++    if (!response.ok) return "";
++    const body = await response.json() as { access_token?: string };
++    return body.access_token || "";
++  } catch {
++    return "";
++  }
++}
++
++export async function freshGoogleToken(email?: string) {
++  return freshToken("google", email);
+ }
+diff --git a/worker/index.ts b/worker/index.ts
+index 7b88441..a033d45 100644
+--- a/worker/index.ts
++++ b/worker/index.ts
+@@ -40,7 +40,7 @@ export default {
+       } catch {
+         return response;
+       }
+-      const provider = next.searchParams.get("oauth_success") || "";
++      const provider = next.searchParams.get("oauth_success") || next.searchParams.get("connected") || "";
+       const error = next.searchParams.get("oauth_error") || "";
+       const dest = new URL("/panel/integrations", returnOrigin(url.searchParams.get("state") || next.searchParams.get("state") || "", allowed));
+       if (error) dest.searchParams.set("oauth_error", error);
+diff --git a/worker/lifeos1-api.js b/worker/lifeos1-api.js
+index 4214115..4d030ce 100644
+--- a/worker/lifeos1-api.js
++++ b/worker/lifeos1-api.js
+@@ -60,7 +60,7 @@ __name(withCors, "withCors");
+ __name2(withCors, "withCors");
+ var OAUTH_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/api/oauth/callback";
+ var DISCORD_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/oauth/callback";
+-var DISCORD_SCOPES = "identify messages.read gdm.join guilds bot connections email rpc.video.read rpc.notifications.read rpc.screenshare.write applications.store.update openid rpc.activities.write rpc.video.write rpc.voice.read webhook.incoming applications.commands role_connections.write rpc.screenshare.read rpc.voice.write rpc guilds.members.read guilds.join applications.builds.read applications.entitlements applications.commands.permissions.update";
++var DISCORD_SCOPES = "identify email guilds connections";
+ var NYLAS_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/api/nylas/callback";
+ var OAUTH_ORIGINS = /* @__PURE__ */ new Set(["https://lifeos.ceogps.com", "https://lifeos1.ceogps.com"]);
+ var OAUTH_PROVIDERS = /* @__PURE__ */ new Set(["google", "microsoft", "github", "slack", "facebook", "instagram", "twitter", "linkedin", "spotify", "discord", "notion"]);
+@@ -102,6 +102,59 @@ function issueState(origin) {
+ }
+ __name(issueState, "issueState");
+ __name2(issueState, "issueState");
++
++var TOKEN_URLS = {
++  google: "https://oauth2.googleapis.com/token",
++  microsoft: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
++  github: "https://github.com/login/oauth/access_token",
++  slack: "https://slack.com/api/oauth.v2.access",
++  facebook: "https://graph.facebook.com/oauth/access_token",
++  instagram: "https://api.instagram.com/oauth/access_token",
++  twitter: "https://api.twitter.com/2/oauth2/token",
++  linkedin: "https://www.linkedin.com/oauth/v2/accessToken",
++  spotify: "https://accounts.spotify.com/api/token",
++  discord: "https://discord.com/api/oauth2/token",
++  notion: "https://api.notion.com/v1/oauth/token"
++};
++function b64urlBytes(bytes) {
++  let text = "";
++  bytes.forEach((b) => {
++    text += String.fromCharCode(b);
++  });
++  return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
++}
++async function pkcePair() {
++  const verifier = b64urlBytes(crypto.getRandomValues(new Uint8Array(48)));
++  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
++  return { verifier, challenge: b64urlBytes(new Uint8Array(digest)) };
++}
++function clientCreds(provider, env) {
++  const key = provider.toUpperCase();
++  return { clientId: env[`${key}_CLIENT_ID`] || "", clientSecret: env[`${key}_CLIENT_SECRET`] || "" };
++}
++async function refreshAccessToken(provider, refreshToken, env) {
++  const tokenUrl = TOKEN_URLS[provider];
++  const { clientId, clientSecret } = clientCreds(provider, env);
++  if (!tokenUrl || !clientId || !clientSecret) throw new Error(`Missing ${provider} client credentials`);
++  const params = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
++  const headers = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
++  if (provider === "twitter") {
++    headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
++  } else {
++    params.set("client_id", clientId);
++    params.set("client_secret", clientSecret);
++  }
++  const response = await fetch(tokenUrl, { method: "POST", headers, body: params.toString() });
++  const data = await response.json().catch(() => ({}));
++  if (!response.ok || !data.access_token) {
++    throw new Error(data.error_description || data.error || `Refresh failed: ${response.status}`);
++  }
++  return {
++    access_token: data.access_token,
++    refresh_token: data.refresh_token || refreshToken,
++    expires_in: data.expires_in ?? null
++  };
++}
+ async function nylasClientId(env) {
+   if (env.NYLAS_CLIENT_ID) return env.NYLAS_CLIENT_ID;
+   if (!env.NYLAS_API_KEY) return "";
+@@ -271,11 +324,13 @@ router.get("/status", async (request, env) => {
+     }, { headers: corsHeaders() });
+   }
+ });
+-router.get("/linked", async (_request, env) => {
++router.get("/linked", async (request, env) => {
++  const userId = await sessionUserId(request, env);
++  if (!userId) return Response.json({ error: "Sign in required", accounts: [] }, { status: 401, headers: corsHeaders() });
+   if (!supabaseUrl(env) || !supabaseKey(env)) {
+     return Response.json({ accounts: [] }, { headers: corsHeaders() });
+   }
+-  const response = await fetch(`${supabaseUrl(env)}/rest/v1/integrations_credentials?status=eq.on&select=oauth_provider,email,oauth_access_token`, {
++  const response = await fetch(`${supabaseUrl(env)}/rest/v1/integrations_credentials?user_id=eq.${encodeURIComponent(userId)}&status=eq.on&select=oauth_provider,email,oauth_access_token`, {
+     headers: serviceHeaders(env)
+   });
+   if (!response.ok) return Response.json({ accounts: [] }, { headers: corsHeaders() });
+@@ -288,7 +343,10 @@ async function startOauth(request, env) {
+   const url = new URL(request.url);
+   const provider = String(posted ? posted.provider : url.searchParams.get("provider") || "");
+   const accountEmail = String((posted ? posted.account_email : url.searchParams.get("account_email")) || "").trim().toLowerCase();
+-  const userId = "00000000-0000-4000-8000-000000000001";
++  const userId = await sessionUserId(request, env);
++  if (!userId) {
++    return Response.json({ error: "Sign in required. Start OAuth with POST and a Bearer token." }, { status: 401, headers: corsHeaders() });
++  }
+   if (accountEmail.endsWith("@icloud.com")) {
+     return Response.json({ error: "iCloud connects through Nylas, not OAuth." }, { status: 400, headers: corsHeaders() });
+   }
+@@ -298,8 +356,11 @@ async function startOauth(request, env) {
+   if (!OAUTH_PROVIDERS.has(provider)) {
+     return Response.json({ error: "Unsupported provider" }, { status: 400, headers: corsHeaders() });
+   }
+-  if (provider === "google" && !env.GOOGLE_CLIENT_ID) {
+-    return Response.json({ error: "GOOGLE_CLIENT_ID is not configured" }, { status: 500, headers: corsHeaders() });
++  if (provider === "instagram") {
++    return Response.json({ error: "Instagram Basic Display was shut down. Connect Instagram Business through Facebook instead." }, { status: 400, headers: corsHeaders() });
++  }
++  if (!clientCreds(provider, env).clientId) {
++    return Response.json({ error: `${provider.toUpperCase()}_CLIENT_ID is not configured` }, { status: 500, headers: corsHeaders() });
+   }
+   const callbackUri = provider === "discord" ? DISCORD_CALLBACK : oauthCallback(env);
+   const state = issueState(posted ? posted.origin : url.searchParams.get("origin"));
+@@ -308,7 +369,7 @@ async function startOauth(request, env) {
+     microsoft: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+     github: "https://github.com/login/oauth/authorize",
+     slack: "https://slack.com/oauth/v2/authorize",
+-    facebook: "https://www.facebook.com/v18.0/dialog/oauth",
++    facebook: "https://www.facebook.com/dialog/oauth",
+     instagram: "https://api.instagram.com/oauth/authorize",
+     twitter: "https://twitter.com/i/oauth2/authorize",
+     linkedin: "https://www.linkedin.com/oauth/v2/authorization",
+@@ -317,7 +378,7 @@ async function startOauth(request, env) {
+     notion: "https://api.notion.com/v1/oauth/authorize"
+   };
+   const params = new URLSearchParams({
+-    client_id: provider === "google" ? env.GOOGLE_CLIENT_ID : env[`${provider.toUpperCase()}_CLIENT_ID`] || "",
++    client_id: clientCreds(provider, env).clientId,
+     redirect_uri: callbackUri,
+     response_type: "code",
+     scope: getScopes(provider),
+@@ -326,11 +387,18 @@ async function startOauth(request, env) {
+   if (provider === "google") {
+     params.set("access_type", "offline");
+     params.set("prompt", "select_account consent");
++    params.set("include_granted_scopes", "true");
+     if (accountEmail) params.set("login_hint", accountEmail);
+   }
+-  if (provider === "discord") {
+-    params.set("permissions", "538444816");
+-    params.set("integration_type", "1");
++  if (provider === "notion") {
++    params.set("owner", "user");
++    params.delete("scope");
++  }
++  if (provider === "twitter") {
++    const pkce = await pkcePair();
++    params.set("code_challenge", pkce.challenge);
++    params.set("code_challenge_method", "S256");
++    if (env.LIFEOS_KV) await env.LIFEOS_KV.put(`oauth:pkce:${state}`, pkce.verifier, { expirationTtl: 600 });
+   }
+   const pending = await storePending(env, {
+     user_id: userId,
+@@ -365,14 +433,16 @@ async function providerEmail(provider, accessToken) {
+     google: "https://www.googleapis.com/oauth2/v3/userinfo",
+     discord: "https://discord.com/api/users/@me",
+     spotify: "https://api.spotify.com/v1/me",
+-    facebook: "https://graph.facebook.com/me?fields=email"
++    facebook: "https://graph.facebook.com/me?fields=email",
++    microsoft: "https://graph.microsoft.com/v1.0/me",
++    linkedin: "https://api.linkedin.com/v2/userinfo"
+   };
+   const endpoint = endpoints[provider];
+   if (!endpoint) return "";
+-  const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${accessToken}` } });
++  const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "lifeos1-api" } });
+   if (!response.ok) return "";
+   const body = await response.json().catch(() => ({}));
+-  return String(body.email || "").trim().toLowerCase();
++  return String(body.email || body.mail || body.userPrincipalName || "").trim().toLowerCase();
+ }
+ router.get("/callback", async (request, env) => {
+   const url = new URL(request.url);
+@@ -381,24 +451,26 @@ router.get("/callback", async (request, env) => {
+   const error = url.searchParams.get("error");
+   const hinted = url.searchParams.get("provider") || "";
+   const origin = originFromState(state);
+-  if (error) {
+-    return Response.redirect(`${origin}/panel/integrations?oauth_error=${encodeURIComponent(error)}`, 302);
+-  }
+-  if (!code || !state.includes("|")) {
+-    return Response.json({ error: "Missing code or state" }, { status: 400, headers: corsHeaders() });
+-  }
++  const back = (params) => Response.redirect(`${origin}/panel/integrations?${new URLSearchParams(params).toString()}`, 302);
++  if (error) return back({ oauth_error: url.searchParams.get("error_description") || error });
++  if (!code || !state.includes("|")) return back({ oauth_error: "Missing code or state" });
+   try {
+     const pending = await claimState(env, state, hinted);
+     if (!pending) throw new Error("Invalid or expired OAuth state");
+     const actualProvider = pending.oauth_provider;
+-    const tokenResponse = await exchangeCodeForToken(actualProvider, code, pending.redirect || (actualProvider === "discord" ? DISCORD_CALLBACK : oauthCallback(env)), env);
++    let verifier = "";
++    if (actualProvider === "twitter" && env.LIFEOS_KV) {
++      verifier = await env.LIFEOS_KV.get(`oauth:pkce:${state}`) || "";
++      await env.LIFEOS_KV.delete(`oauth:pkce:${state}`);
++    }
++    const tokenResponse = await exchangeCodeForToken(actualProvider, code, pending.redirect || (actualProvider === "discord" ? DISCORD_CALLBACK : oauthCallback(env)), env, verifier);
+     if (!tokenResponse.access_token) throw new Error("Failed to obtain access token");
+     const email = (await providerEmail(actualProvider, tokenResponse.access_token)) || pending.email || "";
+     if (actualProvider === "google" && pending.email && email && email !== pending.email) {
+-      return resultPage(origin, "Not connected", `You clicked ${pending.email}, but Google signed in as ${email}. Nothing was saved. Choose ${pending.email} on Google's account page.`);
++      return back({ oauth_error: `You clicked ${pending.email}, but Google signed in as ${email}. Nothing was saved. Choose ${pending.email} on Google's account page.` });
+     }
+     if (actualProvider === "google" && email !== "chris@ceogps.com" && email !== "chrisgr33ninc@gmail.com") {
+-      return resultPage(origin, "Not connected", "That Google account is not one of the board mailboxes. Nothing was saved.");
++      return back({ oauth_error: "That Google account is not one of the board mailboxes. Nothing was saved." });
+     }
+     const updateData = {
+       oauth_access_token: tokenResponse.access_token,
+@@ -423,11 +495,17 @@ router.get("/callback", async (request, env) => {
+         oauth_provider: actualProvider
+       })
+     });
+-    if (!saved.ok) return resultPage(origin, "Not connected", "The login finished, but the token was not stored. The card was not marked connected.");
+-    return resultPage(origin, "Connected", email ? `Connected as ${email}.` : `Connected ${actualProvider}.`);
++    if (!saved.ok) return back({ oauth_error: "The login finished, but the token was not stored. The card was not marked connected." });
++    if (pending.id) {
++      await fetch(`${supabaseUrl(env)}/rest/v1/integrations_credentials?user_id=eq.${encodeURIComponent(pending.user_id)}&oauth_provider=eq.${encodeURIComponent(actualProvider)}&email=eq.${encodeURIComponent(email)}&id=neq.${encodeURIComponent(pending.id)}`, {
++        method: "DELETE",
++        headers: serviceHeaders(env)
++      }).catch(() => void 0);
++    }
++    return back({ oauth_success: actualProvider });
+   } catch (e) {
+     console.error("[oauth/callback] error:", e instanceof Error ? e.message : "OAuth failed");
+-    return Response.redirect(`${origin}/panel/integrations?oauth_error=${encodeURIComponent(e instanceof Error ? e.message : "OAuth failed")}`, 302);
++    return back({ oauth_error: e instanceof Error ? e.message : "OAuth failed" });
+   }
+ });
+ router.post("/disconnect", async (request, env) => {
+@@ -435,8 +513,8 @@ router.post("/disconnect", async (request, env) => {
+   const { provider, account_email } = body;
+   const userId = await sessionUserId(request, env);
+   if (!userId) return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders() });
+-  if (!provider || !account_email) {
+-    return Response.json({ error: "Missing provider or account_email" }, {
++  if (!provider) {
++    return Response.json({ error: "Missing provider" }, {
+       status: 400,
+       headers: corsHeaders()
+     });
+@@ -447,7 +525,8 @@ router.post("/disconnect", async (request, env) => {
+     if (!dbUrl || !dbKey) {
+       throw new Error("Supabase not configured");
+     }
+-    const deleteUrl = `${dbUrl}/rest/v1/integrations_credentials?user_id=eq.${encodeURIComponent(userId)}&oauth_provider=eq.${encodeURIComponent(provider)}&email=eq.${encodeURIComponent(account_email)}`;
++    let deleteUrl = `${dbUrl}/rest/v1/integrations_credentials?user_id=eq.${encodeURIComponent(userId)}&oauth_provider=eq.${encodeURIComponent(provider)}`;
++    if (account_email) deleteUrl += `&email=eq.${encodeURIComponent(String(account_email).trim().toLowerCase())}`;
+     await fetch(deleteUrl, {
+       method: "DELETE",
+       headers: {
+@@ -497,86 +576,110 @@ router.post("/token", async (request, env) => {
+     return Response.json({ error: "Token exchange failed" }, { status: 500, headers: corsHeaders() });
+   }
+ });
++router.post("/token/fresh", async (request, env) => {
++  const userId = await sessionUserId(request, env);
++  if (!userId) return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders() });
++  const body = await request.json().catch(() => ({}));
++  const provider = String(body.provider || "google");
++  const email = String(body.email || "").trim().toLowerCase();
++  let query = `${supabaseUrl(env)}/rest/v1/integrations_credentials?user_id=eq.${encodeURIComponent(userId)}&oauth_provider=eq.${encodeURIComponent(provider)}&status=eq.on&select=id,email,oauth_access_token,oauth_refresh_token,oauth_expires_at&order=updated_at.desc&limit=1`;
++  if (email) query += `&email=eq.${encodeURIComponent(email)}`;
++  const listed = await fetch(query, { headers: serviceHeaders(env) });
++  const rows = listed.ok ? await listed.json() : [];
++  const row = Array.isArray(rows) ? rows[0] : null;
++  if (!row?.oauth_access_token) return Response.json({ error: "Not connected" }, { status: 404, headers: corsHeaders() });
++  const expires = row.oauth_expires_at ? Date.parse(row.oauth_expires_at) : 0;
++  if (!expires || expires - Date.now() > 6e4) {
++    return Response.json({ access_token: row.oauth_access_token, email: row.email || "", expires_at: row.oauth_expires_at || null }, { headers: corsHeaders() });
++  }
++  if (!row.oauth_refresh_token) return Response.json({ error: "Token expired. Reconnect this account." }, { status: 401, headers: corsHeaders() });
++  try {
++    const next = await refreshAccessToken(provider, row.oauth_refresh_token, env);
++    const expiresAt = next.expires_in ? new Date(Date.now() + next.expires_in * 1e3).toISOString() : null;
++    await fetch(`${supabaseUrl(env)}/rest/v1/integrations_credentials?id=eq.${encodeURIComponent(row.id)}`, {
++      method: "PATCH",
++      headers: serviceHeaders(env, { "Content-Type": "application/json", Prefer: "return=minimal" }),
++      body: JSON.stringify({
++        oauth_access_token: next.access_token,
++        oauth_refresh_token: next.refresh_token,
++        oauth_expires_at: expiresAt,
++        updated_at: (/* @__PURE__ */ new Date()).toISOString()
++      })
++    });
++    return Response.json({ access_token: next.access_token, email: row.email || "", expires_at: expiresAt }, { headers: corsHeaders() });
++  } catch (e) {
++    console.error("[oauth/token/fresh] error:", e instanceof Error ? e.message : "refresh failed");
++    return Response.json({ error: "Refresh failed. Reconnect this account." }, { status: 401, headers: corsHeaders() });
++  }
++});
+ router.post("/token/save", async (request, env) => {
+   const userId = await sessionUserId(request, env);
+   if (!userId) return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders() });
+   return Response.json({ error: "Tokens are saved by the callback" }, { status: 405, headers: corsHeaders() });
+ });
+-async function exchangeCodeForToken(provider, code, redirectUri, env) {
+-  const tokenUrls = {
+-    google: "https://oauth2.googleapis.com/token",
+-    microsoft: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+-    github: "https://github.com/login/oauth/access_token",
+-    slack: "https://slack.com/api/oauth.v2.access",
+-    facebook: "https://graph.facebook.com/v18.0/oauth/access_token",
+-    instagram: "https://api.instagram.com/oauth/access_token",
+-    twitter: "https://api.twitter.com/2/oauth2/token",
+-    linkedin: "https://www.linkedin.com/oauth/v2/accessToken",
+-    spotify: "https://accounts.spotify.com/api/token",
+-    discord: "https://discord.com/api/oauth2/token",
+-    notion: "https://api.notion.com/v1/oauth/token"
+-  };
+-  const tokenUrl = tokenUrls[provider];
++async function exchangeCodeForToken(provider, code, redirectUri, env, verifier) {
++  const tokenUrl = TOKEN_URLS[provider];
+   if (!tokenUrl) {
+     throw new Error(`Unsupported provider: ${provider}`);
+   }
+-  const clientId = provider === "google" ? env.GOOGLE_CLIENT_ID || "" : env[`${provider.toUpperCase()}_CLIENT_ID`] || "";
+-  const clientSecret = provider === "google" ? env.GOOGLE_CLIENT_SECRET || "" : env[`${provider.toUpperCase()}_CLIENT_SECRET`] || "";
++  const { clientId, clientSecret } = clientCreds(provider, env);
+   if (!clientId || !clientSecret) {
+     throw new Error(`Missing ${provider} client credentials`);
+   }
+-  const params = new URLSearchParams();
+-  params.set("client_id", clientId);
+-  params.set("client_secret", clientSecret);
+-  params.set("code", code);
+-  params.set("redirect_uri", redirectUri);
+-  params.set("grant_type", "authorization_code");
+-  const response = await fetch(tokenUrl, {
+-    method: "POST",
+-    headers: {
+-      "Content-Type": "application/x-www-form-urlencoded",
+-      "Accept": "application/json"
+-    },
+-    body: params.toString()
+-  });
++  const headers = { Accept: "application/json" };
++  let body;
++  if (provider === "notion") {
++    headers["Content-Type"] = "application/json";
++    headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
++    body = JSON.stringify({ grant_type: "authorization_code", code, redirect_uri: redirectUri });
++  } else {
++    headers["Content-Type"] = "application/x-www-form-urlencoded";
++    const params = new URLSearchParams();
++    params.set("code", code);
++    params.set("redirect_uri", redirectUri);
++    params.set("grant_type", "authorization_code");
++    if (verifier) params.set("code_verifier", verifier);
++    if (provider === "twitter") {
++      headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
++      params.set("client_id", clientId);
++    } else {
++      params.set("client_id", clientId);
++      params.set("client_secret", clientSecret);
++    }
++    body = params.toString();
++  }
++  const response = await fetch(tokenUrl, { method: "POST", headers, body });
++  const data = await response.json().catch(() => ({}));
+   if (!response.ok) {
+-    const errorText = await response.text();
+-    throw new Error(`Token exchange failed: ${response.status} - ${errorText}`);
++    throw new Error(`Token exchange failed: ${response.status} - ${data.error_description || data.error || "provider refused the code"}`);
++  }
++  if (provider === "slack" && data.ok === false) {
++    throw new Error(`Slack refused the login: ${data.error || "unknown error"}`);
+   }
+-  const data = await response.json();
+   if (data.access_token) {
+     return {
+       access_token: data.access_token,
+       refresh_token: data.refresh_token || null,
+-      expires_in: data.expires_in || 3600,
++      expires_in: data.expires_in ?? null,
+       token_type: data.token_type || "Bearer",
+       scope: data.scope || getScopes(provider),
+       id_token: data.id_token || null
+     };
+   }
+-  if (provider === "slack" && data.access_token) {
+-    return {
+-      access_token: data.access_token,
+-      refresh_token: null,
+-      expires_in: 3600,
+-      token_type: "Bearer",
+-      scope: data.scope || getScopes(provider)
+-    };
+-  }
+-  throw new Error("Invalid token response from provider");
++  throw new Error(data.error_description || data.error || "Invalid token response from provider");
+ }
+ __name(exchangeCodeForToken, "exchangeCodeForToken");
+ __name2(exchangeCodeForToken, "exchangeCodeForToken");
+ function getScopes(provider) {
+   const scopes = {
+     google: "openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly",
+-    microsoft: "User.Read Mail.ReadWrite Calendars.Read",
++    microsoft: "openid email profile offline_access User.Read Mail.ReadWrite Calendars.Read",
+     github: "repo user:email",
+     slack: "chat:write channels:read",
+     facebook: "email public_profile pages_manage_posts",
+     instagram: "instagram_content_publish",
+-    twitter: "tweet.read tweet.write users.read",
+-    linkedin: "r_liteprofile w_member_social",
++    twitter: "tweet.read tweet.write users.read offline.access",
++    linkedin: "openid profile email w_member_social",
+     spotify: "user-read-private user-read-email playlist-read-private",
+     discord: DISCORD_SCOPES,
+     notion: "read"
+@@ -1627,7 +1730,7 @@ var index_default = {
+       } catch {
+         return response;
+       }
+-      const provider = next.searchParams.get("oauth_success") || "";
++      const provider = next.searchParams.get("oauth_success") || next.searchParams.get("connected") || "";
+       const error = next.searchParams.get("oauth_error") || "";
+       const dest = new URL("/panel/integrations", returnOrigin(url.searchParams.get("state") || next.searchParams.get("state") || "", allowed));
+       if (error) dest.searchParams.set("oauth_error", error);

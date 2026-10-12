@@ -1,7 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
-import { callTool } from "@/lib/app-data/client.server";
-import { ConnectorType, GoogleCalendarTools } from "@/lib/app-data/types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -48,7 +46,8 @@ export const askNyx = createServerFn({ method: "POST" })
     const question = String(input?.question || "").trim().slice(0, 4000);
     const facts = String(input?.facts || "").slice(0, 96_000);
     if (!question) throw new Error("question required");
-    const mind = input?.mind === "nvidia" || input?.mind === "openai" ? input.mind : "grok";
+    const allowed = ["ollama", "nvidia", "huggingface", "grok"];
+    const mind = allowed.includes(String(input?.mind || "")) ? String(input.mind) : "ollama";
     return {
       question,
       facts,
@@ -69,7 +68,7 @@ export const askNyx = createServerFn({ method: "POST" })
       const keyed = await askKeyed(data.model, data.key, messages);
       if (keyed) return { ok: true as const, text: keyed.slice(0, 6000), mind: data.model };
     }
-    const order = [data.mind, "grok", "nvidia", "openai"].filter((mind, index, list) => list.indexOf(mind) === index);
+    const order = [data.mind, "ollama", "nvidia", "huggingface", "grok"].filter((mind, index, list) => list.indexOf(mind) === index);
     for (const mind of order) {
       const text = await askMind(mind, messages);
       if (text) return { ok: true as const, text: text.slice(0, 6000), mind };
@@ -116,8 +115,45 @@ async function askKeyed(model: string, key: string, messages: { role: string; co
   }
 }
 
+async function askGrok2Api(messages: { role: string; content: string }[]) {
+  try {
+    let base = (process.env.GROK2API_BASE_URL || "https://lifeos.ceogps.com").trim().replace(/\/$/, "");
+    let key = (process.env.GROK2API_KEY || "").trim();
+    if (!base || !key) {
+      const { pullKeys } = await import("@/lib/lifeos/board-store");
+      const saved = await pullKeys().catch(() => []);
+      base = base || (saved.find((row) => row.name === "grok2api URL")?.value || "").trim().replace(/\/$/, "");
+      key = key || (saved.find((row) => row.name === "grok2api")?.value || "").trim();
+    }
+    if (!base.startsWith("https://") || !key) return "";
+    const res = await fetch(`${base}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ model: process.env.GROK2API_MODEL || "grok-4.5", max_tokens: 400, temperature: 0.3, messages }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return "";
+    const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    return body.choices?.[0]?.message?.content || "";
+  } catch {
+    return "";
+  }
+}
+
 async function askMind(mind: string, messages: { role: string; content: string }[]) {
   try {
+    if (mind === "ollama") {
+      const host = (process.env.OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
+      const res = await fetch(`${host}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: process.env.OLLAMA_MODEL || "llama3.2", stream: false, messages }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return "";
+      const body = (await res.json()) as { message?: { content?: string } };
+      return body.message?.content || "";
+    }
     if (mind === "nvidia") {
       const key = process.env.NVIDIA_API_KEY || process.env.NVAPI_KEY || "";
       if (!key) return "";
@@ -130,18 +166,22 @@ async function askMind(mind: string, messages: { role: string; content: string }
       const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
       return body.choices?.[0]?.message?.content || "";
     }
-    if (mind === "openai") {
-      const key = process.env.OPENAI_API_KEY || "";
+    if (mind === "huggingface") {
+      const key = process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN || "";
       if (!key) return "";
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await fetch("https://router.huggingface.co/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model: "gpt-4o-mini", max_tokens: 400, temperature: 0.3, messages }),
+        body: JSON.stringify({ model: process.env.HF_MODEL || "meta-llama/Llama-3.1-8B-Instruct", max_tokens: 400, temperature: 0.3, messages }),
+        signal: AbortSignal.timeout(12000),
       });
       if (!res.ok) return "";
       const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
       return body.choices?.[0]?.message?.content || "";
     }
+    if (mind !== "grok") return "";
+    const viaGateway = await askGrok2Api(messages);
+    if (viaGateway) return viaGateway;
     const key = process.env.XAI_API_KEY || process.env.GROK_API_KEY || "";
     if (!key) return "";
     const res = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -340,24 +380,7 @@ async function elevenSong(data: { title: string; style: string; lyrics: string; 
 export type DayEvent = { title: string; when: string };
 
 export const pullCalendar = createServerFn({ method: "GET" }).handler(async () => {
-  const start = new Date();
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  try {
-    const result = await callTool(
-      GoogleCalendarTools.search,
-      { time_min: start.toISOString(), time_max: end.toISOString(), max_results: 8 },
-      { connectorType: ConnectorType.GoogleCalendar },
-    );
-    const items = Array.isArray(result.data) ? result.data : [];
-    const events = items.slice(0, 8).map((row) => {
-      const item = row as { summary?: string; start?: { dateTime?: string; date?: string } };
-      return { title: item.summary || "Event", when: item.start?.dateTime || item.start?.date || start.toISOString() };
-    });
-    if (!result.ok) return { events: [] as DayEvent[], note: result.errorMessage || "Calendar is not connected." };
-    return { events, note: events.length ? "Today's calendar" : "No events today." };
-  } catch {
-    return { events: [] as DayEvent[], note: "Calendar is not connected." };
-  }
+  return { events: [] as DayEvent[], note: "Calendar is not connected." };
 });
 
 export const googleCalendar = createServerFn({ method: "POST" })
@@ -1764,11 +1787,15 @@ export const pullAnalytics = createServerFn({ method: "POST" })
     }
     if (data.godaddy) {
       try {
-        const auth = data.godaddySecret ? `sso-key ${data.godaddy}:${data.godaddySecret}` : `Bearer ${data.godaddy}`;
+        const auth = data.godaddySecret ? `sso-key ${data.godaddy}:${data.godaddySecret}` : data.godaddy.includes(":") ? `sso-key ${data.godaddy}` : "";
+        if (!auth) { notes.push("GoDaddy needs the key and the secret."); } else {
         const response = await fetch("https://api.godaddy.com/v1/domains?statuses=ACTIVE&limit=100", { headers: { Authorization: auth, Accept: "application/json" }, signal: AbortSignal.timeout(10000) });
-        const body = await response.json() as { domain?: string; expires?: string }[] | { message?: string };
+        const raw = await response.text();
+        let body: { domain?: string; expires?: string }[] | { message?: string } = [];
+        try { body = raw ? JSON.parse(raw) as typeof body : []; } catch { body = { message: raw.slice(0, 180) }; }
         if (!response.ok || !Array.isArray(body)) notes.push((body as { message?: string }).message || "GoDaddy has no website analytics API. Domain list was refused.");
         else rows.push({ id: "gd-domains", label: "GoDaddy domains", value: body.length, points: [] });
+        }
       } catch {
         notes.push("GoDaddy did not answer.");
       }

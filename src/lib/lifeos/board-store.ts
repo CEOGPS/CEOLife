@@ -7,7 +7,7 @@ export async function pullCloud(device: string): Promise<{ doc: unknown; at: num
   if (!response.ok) return null;
   const rows = await response.json() as { doc?: unknown; updated_at?: string }[];
   const row = rows?.[0];
-  if (!row?.doc) return null;
+  if (!row?.doc) return { doc: null, at: 0 };
   return { doc: row.doc, at: row.updated_at ? new Date(row.updated_at).getTime() : 0 };
 }
 
@@ -44,6 +44,26 @@ export async function pushBrand(banner: string, logo: string) {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
     body: JSON.stringify({ device: BRAND, doc: { banner, logo }, updated_at: new Date().toISOString() }),
+  });
+  return response.ok;
+}
+
+const MARKS = "lifeos-marks";
+
+export async function pullMarks(): Promise<Record<string, { state: "connected" | "error" | "saved"; text: string }>> {
+  const row = await pullCloud(MARKS);
+  const doc = row?.doc;
+  if (!doc || typeof doc !== "object") return {};
+  const marks = (doc as { marks?: unknown }).marks;
+  if (!marks || typeof marks !== "object") return {};
+  return marks as Record<string, { state: "connected" | "error" | "saved"; text: string }>;
+}
+
+export async function pushMarks(marks: Record<string, { state: string; text: string }>) {
+  const response = await fetch(`${SUPABASE}/rest/v1/lifeos_board?on_conflict=device`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ device: MARKS, doc: { marks }, updated_at: new Date().toISOString() }),
   });
   return response.ok;
 }

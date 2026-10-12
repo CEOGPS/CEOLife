@@ -33,13 +33,13 @@ export function AnalyticsDesk({ data, update }: { data: Memory; update: Update }
     saveKey(update, "Google Analytics", property.trim());
     saveKey(update, "Search Console", site.trim());
     saveKey(update, "Brilliant Site", bdSite.trim());
-    const { readOauth, freshGoogleToken } = await import("@/lib/lifeos/oauth");
+    const { readOauth, freshGoogleToken, freshToken } = await import("@/lib/lifeos/oauth");
     const { pullAnalytics } = await import("@/lib/lifeos/sync");
     const result = await pullAnalytics({ data: {
       google: await freshGoogleToken() || readOauth().find((row) => row.provider === "google")?.token || "",
       property,
       site,
-      facebook: readOauth().find((row) => row.provider === "facebook")?.token || "",
+      facebook: readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "",
       x: keyOf(data, "X"),
       linkedin: keyOf(data, "LinkedIn"),
       tiktok: keyOf(data, "TikTok"),
