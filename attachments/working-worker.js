@@ -108,7 +108,7 @@ var TOKEN_URLS = {
   microsoft: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
   github: "https://github.com/login/oauth/access_token",
   slack: "https://slack.com/api/oauth.v2.access",
-  facebook: "https://graph.facebook.com/oauth/access_token",
+  facebook: "https://graph.facebook.com/v26.0/oauth/access_token",
   instagram: "https://api.instagram.com/oauth/access_token",
   twitter: "https://api.twitter.com/2/oauth2/token",
   linkedin: "https://www.linkedin.com/oauth/v2/accessToken",
@@ -433,7 +433,7 @@ async function providerEmail(provider, accessToken) {
     google: "https://www.googleapis.com/oauth2/v3/userinfo",
     discord: "https://discord.com/api/users/@me",
     spotify: "https://api.spotify.com/v1/me",
-    facebook: "https://graph.facebook.com/me?fields=email",
+    facebook: "https://graph.facebook.com/v26.0/me?fields=email",
     microsoft: "https://graph.microsoft.com/v1.0/me",
     linkedin: "https://api.linkedin.com/v2/userinfo"
   };
@@ -508,6 +508,12 @@ router.get("/callback", async (request, env) => {
     return back({ oauth_error: e instanceof Error ? e.message : "OAuth failed" });
   }
 });
+router.get("/disconnect", async (request, env) => {
+  const userId = await sessionUserId(request, env);
+  if (!userId) return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders() });
+  return Response.json({ error: "Use POST" }, { status: 405, headers: corsHeaders() });
+});
+
 router.post("/disconnect", async (request, env) => {
   const body = await request.json().catch(() => ({}));
   const { provider, account_email } = body;
@@ -576,6 +582,12 @@ router.post("/token", async (request, env) => {
     return Response.json({ error: "Token exchange failed" }, { status: 500, headers: corsHeaders() });
   }
 });
+router.get("/token/fresh", async (request, env) => {
+  const userId = await sessionUserId(request, env);
+  if (!userId) return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders() });
+  return Response.json({ error: "Use POST" }, { status: 405, headers: corsHeaders() });
+});
+
 router.post("/token/fresh", async (request, env) => {
   const userId = await sessionUserId(request, env);
   if (!userId) return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders() });
