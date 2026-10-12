@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { sessionMiddleware } from "./session-middleware";
 import { ENGINES } from "./engine-list";
 import { envValue } from "./env-keys";
 
@@ -14,6 +15,7 @@ async function hit(url: string, init?: RequestInit) {
 }
 
 export const checkEngines = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { panel?: string }) => ({ panel: String(input?.panel || "").slice(0, 40) }))
   .handler(async ({ data }) => {
     const rows = ENGINES.filter((row) => row.panels.includes(data.panel));
@@ -36,6 +38,7 @@ export const checkEngines = createServerFn({ method: "POST" })
   });
 
 export const runEngine = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { id?: string; query?: string }) => ({
     id: String(input?.id || "").slice(0, 40),
     query: String(input?.query || "").trim().slice(0, 500),

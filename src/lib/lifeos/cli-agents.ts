@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServerFn } from "@tanstack/react-start";
+import { sessionMiddleware } from "./session-middleware";
 
 function run(command: string, args: string[]) {
   return new Promise<{ ok: boolean; text: string; url: string }>((resolve) => {
@@ -33,6 +34,7 @@ function run(command: string, args: string[]) {
 }
 
 export const runCliAgent = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { who?: string; prompt?: string; check?: boolean }) => ({
     who: input?.who === "qwen" ? "qwen" as const : "hermes" as const,
     prompt: String(input?.prompt || "").slice(0, 4000),

@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { sessionMiddleware } from "./session-middleware";
 import { SERVICE_ENV } from "./sheet-keys";
 
 export { sheetKeys } from "./sheet-keys";
@@ -15,7 +16,8 @@ export async function envValue(name: string) {
   return (process.env[name] || "").trim();
 }
 
-export const loadEnvKeys = createServerFn({ method: "GET" }).handler(async () => {
+export const loadEnvKeys = createServerFn({ method: "GET" })
+  .middleware([sessionMiddleware]).handler(async () => {
   const bag = await envBag();
   const rows: { name: string; value: string }[] = [];
   for (const [name, aliases] of Object.entries(SERVICE_ENV)) {
@@ -26,6 +28,7 @@ export const loadEnvKeys = createServerFn({ method: "GET" }).handler(async () =>
 });
 
 export const pullWithKey = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { name: string; key: string }) => ({
     name: String(input?.name || "").slice(0, 40),
     key: String(input?.key || "").trim().slice(0, 400),
@@ -83,6 +86,7 @@ function asTrack(row: { id?: string; name?: string; preview_url?: string; extern
 }
 
 export const spotifyHub = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { token?: string; action?: string; query?: string }) => ({
     token: String(input?.token || "").trim().slice(0, 4000),
     action: input?.action === "search" ? "search" : "home",
@@ -154,6 +158,7 @@ export const spotifyHub = createServerFn({ method: "POST" })
   });
 
 export const pullProvider = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { provider: string; token: string }) => ({
     provider: String(input?.provider || "").slice(0, 20),
     token: String(input?.token || "").trim().slice(0, 4000),
@@ -283,6 +288,7 @@ export async function runAccount(data: { service: string; token: string; key: st
 }
 
 export const connectAccount = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { service?: string; token?: string; key?: string; secret?: string; site?: string }) => ({
     service: String(input?.service || "").slice(0, 40),
     token: String(input?.token || "").slice(0, 4000),
@@ -460,6 +466,7 @@ export async function runProbe(data: { name: string; key: string; email: string 
 }
 
 export const probeKey = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { name?: string; key?: string; email?: string }) => ({
     name: String(input?.name || "").slice(0, 80),
     key: String(input?.key || "").trim().slice(0, 2000),
@@ -500,6 +507,7 @@ function gmailFolder(labels: string[]): { folder: InboxRow["folder"]; starred: b
 }
 
 export const pullInbox = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { nylasKey?: string; googleToken?: string; googleTokens?: string[] }) => ({
     nylasKey: String(input?.nylasKey || "").trim().slice(0, 400),
     googleToken: String(input?.googleToken || "").trim().slice(0, 4000),

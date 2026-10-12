@@ -1,10 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
+import { sessionMiddleware } from "./session-middleware";
 import { getSql } from "@/lib/db";
-import { authMiddleware } from "@/lib/auth/middleware";
 import { emptyBoard, sanitizeBoard, type Board } from "./board";
 
 export const loadBoard = createServerFn({ method: "GET" })
-  .middleware([authMiddleware])
+  .middleware([sessionMiddleware])
   .handler(async ({ context }): Promise<Board> => {
     const sql = await getSql();
     const rows = await sql<{ payload: string }>`
@@ -19,7 +19,7 @@ export const loadBoard = createServerFn({ method: "GET" })
   });
 
 export const saveBoard = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([sessionMiddleware])
   .validator((input: Board) => {
     const board = sanitizeBoard(input);
     const payload = JSON.stringify(board);
@@ -41,7 +41,7 @@ export type WebHit = { title: string; url: string };
 export type VideoHit = { id: string; title: string; author: string };
 
 export const searchWeb = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([sessionMiddleware])
   .validator((query: string) => query.trim().slice(0, 120))
   .handler(async ({ data: query }): Promise<WebHit[]> => {
     if (!query) return [];
@@ -84,7 +84,7 @@ export const searchWeb = createServerFn({ method: "POST" })
   });
 
 export const searchVideos = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([sessionMiddleware])
   .validator((query: string) => query.trim().slice(0, 120))
   .handler(async ({ data: query }): Promise<VideoHit[]> => {
     if (!query) return [];

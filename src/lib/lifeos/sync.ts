@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { sessionMiddleware } from "./session-middleware";
 import { getSql } from "@/lib/db";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -10,17 +11,19 @@ function device(value: string) {
 }
 
 export const pullBoard = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((id: string) => device(id))
-  .handler(async ({ data }) => {
+  .handler(async ({ context }) => {
     const sql = await getSql();
     const rows = await sql<{ payload: string; updated_at: string }>`
-      select payload, updated_at from life_board where user_id = ${data}
+      select payload, updated_at from life_board where user_id = ${context.userId}
     `;
     if (!rows[0]) return null;
     return { payload: rows[0].payload, at: new Date(rows[0].updated_at).getTime() };
   });
 
 export const pushBoard = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { device: string; payload: string }) => {
     const id = device(input?.device);
     const payload = String(input?.payload || "");
@@ -30,11 +33,11 @@ export const pushBoard = createServerFn({ method: "POST" })
     delete parsed.vault;
     return { id, payload: JSON.stringify(parsed) };
   })
-  .handler(async ({ data }) => {
+  .handler(async ({ context, data }) => {
     const sql = await getSql();
     await sql`
       insert into life_board (user_id, payload, updated_at)
-      values (${data.id}, ${data.payload}, now())
+      values (${context.userId}, ${data.payload}, now())
       on conflict (user_id) do update
       set payload = excluded.payload, updated_at = now()
     `;
@@ -42,6 +45,7 @@ export const pushBoard = createServerFn({ method: "POST" })
   });
 
 export const askNyx = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { question: string; facts: string; mind?: string; name?: string; prompt?: string; key?: string; model?: string }) => {
     const question = String(input?.question || "").trim().slice(0, 4000);
     const facts = String(input?.facts || "").slice(0, 96_000);
@@ -198,6 +202,7 @@ async function askMind(mind: string, messages: { role: string; content: string }
 }
 
 export const speakVoice = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { text?: string; key?: string; voice?: string }) => ({
     text: String(input?.text || "").trim().slice(0, 500),
     key: String(input?.key || "").trim().slice(0, 400),
@@ -223,6 +228,7 @@ export const speakVoice = createServerFn({ method: "POST" })
   });
 
 export const cloneVoice = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { name?: string; audio?: string; type?: string; key?: string }) => ({
     name: String(input?.name || "").trim().slice(0, 40),
     audio: String(input?.audio || "").slice(0, 8_000_000),
@@ -263,6 +269,7 @@ function songSections(lyrics: string, style: string) {
 }
 
 export const composeSong = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { title?: string; style?: string; lyrics?: string; instrumental?: boolean; key?: string; engine?: string; replicate?: string; job?: string }) => ({
     title: String(input?.title || "").trim().slice(0, 80),
     style: String(input?.style || "").trim().slice(0, 240),
@@ -379,11 +386,13 @@ async function elevenSong(data: { title: string; style: string; lyrics: string; 
 
 export type DayEvent = { title: string; when: string };
 
-export const pullCalendar = createServerFn({ method: "GET" }).handler(async () => {
+export const pullCalendar = createServerFn({ method: "GET" })
+  .middleware([sessionMiddleware]).handler(async () => {
   return { events: [] as DayEvent[], note: "Calendar is not connected." };
 });
 
 export const googleCalendar = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { token?: string; action?: string; id?: string; title?: string; date?: string; start?: string; end?: string; where?: string; who?: string; remind?: boolean }) => ({
     token: String(input?.token || "").trim().slice(0, 4000),
     action: input?.action === "create" || input?.action === "update" || input?.action === "delete" ? input.action : "list",
@@ -452,6 +461,7 @@ export const googleCalendar = createServerFn({ method: "POST" })
   });
 
 export const makePicture = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { prompt: string; key?: string }) => ({
     prompt: String(input?.prompt || "").trim().slice(0, 500),
     key: String(input?.key || "").trim().slice(0, 400),
@@ -471,6 +481,7 @@ export const makePicture = createServerFn({ method: "POST" })
   });
 
 export const editPicture = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { prompt?: string; image?: string; key?: string; id?: string }) => ({
     prompt: String(input?.prompt || "").trim().slice(0, 800),
     image: String(input?.image || "").trim().slice(0, 2000),
@@ -506,6 +517,7 @@ export const editPicture = createServerFn({ method: "POST" })
   });
 
 export const freeImage = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { prompt?: string; account?: string; token?: string }) => ({
     prompt: String(input?.prompt || "").trim().slice(0, 500),
     account: String(input?.account || "").trim().slice(0, 40),
@@ -528,6 +540,7 @@ export const freeImage = createServerFn({ method: "POST" })
   });
 
 export const wanClip = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { prompt?: string; image?: string; key?: string; id?: string; aspect?: string }) => ({
     prompt: String(input?.prompt || "").trim().slice(0, 500),
     image: String(input?.image || "").trim().slice(0, 2000),
@@ -570,6 +583,7 @@ async function lumaFetch(key: string, path: string, init?: RequestInit) {
 }
 
 export const makeClip = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { prompt: string; key?: string; id?: string; image?: string; aspect?: string; model?: string; duration?: string }) => ({
     prompt: String(input?.prompt || "").trim().slice(0, 800),
     key: String(input?.key || "").trim().slice(0, 400),
@@ -772,6 +786,7 @@ async function searxHits(query: string, categories: string, base: string): Promi
 }
 
 export const lookup = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: string | { query?: string; kind?: string; key?: string; brave?: string; base?: string }) => {
     const raw = typeof input === "string" ? { query: input, kind: "web", key: "", brave: "", base: "" } : input;
     const kind = raw?.kind === "phone" || raw?.kind === "email" || raw?.kind === "image" ? raw.kind : "web";
@@ -857,6 +872,7 @@ export const lookup = createServerFn({ method: "POST" })
   });
 
 export const inspectSite = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((url: string) => {
     const value = String(url || "").trim();
     if (!/^https?:\/\//i.test(value)) throw new Error("Use a full http URL");
@@ -878,6 +894,7 @@ function effortOf(title: string) {
 }
 
 export const findPictures = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { query?: string; kind?: string }) => ({
     query: String(input?.query || "").trim().slice(0, 80),
     kind: input?.kind === "gif" ? "gif" : "photo",
@@ -931,6 +948,7 @@ async function visualMatches(pageUrl: string, source: string, original: string) 
 }
 
 export const reverseImage = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { url?: string; dataUrl?: string }) => ({
     url: /^https?:\/\//i.test(String(input?.url || "")) ? String(input?.url).trim().slice(0, 500) : "",
     dataUrl: String(input?.dataUrl || "").startsWith("data:image/") ? String(input?.dataUrl).slice(0, 900_000) : "",
@@ -988,7 +1006,8 @@ export const reverseImage = createServerFn({ method: "POST" })
     return { hits, images, note: images.length ? "" : data.url ? "No matching pictures were returned. The Lens, Bing, Yandex, and TinEye links still open that image." : "No match on the upload. Paste a public image URL to also search Bing and Yandex." };
   });
 
-export const findIdeas = createServerFn({ method: "GET" }).handler(async () => {
+export const findIdeas = createServerFn({ method: "GET" })
+  .middleware([sessionMiddleware]).handler(async () => {
   const ideas: { title: string; url: string; source: string; effort: "low" | "medium" }[] = [];
   const seen = new Set<string>();
   const add = (title: string, url: string, source: string) => {
@@ -1021,7 +1040,8 @@ export const findIdeas = createServerFn({ method: "GET" }).handler(async () => {
   return { ideas: ideas.slice(0, 24) };
 });
 
-export const marketQuotes = createServerFn({ method: "GET" }).handler(async () => {
+export const marketQuotes = createServerFn({ method: "GET" })
+  .middleware([sessionMiddleware]).handler(async () => {
   const crypto: { symbol: string; price: number; change: number }[] = [];
   const stocks: { symbol: string; price: number; change: number }[] = [];
   const names: Record<string, string> = { bitcoin: "BTC", ethereum: "ETH", solana: "SOL", ripple: "XRP", dogecoin: "DOGE" };
@@ -1048,6 +1068,7 @@ export const marketQuotes = createServerFn({ method: "GET" }).handler(async () =
 const COIN_IDS: Record<string, string> = { BTC: "bitcoin", ETH: "ethereum", SOL: "solana", XRP: "ripple", DOGE: "dogecoin", ADA: "cardano", AVAX: "avalanche-2", LINK: "chainlink", DOT: "polkadot", LTC: "litecoin" };
 
 export const watchQuote = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { symbol?: string; kind?: string }) => ({
     symbol: String(input?.symbol || "").trim().toUpperCase().replace(/[^A-Z0-9.-]/g, "").slice(0, 12),
     kind: input?.kind === "crypto" ? "crypto" as const : "stock" as const,
@@ -1076,6 +1097,7 @@ export const watchQuote = createServerFn({ method: "POST" })
   });
 
 export const locateArea = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { kind?: string; zip?: string; county?: string; state?: string; miles?: string; center?: string; place?: string }) => ({
     kind: input?.kind === "county" || input?.kind === "radius" || input?.kind === "place" ? input.kind : "zip",
     zip: String(input?.zip || "").trim().slice(0, 12),
@@ -1120,6 +1142,7 @@ export const locateArea = createServerFn({ method: "POST" })
   });
 
 export const telegramBot = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { token?: string; chat?: string; text?: string }) => ({
     token: String(input?.token || "").trim().slice(0, 120),
     chat: String(input?.chat || "").trim().slice(0, 40),
@@ -1147,6 +1170,7 @@ export const telegramBot = createServerFn({ method: "POST" })
 type LiveChat = { id: string; who: string; text: string; mine: boolean; platform: string };
 
 export const pullChats = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { telegram?: string; facebook?: string }) => ({
     telegram: String(input?.telegram || "").trim().slice(0, 200),
     facebook: String(input?.facebook || "").trim().slice(0, 4000),
@@ -1258,6 +1282,7 @@ export const pullChats = createServerFn({ method: "POST" })
   });
 
 export const sendChat = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { platform?: string; route?: string; text?: string; telegram?: string; facebook?: string }) => ({
     platform: String(input?.platform || "").slice(0, 20),
     route: String(input?.route || "").trim().slice(0, 400),
@@ -1366,6 +1391,7 @@ function youtubeHits(node: unknown, out: { id: string; title: string; author: st
 }
 
 export const youtubeSearch = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { query?: string; key?: string }) => ({
     query: String(input?.query || "").trim().slice(0, 120),
     key: String(input?.key || "").trim().slice(0, 200),
@@ -1403,6 +1429,7 @@ export const youtubeSearch = createServerFn({ method: "POST" })
   });
 
 export const pullSocial = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { facebook?: string; youtube?: string; youtubeHandle?: string; reddit?: string; x?: string; linkedin?: string; tiktok?: string }) => ({
     facebook: String(input?.facebook || "").slice(0, 4000),
     youtube: String(input?.youtube || "").slice(0, 200),
@@ -1493,6 +1520,7 @@ export const pullSocial = createServerFn({ method: "POST" })
   });
 
 export const publishSocial = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { text?: string; platforms?: string[]; facebook?: string; image?: string; x?: string; linkedin?: string; redditToken?: string; subreddit?: string; tiktok?: string }) => ({
     text: String(input?.text || "").trim().slice(0, 5000),
     platforms: (Array.isArray(input?.platforms) ? input.platforms : []).map((item) => String(item)).filter(Boolean).slice(0, 8),
@@ -1646,6 +1674,7 @@ function dayStamp(daysAgo: number) {
 }
 
 export const pullAnalytics = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { google?: string; property?: string; site?: string; facebook?: string; x?: string; linkedin?: string; tiktok?: string; bdKey?: string; bdSite?: string; godaddy?: string; godaddySecret?: string }) => ({
     google: String(input?.google || "").slice(0, 4000),
     property: String(input?.property || "").replace(/\D/g, "").slice(0, 20),
@@ -1811,6 +1840,7 @@ const COMMUNITY: { id: string; label: string; query: (service: string, city: str
 ];
 
 export const findCommunity = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
   .validator((input: { service?: string; city?: string; sources?: string[]; groups?: { label?: string; url?: string }[] }) => ({
     service: String(input?.service || "").trim().slice(0, 80),
     city: String(input?.city || "").trim().slice(0, 40),

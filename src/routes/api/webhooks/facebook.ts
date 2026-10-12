@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "@/lib/env.server";
 
+// Public on purpose. Meta calls this with no LifeOS session.
+// GET is the hub challenge. POST is accepted only when x-hub-signature-256 matches the app secret.
+
 function challenge(request: Request) {
   const url = new URL(request.url);
   const mode = url.searchParams.get("hub.mode");

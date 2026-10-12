@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { newId, type Memory } from "./memory";
-import { disconnectOauth, readOauth, BOARD_EMAILS, catchReturn, confirmSignIn, getSessionToken, pullWorkerLinks, requestSignIn, sessionToken, signOutSession, startNylas, startOAuth, type OauthProvider } from "@/lib/lifeos/oauth";
+import { disconnectOauth, readOauth, BOARD_EMAILS, catchReturn, confirmSignIn, getSessionToken, pullWorkerLinks, requestSignIn, sessionAuthHeaders, sessionToken, signOutSession, startNylas, startOAuth, type OauthProvider } from "@/lib/lifeos/oauth";
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
 
 const WORKER = (import.meta.env.VITE_WORKER_URL || "https://lifeos1-api.ceogps.workers.dev").replace(/\/$/, "");
@@ -335,7 +335,7 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
         const google = session.email ? await freshGoogleToken(session.email) : "";
         const response = await fetch("/api/keys/account", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: await sessionAuthHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             service,
             token: google,
@@ -396,7 +396,7 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
     try {
       const response = await fetch("/api/keys/check", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await sessionAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           name,
           key: value,
@@ -632,7 +632,7 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
                 {account ? statusLine(row.name, { state: "connected", text: account.email || account.name }) : statusLine(row.name, { state: "idle", text: "Pick one of the three emails." })}
                 {row.id === "google" ? <button type="button" className="quiet check-btn mt-3" onClick={() => {
                   setBusy((prev) => ({ ...prev, Google: true }));
-                  void import("@/lib/lifeos/oauth").then(async ({ freshGoogleToken }) => {
+                  void import("@/lib/lifeos/oauth").then(async ({ freshGoogleToken, sessionAuthHeaders }) => {
                     const token = await freshGoogleToken("chrisgr33ninc@gmail.com");
                     if (!token) {
                       stamp("Google", "error", "Connect chrisgr33ninc@gmail.com.");
@@ -641,7 +641,7 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
                     }
                     const response = await fetch("/api/keys/account", {
                       method: "POST",
-                      headers: { "Content-Type": "application/json" },
+                      headers: await sessionAuthHeaders({ "Content-Type": "application/json" }),
                       body: JSON.stringify({ service: "search-console", token, key: "", secret: "", site: "" }),
                     });
                     const checked = await response.json().catch(() => ({ ok: false, text: "Google did not answer." })) as { ok?: boolean; text?: string };

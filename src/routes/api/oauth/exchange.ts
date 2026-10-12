@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { envBag } from "@/lib/lifeos/env-bag.server";
+import { requireSession } from "@/lib/lifeos/session-guard.server";
 
 export const Route = createFileRoute("/api/oauth/exchange")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const user = await requireSession(request);
+        if (user instanceof Response) return user;
         const body = await request.json().catch(() => ({})) as { provider?: string; code?: string; redirect?: string };
         const provider = body.provider === "discord" ? "discord" : body.provider === "spotify" ? "spotify" : "";
         const code = String(body.code || "").slice(0, 2000);

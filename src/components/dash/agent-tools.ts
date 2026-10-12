@@ -170,7 +170,7 @@ export async function runAgentTool(data: Memory, text: string): Promise<ToolHit 
     for (const row of named) {
       const response = await fetch("/api/keys/check", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await (await import("@/lib/lifeos/oauth")).sessionAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           name: row.name,
           key: row.value,

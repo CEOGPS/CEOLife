@@ -74,6 +74,11 @@ export function sessionToken() {
   return readSessionToken();
 }
 
+export async function sessionAuthHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const token = await getSessionToken();
+  return { ...(extra || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
+
 export async function requestSignIn(email: string) {
   const mailbox = email.trim().toLowerCase();
   if (!allowedEmail(mailbox)) throw new Error("Use chris@ceogps.com, chrisgr33ninc@gmail.com, or cagednreality@icloud.com.");

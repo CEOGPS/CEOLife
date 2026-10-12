@@ -168,6 +168,7 @@ async function nylasClientId(env) {
 __name(nylasClientId, "nylasClientId");
 __name2(nylasClientId, "nylasClientId");
 async function sessionUserId(request, env) {
+  if (request.userId) return request.userId;
   const header = request.headers.get("Authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!token || !supabaseUrl(env) || !supabaseKey(env)) return "";
@@ -179,7 +180,23 @@ async function sessionUserId(request, env) {
   });
   if (!response.ok) return "";
   const user = await response.json();
-  return user && typeof user.id === "string" ? user.id : "";
+  const id = user && typeof user.id === "string" ? user.id : "";
+  if (id) request.userId = id;
+  return id;
+}
+function isPublicApi(request) {
+  if (request.method === "OPTIONS") return true;
+  const path = new URL(request.url).pathname;
+  if (request.method === "GET" && (path === "/health" || path === "/test")) return true;
+  if (request.method === "GET" && (path === "/api/config" || path === "/api/config/")) return true;
+  if (request.method === "GET" && (path === "/api/oauth/callback" || path === "/oauth/callback" || path === "/api/nylas/callback")) return true;
+  if (request.method === "GET" && path.startsWith("/api/upload/object/")) return true;
+  return false;
+}
+async function requireUser(request, env) {
+  const userId = await sessionUserId(request, env);
+  if (userId) return null;
+  return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders(request.headers.get("Origin") || void 0) });
 }
 __name(sessionUserId, "sessionUserId");
 __name2(sessionUserId, "sessionUserId");
@@ -725,7 +742,7 @@ router2.post("/invoke", async (request, env) => {
   }
 });
 router2.get("/preference", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   return Response.json({
     preferred: "auto"
   }, { headers: corsHeaders() });
@@ -770,7 +787,7 @@ router3.get("/health", async (request, env) => {
   return Response.json({ integrations }, { headers: corsHeaders() });
 });
 router3.get("/credential", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -780,7 +797,7 @@ router3.get("/credential", async (request, env) => {
   return Response.json({}, { headers: corsHeaders() });
 });
 router3.post("/credential", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -791,7 +808,7 @@ router3.post("/credential", async (request, env) => {
   return Response.json({ success: true, id: crypto.randomUUID() }, { headers: corsHeaders() });
 });
 router3.delete("/credential", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -805,7 +822,7 @@ router3.delete("/credential", async (request, env) => {
 });
 var router4 = t();
 router4.get("/events", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -823,7 +840,7 @@ router4.get("/events", async (request, env) => {
   }, { headers: corsHeaders() });
 });
 router4.post("/events/mark-all-read", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -834,7 +851,7 @@ router4.post("/events/mark-all-read", async (request, env) => {
   return Response.json({ marked: 0 }, { headers: corsHeaders() });
 });
 router4.post("/events/:id/read", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -844,7 +861,7 @@ router4.post("/events/:id/read", async (request, env) => {
   return Response.json({ success: true }, { headers: corsHeaders() });
 });
 router4.post("/events/:id/dismiss", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -855,7 +872,7 @@ router4.post("/events/:id/dismiss", async (request, env) => {
 });
 var router5 = t();
 router5.get("/kv", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -867,7 +884,7 @@ router5.get("/kv", async (request, env) => {
   return Response.json({ keys: [] }, { headers: corsHeaders() });
 });
 router5.get("/kv/:key", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -878,7 +895,7 @@ router5.get("/kv/:key", async (request, env) => {
   return Response.json({ value: null }, { headers: corsHeaders() });
 });
 router5.post("/kv/:key", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -891,7 +908,7 @@ router5.post("/kv/:key", async (request, env) => {
   return Response.json({ success: true }, { headers: corsHeaders() });
 });
 router5.delete("/kv/:key", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -903,7 +920,7 @@ router5.delete("/kv/:key", async (request, env) => {
 });
 var router6 = t();
 router6.get("/status", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -913,7 +930,7 @@ router6.get("/status", async (request, env) => {
   return Response.json({ locked: true, initialized: false }, { headers: corsHeaders() });
 });
 router6.post("/init", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -923,7 +940,7 @@ router6.post("/init", async (request, env) => {
   return Response.json({ success: true }, { headers: corsHeaders() });
 });
 router6.post("/unlock", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -933,7 +950,7 @@ router6.post("/unlock", async (request, env) => {
   return Response.json({ success: true }, { headers: corsHeaders() });
 });
 router6.post("/lock", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -943,7 +960,7 @@ router6.post("/lock", async (request, env) => {
   return Response.json({ success: true }, { headers: corsHeaders() });
 });
 router6.post("/change-password", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -953,7 +970,7 @@ router6.post("/change-password", async (request, env) => {
   return Response.json({ success: true }, { headers: corsHeaders() });
 });
 router6.get("/items", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -963,7 +980,7 @@ router6.get("/items", async (request, env) => {
   return Response.json({ items: [] }, { headers: corsHeaders() });
 });
 router6.post("/export", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -973,7 +990,7 @@ router6.post("/export", async (request, env) => {
   return Response.json({ data: "{}" }, { headers: corsHeaders() });
 });
 router6.post("/purge", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -984,7 +1001,7 @@ router6.post("/purge", async (request, env) => {
 });
 var router7 = t();
 router7.get("/accounts", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -994,7 +1011,7 @@ router7.get("/accounts", async (request, env) => {
   return Response.json([], { headers: corsHeaders() });
 });
 router7.post("/send", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1004,7 +1021,7 @@ router7.post("/send", async (request, env) => {
   return Response.json({ success: true, id: crypto.randomUUID() }, { headers: corsHeaders() });
 });
 router7.get("/campaigns", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1015,7 +1032,7 @@ router7.get("/campaigns", async (request, env) => {
 });
 var router8 = t();
 router8.get("/summary", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1031,7 +1048,7 @@ router8.get("/summary", async (request, env) => {
 });
 var router9 = t();
 router9.get("/user", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1047,7 +1064,7 @@ router9.get("/user", async (request, env) => {
 });
 var router10 = t();
 router10.get("/workspace", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1062,7 +1079,7 @@ router10.get("/workspace", async (request, env) => {
 });
 var router11 = t();
 router11.get("/me", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1076,7 +1093,7 @@ router11.get("/me", async (request, env) => {
 });
 var router12 = t();
 router12.get("/events", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1087,7 +1104,7 @@ router12.get("/events", async (request, env) => {
 });
 var router13 = t();
 router13.get("/me", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1102,7 +1119,7 @@ router13.get("/me", async (request, env) => {
 });
 var router14 = t();
 router14.get("/channel", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1117,7 +1134,7 @@ router14.get("/channel", async (request, env) => {
 });
 var router15 = t();
 router15.get("/summary", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1223,7 +1240,7 @@ router16.get("/callback", async (request, env) => {
 });
 var router17 = t();
 router17.post("/post", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1233,7 +1250,7 @@ router17.post("/post", async (request, env) => {
   return Response.json({ success: true, id: crypto.randomUUID() }, { headers: corsHeaders() });
 });
 router17.post("/schedule", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1244,7 +1261,7 @@ router17.post("/schedule", async (request, env) => {
 });
 var router18 = t();
 router18.get("/", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1255,7 +1272,7 @@ router18.get("/", async (request, env) => {
 });
 var router19 = t();
 router19.get("/", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1265,7 +1282,7 @@ router19.get("/", async (request, env) => {
   return Response.json([], { headers: corsHeaders() });
 });
 router19.post("/run", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1275,7 +1292,7 @@ router19.post("/run", async (request, env) => {
   return Response.json({ success: true, runId: crypto.randomUUID() }, { headers: corsHeaders() });
 });
 router19.get("/status", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1286,7 +1303,7 @@ router19.get("/status", async (request, env) => {
 });
 var router20 = t();
 router20.get("/", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1298,7 +1315,7 @@ router20.get("/", async (request, env) => {
   return Response.json([], { headers: corsHeaders() });
 });
 router20.post("/reorder", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1309,7 +1326,7 @@ router20.post("/reorder", async (request, env) => {
 });
 var router21 = t();
 router21.get("/balances", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1323,7 +1340,7 @@ router21.get("/balances", async (request, env) => {
   }, { headers: corsHeaders() });
 });
 router21.get("/market", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1336,7 +1353,7 @@ router21.get("/market", async (request, env) => {
   }, { headers: corsHeaders() });
 });
 router21.get("/news", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1347,7 +1364,7 @@ router21.get("/news", async (request, env) => {
 });
 var router22 = t();
 router22.get("/", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1358,7 +1375,7 @@ router22.get("/", async (request, env) => {
 });
 var router23 = t();
 router23.get("/fetch", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1368,7 +1385,7 @@ router23.get("/fetch", async (request, env) => {
   return Response.json({ html: "", title: "" }, { headers: corsHeaders() });
 });
 router23.get("/search", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1379,7 +1396,7 @@ router23.get("/search", async (request, env) => {
 });
 var router24 = t();
 router24.get("/", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1413,13 +1430,7 @@ function extFromFile(file) {
 __name(extFromFile, "extFromFile");
 __name2(extFromFile, "extFromFile");
 function userIdFromRequest(request) {
-  const headerId = request.headers.get("X-User-Id");
-  if (headerId && headerId.trim()) return headerId.trim().slice(0, 128);
-  const auth = request.headers.get("Authorization") || "";
-  if (auth.startsWith("Bearer ") && auth.length > 20) {
-    return `tok_${auth.slice(7, 23)}`;
-  }
-  return "anonymous";
+  return request.userId ? String(request.userId).slice(0, 128) : "";
 }
 __name(userIdFromRequest, "userIdFromRequest");
 __name2(userIdFromRequest, "userIdFromRequest");
@@ -1514,7 +1525,7 @@ router25.get("/", async (request, env) => {
 });
 var router26 = t();
 router26.get("/feed", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1526,7 +1537,7 @@ router26.get("/feed", async (request, env) => {
   return Response.json({ data: [], paging: {} }, { headers: corsHeaders() });
 });
 router26.get("/status", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1536,7 +1547,7 @@ router26.get("/status", async (request, env) => {
   return Response.json({ connected: false }, { headers: corsHeaders() });
 });
 router26.get("/instagram/feed", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1549,7 +1560,7 @@ router26.get("/instagram/feed", async (request, env) => {
 });
 var router27 = t();
 router27.get("/timeline", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1562,7 +1573,7 @@ router27.get("/timeline", async (request, env) => {
   return Response.json({ data: [], meta: {} }, { headers: corsHeaders() });
 });
 router27.get("/user", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1580,7 +1591,7 @@ router27.get("/user", async (request, env) => {
 });
 var router28 = t();
 router28.post("/generate", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1593,7 +1604,7 @@ router28.post("/generate", async (request, env) => {
   }, { headers: corsHeaders() });
 });
 router28.get("/playlists", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1603,7 +1614,7 @@ router28.get("/playlists", async (request, env) => {
   return Response.json([], { headers: corsHeaders() });
 });
 router28.post("/polish", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1617,7 +1628,7 @@ router28.post("/polish", async (request, env) => {
 });
 var router29 = t();
 router29.get("/", async (request, env) => {
-  const userId = request.headers.get("X-User-Id");
+  const userId = request.userId;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, {
       status: 401,
@@ -1691,6 +1702,10 @@ var working_worker_default = {
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin") || void 0;
     try {
+      if (!isPublicApi(request)) {
+        const denied = await requireUser(request, env);
+        if (denied) return withCors(denied, origin);
+      }
       return await router31.fetch(request, env, ctx);
     } catch (err) {
       return withCors(new Response(JSON.stringify({ error: "Internal error", detail: String(err?.message || err) }), {

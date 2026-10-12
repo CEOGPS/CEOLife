@@ -1,0 +1,23 @@
+import { createMiddleware } from "@tanstack/react-start";
+
+/**
+ * Same Supabase bearer the worker already verifies via sessionUserId.
+ * The browser forwards the stored access token. The server checks it with
+ * Supabase Auth and puts the user id on context. No new provider.
+ */
+export const sessionMiddleware = createMiddleware({ type: "function" })
+  .client(async ({ next }) => {
+    const { getSessionToken } = await import("./oauth");
+    const bearerToken = (await getSessionToken()) || "";
+    return next({ sendContext: { bearerToken } });
+  })
+  .server(async ({ next, context }) => {
+    const { verifyBearer } = await import("./session-guard.server");
+    const user = await verifyBearer(String(context.bearerToken || ""));
+    if (!user) {
+      const error = new Error("Unauthorized");
+      error.name = "UnauthorizedError";
+      throw error;
+    }
+    return next({ context: { userId: user.id, email: user.email } });
+  });

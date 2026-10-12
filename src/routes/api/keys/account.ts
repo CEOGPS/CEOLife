@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { runAccount } from "@/lib/lifeos/env-keys";
+import { requireSession } from "@/lib/lifeos/session-guard.server";
 
 export const Route = createFileRoute("/api/keys/account")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const user = await requireSession(request);
+        if (user instanceof Response) return user;
         const body = await request.json().catch(() => ({})) as { service?: string; token?: string; key?: string; secret?: string; site?: string };
         const result = await runAccount({
           service: String(body?.service || "").slice(0, 40),
