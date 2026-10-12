@@ -1,4 +1,4 @@
-import worker from "../attachments/working-worker.js";
+import worker from "./lifeos1-api.js";
 
 function allowedOrigins(env: WorkerEnv) {
   const raw = String(env.CORS_ORIGINS || "https://lifeos.ceogps.com,https://lifeos1.ceogps.com");
