@@ -143,7 +143,7 @@ function authPopupPlugin(): Plugin {
 }
 
 
-/** Pages rejects main and assets. Nitro copies them from wrangler.jsonc into dist/_worker.js/wrangler.json. */
+/** Nitro copies wrangler.jsonc into dist/_worker.js/wrangler.json. main in wrangler.toml is the Worker entry. Pages must not also set pages_build_output_dir. */
 function pagesWranglerPlugin(): Plugin {
   return {
     name: "lifeos-pages-wrangler",
@@ -152,9 +152,8 @@ function pagesWranglerPlugin(): Plugin {
       const file = join(process.cwd(), "dist/_worker.js/wrangler.json");
       if (!existsSync(file)) return;
       const config = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
-      delete config.main;
+      delete config.pages_build_output_dir;
       delete config.assets;
-      if (typeof config.pages_build_output_dir !== "string") config.pages_build_output_dir = "..";
       writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
     },
   };
