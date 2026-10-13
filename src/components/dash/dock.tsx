@@ -13,11 +13,26 @@ type Mode = "chat" | "image" | "video" | "writer" | "code";
 const MODES: Mode[] = ["chat", "image", "video", "writer", "code"];
 
 const MINDS = [
-  { id: "ollama", label: "Ollama" },
-  { id: "nvidia", label: "NVIDIA" },
-  { id: "huggingface", label: "Hugging Face" },
-  { id: "grok", label: "Grok" },
+  { id: "ollama", label: "Ollama", card: "Ollama (local)", model: "" },
+  { id: "nvidia", label: "NVIDIA", card: "NVIDIA", model: "openai/gpt-oss-20b" },
+  { id: "huggingface", label: "Hugging Face", card: "Hugging Face", model: "meta-llama/Llama-3.1-8B-Instruct" },
+  { id: "openai", label: "OpenAI", card: "OpenAI", model: "gpt-4o-mini" },
+  { id: "openrouter", label: "OpenRouter", card: "OpenRouter", model: "meta-llama/llama-3.3-70b-instruct" },
+  { id: "grok", label: "Grok", card: "xAI", model: "grok-4.5" },
 ] as const;
+
+function mindCall(data: Memory, mind: (typeof MINDS)[number]["id"]) {
+  const row = MINDS.find((item) => item.id === mind) || MINDS[0];
+  const nvidia = data.keys.find((item) => item.name === "NVIDIA")?.value || data.keys.find((item) => item.name === "NVIDIA NIM")?.value || "";
+  const grok = data.keys.find((item) => item.name === "xAI")?.value || data.keys.find((item) => item.name === "Grok (xAI)")?.value || "";
+  const saved = data.keys.find((item) => item.name === row.card)?.value || "";
+  return {
+    mind,
+    model: row.model,
+    key: mind === "nvidia" ? nvidia : mind === "grok" ? grok : saved,
+    endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "",
+  };
+}
 
 function facts(data: Memory, question = "") {
   return boardFacts(data, question);
@@ -213,11 +228,11 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
         return null;
       }
       const packed = [facts(data, text), skillBrief(), matchedSkill(text), tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
-      return import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: text, facts: packed, mind, name: agent, endpoint: data.keys.find((row) => row.name === "Ollama (local)")?.value || "" } })).then((result) => ({ result, tool }));
+      return import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: text, facts: packed, name: agent, ...mindCall(data, mind) } })).then((result) => ({ result, tool }));
     }).then((payload) => {
       if (!payload) return;
       const { result, tool } = payload;
-      const reply = [tool ? tool.text : "", result.ok && result.text ? result.text : ""].filter(Boolean).join("\n\n") || "None of the models answered. Switch intelligence and try again.";
+      const reply = [tool ? tool.text : "", result.text || ""].filter(Boolean).join("\n\n") || "None of the models answered. Switch intelligence and try again.";
       const via = MINDS.find((row) => row.id === result.mind)?.label || used;
       setUsed(via);
       update((prev) => ({ ...prev, thread: [...prev.thread, { id: newId(), who: `${agent} · ${via}`, text: reply, mine: false, platform: tag }] }));
@@ -263,7 +278,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
       return;
     }
     if (mode === "writer") {
-      void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: `Write this as a finished note:\n${text}`, facts: facts(data, text), mind, name: agent, endpoint: data.keys.find((row) => row.name === "Ollama (local)")?.value || "" } })).then((result) => {
+      void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: `Write this as a finished note:\n${text}`, facts: facts(data, text), name: agent, ...mindCall(data, mind) } })).then((result) => {
         const body = result.ok && result.text ? result.text : text;
         update((prev) => ({ ...prev, notes: [{ id: newId(), title: text.slice(0, 80), body }, ...prev.notes] }));
         setStatus("Draft saved to notes");

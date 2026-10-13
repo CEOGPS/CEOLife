@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { sessionMiddleware } from "./session-middleware";
 import { SERVICE_ENV } from "./sheet-keys";
 import { probeOllama } from "./ollama";
+import { probeProvider, providerId } from "./providers";
 
 export { sheetKeys } from "./sheet-keys";
 
@@ -346,7 +347,8 @@ export async function runProbe(data: { name: string; key: string; email: string 
     if (!key && !cloudflareName) return { ok: false as const, checked: false as const, text: "No key is saved for this service." };
     const auth = { Authorization: `Bearer ${key}` };
     try {
-      if (data.name === "OpenAI") return readBody(await timed(fetch("https://api.openai.com/v1/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
+      const hosted = providerId(data.name);
+      if (hosted) return probeProvider(hosted, key);
       if (data.name === "Anthropic") return readBody(await timed(fetch("https://api.anthropic.com/v1/models", { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" }, signal: AbortSignal.timeout(8000) })));
       if (data.name === "xAI") {
         const result = await readBody(await timed(fetch("https://api.x.ai/v1/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
@@ -361,16 +363,7 @@ export async function runProbe(data: { name: string; key: string; email: string 
         if (!response.ok) return { ok: false as const, checked: true as const, text: `grok2api refused the client key (HTTP ${response.status}).` };
         return { ok: true as const, checked: true as const, text: "grok2api accepted the client key. Agents will use it for Grok." };
       }
-      if (data.name === "NVIDIA") {
-        return readBody(await timed(fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-          method: "POST",
-          headers: { ...auth, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "openai/gpt-oss-20b", messages: [{ role: "user", content: "hi" }], max_tokens: 1 }),
-          signal: AbortSignal.timeout(8000),
-        })));
-      }
       if (data.name === "Groq") return readBody(await timed(fetch("https://api.groq.com/openai/v1/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
-      if (data.name === "OpenRouter") return readBody(await timed(fetch("https://openrouter.ai/api/v1/key", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "DeepSeek") return readBody(await timed(fetch("https://api.deepseek.com/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "Mistral") return readBody(await timed(fetch("https://api.mistral.ai/v1/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "ElevenLabs") return readBody(await timed(fetch("https://api.elevenlabs.io/v1/voices?page_size=1", { headers: { "xi-api-key": key }, signal: AbortSignal.timeout(8000) })));
@@ -402,7 +395,6 @@ export async function runProbe(data: { name: string; key: string; email: string 
       }
       if (data.name === "Telegram") return readBody(await timed(fetch(`https://api.telegram.org/bot${key}/getMe`, { signal: AbortSignal.timeout(8000) })));
       if (data.name === "SendGrid") return readBody(await timed(fetch("https://api.sendgrid.com/v3/scopes", { headers: auth, signal: AbortSignal.timeout(8000) })));
-      if (data.name === "Hugging Face") return readBody(await timed(fetch("https://huggingface.co/api/whoami-v2", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "Nylas") return readBody(await timed(fetch("https://api.us.nylas.com/v3/grants?limit=1", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "Google AI (Gemini)") return readBody(await timed(fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) })));
       if (data.name === "GitHub") return readBody(await timed(fetch("https://api.github.com/user", { headers: { ...auth, "User-Agent": "LifeOS", Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(8000) })));

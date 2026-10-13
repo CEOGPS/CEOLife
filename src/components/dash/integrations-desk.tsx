@@ -480,6 +480,9 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
     if (label === "grok2api" || label === "grok2api URL") {
       return <p className="mt-2 text-sm leading-5 text-[oklch(0.82_0.13_220)]">https://lifeos.ceogps.com. Not connected until that host accepts the client key at /v1/models.</p>;
     }
+    if (label === "OpenAI" || label === "OpenRouter" || label === "Hugging Face" || label === "NVIDIA" || label === "NVIDIA NIM") {
+      return <p className="mt-2 text-sm leading-5 text-[oklch(0.82_0.13_220)]">Erebus and Kranos use this key when you pick it in the dock or AI Hub. Check talks to the live API.</p>;
+    }
     if (label === "Grok (xAI)" || label === "xAI") {
       return <p className="mt-2 text-sm leading-5 text-[oklch(0.82_0.13_220)]">chris@ceogps.com</p>;
     }

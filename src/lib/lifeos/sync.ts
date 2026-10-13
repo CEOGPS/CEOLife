@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { sessionMiddleware } from "./session-middleware";
 import { getSql } from "@/lib/db";
 import { chatOllama, savedOllama } from "./ollama";
+import { chatProvider, providerFromKey, type ProviderId } from "./providers";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -51,7 +52,7 @@ export const askNyx = createServerFn({ method: "POST" })
     const question = String(input?.question || "").trim().slice(0, 4000);
     const facts = String(input?.facts || "").slice(0, 96_000);
     if (!question) throw new Error("question required");
-    const allowed = ["ollama", "nvidia", "huggingface", "grok"];
+    const allowed = ["ollama", "nvidia", "huggingface", "openai", "openrouter", "grok"];
     const mind = allowed.includes(String(input?.mind || "")) ? String(input.mind) : "ollama";
     return {
       question,
@@ -70,13 +71,25 @@ export const askNyx = createServerFn({ method: "POST" })
       { role: "system", content: system },
       { role: "user", content: data.facts ? `Facts:\n${data.facts}\n\nQuestion: ${data.question}` : data.question },
     ];
+    const hosted: ProviderId[] = ["openai", "openrouter", "huggingface", "nvidia"];
+    if (hosted.includes(data.mind as ProviderId)) {
+      const direct = await chatProvider(data.mind as ProviderId, messages, data.key, data.model);
+      if (direct.text) return { ok: true as const, text: direct.text.slice(0, 6000), mind: data.mind };
+      return { ok: false as const, text: direct.error || `${data.mind} did not answer.`, mind: data.mind };
+    }
     if (data.key && data.model) {
+      const routed = providerFromKey(data.key, data.model);
+      if (routed) {
+        const direct = await chatProvider(routed, messages, data.key, data.model);
+        if (direct.text) return { ok: true as const, text: direct.text.slice(0, 6000), mind: routed };
+        return { ok: false as const, text: direct.error || "That model did not answer.", mind: routed };
+      }
       const keyed = await askKeyed(data.model, data.key, messages);
       if (keyed) return { ok: true as const, text: keyed.slice(0, 6000), mind: data.model };
     }
     const order = [data.mind, "ollama", "nvidia", "huggingface", "grok"].filter((mind, index, list) => list.indexOf(mind) === index);
     for (const mind of order) {
-      const text = await askMind(mind, messages, mind === "ollama" ? data.endpoint : "");
+      const text = await askMind(mind, messages, { endpoint: data.endpoint, key: mind === data.mind ? data.key : "", model: mind === data.mind ? data.model : "" });
       if (text) return { ok: true as const, text: text.slice(0, 6000), mind };
     }
     return { ok: false as const, text: "", mind: data.mind };
@@ -109,12 +122,9 @@ async function askKeyed(model: string, key: string, messages: { role: string; co
     }
     const openai = (url: string, picked = model) => complete(url, { Authorization: `Bearer ${key}` }, { model: picked, max_tokens: 600, temperature: 0.4, messages });
     if (id.includes("grok")) return await openai("https://api.x.ai/v1/chat/completions");
-    if (id.startsWith("gpt") || id.startsWith("o1") || id.startsWith("o3") || id.startsWith("o4")) return await openai("https://api.openai.com/v1/chat/completions");
     if (id.startsWith("llama") || id.includes("groq")) return await openai("https://api.groq.com/openai/v1/chat/completions", id.includes("/") ? model : "llama-3.3-70b-versatile");
     if (id.startsWith("deepseek")) return await openai("https://api.deepseek.com/chat/completions");
     if (id.startsWith("mistral")) return await openai("https://api.mistral.ai/v1/chat/completions");
-    if (id.includes("nvidia") || id.includes("nemotron") || id.startsWith("openai/")) return await openai("https://integrate.api.nvidia.com/v1/chat/completions");
-    if (id.includes("/")) return await openai("https://openrouter.ai/api/v1/chat/completions");
     return "";
   } catch {
     return "";
@@ -146,36 +156,15 @@ async function askGrok2Api(messages: { role: string; content: string }[]) {
   }
 }
 
-async function askMind(mind: string, messages: { role: string; content: string }[], endpoint = "") {
+async function askMind(mind: string, messages: { role: string; content: string }[], opts: { endpoint?: string; key?: string; model?: string } = {}) {
   try {
     if (mind === "ollama") {
-      const saved = endpoint || await savedOllama();
+      const saved = opts.endpoint || await savedOllama();
       return await chatOllama(messages, saved);
     }
-    if (mind === "nvidia") {
-      const key = process.env.NVIDIA_API_KEY || process.env.NVAPI_KEY || "";
-      if (!key) return "";
-      const res = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model: "openai/gpt-oss-20b", max_tokens: 400, temperature: 0.3, messages }),
-      });
-      if (!res.ok) return "";
-      const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-      return body.choices?.[0]?.message?.content || "";
-    }
-    if (mind === "huggingface") {
-      const key = process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN || "";
-      if (!key) return "";
-      const res = await fetch("https://router.huggingface.co/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model: process.env.HF_MODEL || "meta-llama/Llama-3.1-8B-Instruct", max_tokens: 400, temperature: 0.3, messages }),
-        signal: AbortSignal.timeout(12000),
-      });
-      if (!res.ok) return "";
-      const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-      return body.choices?.[0]?.message?.content || "";
+    if (mind === "nvidia" || mind === "huggingface" || mind === "openai" || mind === "openrouter") {
+      const result = await chatProvider(mind, messages, opts.key || "", opts.model || "");
+      return result.text;
     }
     if (mind !== "grok") return "";
     const viaGateway = await askGrok2Api(messages);

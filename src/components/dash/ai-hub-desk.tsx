@@ -132,7 +132,19 @@ function preferredModel(data: Memory) {
 function keyFor(data: Memory, modelId: string) {
   const row = CATALOG.find((item) => item.id === modelId);
   if (!row) return "";
+  if (row.key === "NVIDIA") return data.keys.find((item) => item.name === "NVIDIA")?.value || data.keys.find((item) => item.name === "NVIDIA NIM")?.value || "";
+  if (row.key === "xAI") return data.keys.find((item) => item.name === "xAI")?.value || data.keys.find((item) => item.name === "Grok (xAI)")?.value || "";
   return data.keys.find((item) => item.name === row.key)?.value || "";
+}
+
+function mindOf(card: string) {
+  if (card === "OpenAI") return "openai";
+  if (card === "OpenRouter") return "openrouter";
+  if (card === "NVIDIA") return "nvidia";
+  if (card === "Hugging Face") return "huggingface";
+  if (card === "Ollama (local)") return "ollama";
+  if (card === "xAI") return "grok";
+  return "";
 }
 
 function readSkins(data: Memory) {
@@ -260,7 +272,8 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
     if (tool?.task) update((prev) => ({ ...prev, tasks: [{ id: newId(), title: tool.task || "", done: false }, ...prev.tasks] }));
     if (tool?.noteTitle) update((prev) => ({ ...prev, notes: [{ id: newId(), title: tool.noteTitle || "Note", body: tool.noteBody || "" }, ...prev.notes] }));
     const { askNyx } = await import("@/lib/lifeos/sync");
-    const result = await askNyx({ data: { question, facts: [boardFacts(data, question), history, skillBrief(), matchedSkill(question), tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n"), name, prompt, model, key: keyFor(data, model) } });
+    const row = CATALOG.find((item) => item.id === model);
+    const result = await askNyx({ data: { question, facts: [boardFacts(data, question), history, skillBrief(), matchedSkill(question), tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n"), name, prompt, model, key: keyFor(data, model), mind: mindOf(row?.key || ""), endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "" } });
     const reply = [tool?.text, result.text].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
     const done = [...next, { role: "ai" as const, text: reply }];
     setLines(done);
@@ -324,7 +337,7 @@ function Models({ data, update }: { data: Memory; update: Update }) {
   return (
     <div>
       <h1 className="text-2xl">Models</h1>
-      <p className="text-sm text-white/50">Agents try Ollama, then NVIDIA, then Hugging Face. Grok is only the fallback.</p>
+      <p className="text-sm text-white/50">The model you select is what Erebus and Kranos call. OpenAI, OpenRouter, NVIDIA, and Hugging Face use the key on that row.</p>
       <div className="mt-4">
         {CATALOG.map((model) => {
           const saved = data.keys.find((row) => row.name === model.key)?.value || "";
@@ -512,7 +525,9 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
             <button type="button" className="quiet is-on mt-3" onClick={() => {
               setBriefing(true);
               const facts = laneDigest(data);
-              void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { name: "Kranos", prompt: "You are Kranos. Specialists reported the facts below. Write three sections: Progress, Stuck, Better. Use only these facts. Do not invent numbers, names, or results.", question: "Organize the specialist reports.", facts, endpoint: data.keys.find((row) => row.name === "Ollama (local)")?.value || "" } })).then((result) => {
+              const model = preferredModel(data);
+              const picked = CATALOG.find((item) => item.id === model);
+              void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { name: "Kranos", prompt: "You are Kranos. Specialists reported the facts below. Write three sections: Progress, Stuck, Better. Use only these facts. Do not invent numbers, names, or results.", question: "Organize the specialist reports.", facts, model, key: keyFor(data, model), mind: mindOf(picked?.key || ""), endpoint: data.keys.find((row) => row.name === "Ollama (local)")?.value || "" } })).then((result) => {
                 const text = result.text || facts;
                 setBrief(text);
                 update((prev) => ({
