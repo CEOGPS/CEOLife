@@ -1040,21 +1040,6 @@ export function WiredPanel({ slug, data, update }: { slug: string; data: Memory;
   const [place, setPlace] = useState("Atlanta");
   const [tool, setTool] = useState(TOOLS[0]);
   const [openVault, setOpenVault] = useState<string | null>(null);
-  const [accounts, setAccounts] = useState<{ provider: string; name: string; email: string }[]>([]);
-  const [oauthNote, setOauthNote] = useState("");
-  useEffect(() => {
-    void import("@/lib/lifeos/oauth").then(async ({ finishOAuth, readOauth, allowedEmail, catchReturn, pullWorkerLinks }) => {
-      const session = await finishOAuth().catch(() => null);
-      const back = catchReturn();
-      if (session?.provider === "google" && !session.token && !session.via) {
-        setOauthNote(allowedEmail(session.email || "") ? "Google did not return a token. Connect that mailbox again." : `${session.email || "That mailbox"} is not one of the three board emails.`);
-      } else if (back.error) setOauthNote(back.error);
-      else if (back.provider) setOauthNote(`${back.provider} is connected.`);
-      await pullWorkerLinks().catch(() => undefined);
-      setAccounts(readOauth().map((row) => ({ provider: row.provider, name: row.name, email: row.email })));
-    });
-  }, []);
-
   const hits = useMemo(() => {
     const q = data.query.toLowerCase();
     if (!q) return [];
@@ -1107,7 +1092,7 @@ export function WiredPanel({ slug, data, update }: { slug: string; data: Memory;
 
   if (slug === "ai-hub") return <HubDesk data={data} update={update} />;
 
-  if (slug === "integrations") return <IntegrationsDesk data={data} update={update} accounts={accounts} setAccounts={setAccounts} note={oauthNote} setNote={setOauthNote} />;
+  if (slug === "integrations") return <IntegrationsDesk data={data} update={update} />;
 
   if (slug === "settings") return <SettingsDesk data={data} update={update} />;
 
