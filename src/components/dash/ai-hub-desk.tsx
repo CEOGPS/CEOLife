@@ -512,7 +512,7 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
             <button type="button" className="quiet is-on mt-3" onClick={() => {
               setBriefing(true);
               const facts = laneDigest(data);
-              void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { name: "Kranos", prompt: "You are Kranos. Specialists reported the facts below. Write three sections: Progress, Stuck, Better. Use only these facts. Do not invent numbers, names, or results.", question: "Organize the specialist reports.", facts } })).then((result) => {
+              void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { name: "Kranos", prompt: "You are Kranos. Specialists reported the facts below. Write three sections: Progress, Stuck, Better. Use only these facts. Do not invent numbers, names, or results.", question: "Organize the specialist reports.", facts, endpoint: data.keys.find((row) => row.name === "Ollama (local)")?.value || "" } })).then((result) => {
                 const text = result.text || facts;
                 setBrief(text);
                 update((prev) => ({

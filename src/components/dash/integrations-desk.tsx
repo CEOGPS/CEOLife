@@ -380,7 +380,8 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
       : "";
     const value = own || twin;
     const cloudflare = name === "Cloudflare" || name === "Cloudflare Token" || name === "Cloudflare Account";
-    if (!value && !cloudflare) {
+    const localOllama = name === "Ollama (local)";
+    if (!value && !cloudflare && !localOllama) {
       stamp(name, "error", "No key is saved on this card.");
       setNote(`${name}: no key is saved.`);
       return;
@@ -404,14 +405,18 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
         }),
         signal: AbortSignal.timeout(15000),
       });
-      const row = await response.json().catch(() => ({})) as { ok?: boolean; checked?: boolean; status?: string; reason?: string; error?: string; text?: string };
+      const row = await response.json().catch(() => ({})) as { ok?: boolean; checked?: boolean; status?: string; reason?: string; error?: string; text?: string; host?: string };
       const text = String(row.text || row.reason || row.error || `The check returned HTTP ${response.status}.`);
       if (row.checked === false) {
         setBusy((prev) => ({ ...prev, [name]: false }));
         setNote(`${name}: saved. There is no live check for this service.`);
         return "saved" as const;
       }
-      if (row.ok || row.status === "connected") { finish("connected", text); return "connected" as const; }
+      if (row.ok || row.status === "connected") {
+        if (localOllama && row.host && !own) putKey(name, row.host);
+        finish("connected", text);
+        return "connected" as const;
+      }
       finish("error", text);
       return "error" as const;
     } catch (error) {
@@ -469,6 +474,9 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
 
   function emails(name?: string) {
     const label = name || "";
+    if (label === "Ollama (local)") {
+      return <p className="mt-2 text-sm leading-5 text-[oklch(0.82_0.13_220)]">This computer, port 11434. Check talks to the daemon. Paste a URL or model name only if it is not the default.</p>;
+    }
     if (label === "grok2api" || label === "grok2api URL") {
       return <p className="mt-2 text-sm leading-5 text-[oklch(0.82_0.13_220)]">https://lifeos.ceogps.com. Not connected until that host accepts the client key at /v1/models.</p>;
     }
@@ -520,6 +528,15 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
       setSheetNote(error instanceof Error ? error.message : "That paste could not be read.");
     }
   }
+
+  const ollamaSaved = data.keys.find((item) => item.name === "Ollama (local)")?.value || "";
+  const ollamaBoot = useRef<string | null>(null);
+  useEffect(() => {
+    const token = `${signed}:${ollamaSaved}`;
+    if (ollamaBoot.current === token) return;
+    ollamaBoot.current = token;
+    void verify("Ollama (local)");
+  }, [ollamaSaved, signed]);
 
   return (
     <div>
@@ -677,6 +694,39 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
                     </form>
                   ) : <button type="button" className="quiet is-on" onClick={() => { setOpen(row.name); setPaste((prev) => ({ ...prev, [row.name]: saved?.value || "" })); setExtra((prev) => ({ ...prev, [row.name]: data.keys.find((item) => item.name === (row.name === "GoDaddy" ? "GoDaddy Secret" : "Brilliant Site"))?.value || "" })); }}>Edit</button>}
                   <button type="button" className="quiet check-btn" onClick={() => void checkAccount(row.name, service)}>{checkLabel(row.name)}</button>
+                </div>
+              </article>
+            );
+          }
+          if (row.name === "Ollama (local)") {
+            return (
+              <article key={row.name} className="module-card p-4">
+                <p className="text-lg">{row.name}</p>
+                {emails(row.name)}
+                {statusLine(row.name, { state: "idle", text: "Not checked yet." })}
+                {saved ? <p className="mt-1 text-xs text-white/45">{/^https?:\/\//i.test(saved.value) ? saved.value : `Saved · ${maskKey(saved.value)}`}</p> : <p className="mt-1 text-xs text-white/45">Default · http://127.0.0.1:11434</p>}
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <button type="button" className="quiet check-btn" onClick={() => void verify(row.name)}>{checkLabel(row.name)}</button>
+                  {open === row.name ? (
+                    <form className="flex min-w-0 flex-1 gap-2" onSubmit={(event) => {
+                      event.preventDefault();
+                      const value = String(new FormData(event.currentTarget).get("value") || "").trim();
+                      if (!value) {
+                        update((prev) => ({ ...prev, keys: prev.keys.filter((item) => item.name !== row.name) }));
+                        stamp(row.name, "saved", "Using the default address.");
+                        setOpen("");
+                        void verify(row.name, "");
+                        return;
+                      }
+                      update((prev) => ({ ...prev, keys: [{ id: newId(), name: row.name, value }, ...prev.keys.filter((item) => item.name !== row.name)] }));
+                      stamp(row.name, "saved", /^https?:\/\//i.test(value) ? value : maskKey(value));
+                      setOpen("");
+                      void verify(row.name, value);
+                    }}>
+                      <input name="value" key={`${row.name}-${saved?.id || "new"}`} className="h-9 min-w-0 flex-1 rounded-full border border-line bg-black/40 px-3 text-base" autoComplete="off" defaultValue={saved?.value || ""} placeholder="http://127.0.0.1:11434 or llama3.2" />
+                      <button type="submit" className="quiet is-on">Save</button>
+                    </form>
+                  ) : <button type="button" className="quiet" onClick={() => setOpen(row.name)}>{saved ? "Replace" : "Set address"}</button>}
                 </div>
               </article>
             );

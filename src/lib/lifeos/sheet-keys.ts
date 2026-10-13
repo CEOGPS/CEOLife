@@ -66,7 +66,7 @@ export const SERVICE_ENV: Record<string, string[]> = {
   "Make (Integromat)": ["MAKE_COM_API_KEY"],
   "Meta LLaMA": ["METALLAMA_API_KEY"],
   Notion: ["NOTION_API_KEY"],
-  "Ollama (local)": ["OLLAMA_API_KEY"],
+  "Ollama (local)": ["OLLAMA_URL", "OLLAMA_HOST", "OLLAMA_MODEL", "OLLAMA_API_KEY"],
   PocketBase: ["POCKETBASE_API_KEY"],
   Runwav: ["RUNWAY_API_KEY"],
   Slack: ["SLACK_OAUTH_TOKEN"],

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { sessionMiddleware } from "./session-middleware";
 import { getSql } from "@/lib/db";
+import { chatOllama, savedOllama } from "./ollama";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -46,7 +47,7 @@ export const pushBoard = createServerFn({ method: "POST" })
 
 export const askNyx = createServerFn({ method: "POST" })
   .middleware([sessionMiddleware])
-  .validator((input: { question: string; facts: string; mind?: string; name?: string; prompt?: string; key?: string; model?: string }) => {
+  .validator((input: { question: string; facts: string; mind?: string; name?: string; prompt?: string; key?: string; model?: string; endpoint?: string }) => {
     const question = String(input?.question || "").trim().slice(0, 4000);
     const facts = String(input?.facts || "").slice(0, 96_000);
     if (!question) throw new Error("question required");
@@ -60,6 +61,7 @@ export const askNyx = createServerFn({ method: "POST" })
       prompt: String(input?.prompt || "").slice(0, 2400),
       key: String(input?.key || "").trim().slice(0, 400),
       model: String(input?.model || "").trim().slice(0, 80),
+      endpoint: String(input?.endpoint || "").trim().slice(0, 300),
     };
   })
   .handler(async ({ data }) => {
@@ -74,7 +76,7 @@ export const askNyx = createServerFn({ method: "POST" })
     }
     const order = [data.mind, "ollama", "nvidia", "huggingface", "grok"].filter((mind, index, list) => list.indexOf(mind) === index);
     for (const mind of order) {
-      const text = await askMind(mind, messages);
+      const text = await askMind(mind, messages, mind === "ollama" ? data.endpoint : "");
       if (text) return { ok: true as const, text: text.slice(0, 6000), mind };
     }
     return { ok: false as const, text: "", mind: data.mind };
@@ -144,19 +146,11 @@ async function askGrok2Api(messages: { role: string; content: string }[]) {
   }
 }
 
-async function askMind(mind: string, messages: { role: string; content: string }[]) {
+async function askMind(mind: string, messages: { role: string; content: string }[], endpoint = "") {
   try {
     if (mind === "ollama") {
-      const host = (process.env.OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
-      const res = await fetch(`${host}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: process.env.OLLAMA_MODEL || "llama3.2", stream: false, messages }),
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) return "";
-      const body = (await res.json()) as { message?: { content?: string } };
-      return body.message?.content || "";
+      const saved = endpoint || await savedOllama();
+      return await chatOllama(messages, saved);
     }
     if (mind === "nvidia") {
       const key = process.env.NVIDIA_API_KEY || process.env.NVAPI_KEY || "";

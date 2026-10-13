@@ -213,7 +213,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
         return null;
       }
       const packed = [facts(data, text), skillBrief(), matchedSkill(text), tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
-      return import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: text, facts: packed, mind, name: agent } })).then((result) => ({ result, tool }));
+      return import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: text, facts: packed, mind, name: agent, endpoint: data.keys.find((row) => row.name === "Ollama (local)")?.value || "" } })).then((result) => ({ result, tool }));
     }).then((payload) => {
       if (!payload) return;
       const { result, tool } = payload;
@@ -263,7 +263,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
       return;
     }
     if (mode === "writer") {
-      void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: `Write this as a finished note:\n${text}`, facts: facts(data, text), mind, name: agent } })).then((result) => {
+      void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: `Write this as a finished note:\n${text}`, facts: facts(data, text), mind, name: agent, endpoint: data.keys.find((row) => row.name === "Ollama (local)")?.value || "" } })).then((result) => {
         const body = result.ok && result.text ? result.text : text;
         update((prev) => ({ ...prev, notes: [{ id: newId(), title: text.slice(0, 80), body }, ...prev.notes] }));
         setStatus("Draft saved to notes");

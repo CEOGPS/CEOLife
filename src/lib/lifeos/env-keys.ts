@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { sessionMiddleware } from "./session-middleware";
 import { SERVICE_ENV } from "./sheet-keys";
+import { probeOllama } from "./ollama";
 
 export { sheetKeys } from "./sheet-keys";
 
@@ -337,6 +338,10 @@ export async function runProbe(data: { name: string; key: string; email: string 
     const aliases: Record<string, string> = { "Grok (xAI)": "xAI", "NVIDIA NIM": "NVIDIA" };
     data = { ...data, name: aliases[data.name] || data.name };
     let key = cleanKey(data.key);
+    if (data.name === "Ollama (local)") {
+      const result = await probeOllama(key);
+      return { ok: result.ok as boolean, checked: true as const, text: result.text, host: result.base };
+    }
     const cloudflareName = data.name === "Cloudflare" || data.name === "Cloudflare Token" || data.name === "Cloudflare Account";
     if (!key && !cloudflareName) return { ok: false as const, checked: false as const, text: "No key is saved for this service." };
     const auth = { Authorization: `Bearer ${key}` };
@@ -428,7 +433,6 @@ export async function runProbe(data: { name: string; key: string; email: string 
       if (data.name === "Slack") return readBody(await timed(fetch("https://slack.com/api/auth.test", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "X") return readBody(await timed(fetch("https://api.x.com/2/users/me", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "Jotform") return readBody(await timed(fetch(`https://api.jotform.com/user?apiKey=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) })));
-      if (data.name === "Ollama (local)") return readBody(await timed(fetch("https://ollama.com/api/tags", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "Qwen") return readBody(await timed(fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "Runwav") return readBody(await timed(fetch("https://api.dev.runwayml.com/v1/tasks?pageSize=1", { headers: { ...auth, "X-Runway-Version": "2024-11-06" }, signal: AbortSignal.timeout(8000) })));
       const openGet: Record<string, { host: string; url: string; text: string }> = {
