@@ -99,8 +99,20 @@ async function getJson(url: string, key: string, ms: number) {
   });
   const raw = await response.text();
   let body: unknown = {};
-  try { body = raw ? JSON.parse(raw.slice(0, 12000)) : {}; } catch { body = {}; }
+  try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
   return { ok: response.ok, status: response.status, body };
+}
+
+function replyText(body: unknown) {
+  const message = (body as { choices?: { message?: { content?: unknown; reasoning?: unknown } }[] })?.choices?.[0]?.message;
+  if (!message) return "";
+  if (typeof message.content === "string" && message.content.trim()) return message.content;
+  if (Array.isArray(message.content)) {
+    const joined = message.content.map((part) => (part && typeof part === "object" && "text" in part ? String((part as { text?: string }).text || "") : "")).join("");
+    if (joined.trim()) return joined;
+  }
+  if (typeof message.reasoning === "string" && message.reasoning.trim()) return message.reasoning;
+  return "";
 }
 
 function modelIds(body: unknown) {
@@ -131,10 +143,23 @@ export async function probeProvider(id: ProviderId, key: string) {
     if (id === "huggingface") {
       const who = hit.body as { name?: string; fullname?: string };
       const user = who.name || who.fullname || "token accepted";
-      const router = await getJson("https://router.huggingface.co/v1/models", secret, 8000);
-      if (!router.ok) return { ok: false as const, checked: true as const, text: `Token is ${user}, but the inference router refused it. ${messageOf(router.body, router.status)}` };
-      const ids = modelIds(router.body);
-      return { ok: true as const, checked: true as const, text: `Connected · ${user}${ids.length ? ` · ${shown(ids)}` : " · router accepted"}` };
+      return { ok: true as const, checked: true as const, text: `Connected · ${user}` };
+    }
+    if (id === "openai") {
+      const ids = modelIds(hit.body);
+      const model = ids.includes("gpt-4o-mini") ? "gpt-4o-mini" : (ids.find((name) => name.startsWith("gpt-")) || FALLBACK.openai);
+      const spoken = await fetch(CHAT.openai, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ model, messages: [{ role: "user", content: "Reply with the single word PONG" }], max_tokens: 16, temperature: 0 }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const raw = await spoken.text();
+      let body: unknown = {};
+      try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
+      if (!spoken.ok) return { ok: false as const, checked: true as const, text: messageOf(body, spoken.status) };
+      if (!replyText(body).trim()) return { ok: false as const, checked: true as const, text: "OpenAI accepted the key but returned an empty reply." };
+      return { ok: true as const, checked: true as const, text: `Connected · ${ids.length || "live"} models · ${shown(ids)}` };
     }
     const ids = modelIds(hit.body);
     if (!ids.length) return { ok: false as const, checked: true as const, text: "The key was accepted, but no models were returned." };
@@ -163,14 +188,14 @@ export async function chatProvider(id: ProviderId, messages: { role: string; con
     const response = await fetch(CHAT[id], {
       method: "POST",
       headers,
-      body: JSON.stringify({ model: picked, messages, max_tokens: 600, temperature: 0.3 }),
+      body: JSON.stringify({ model: picked, messages, max_tokens: id === "nvidia" ? 1200 : 600, temperature: 0.3 }),
       signal: AbortSignal.timeout(45000),
     });
     const raw = await response.text();
     let body: unknown = {};
-    try { body = raw ? JSON.parse(raw.slice(0, 20000)) : {}; } catch { body = {}; }
+    try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
     if (!response.ok) return { text: "", error: messageOf(body, response.status) };
-    const text = (body as { choices?: { message?: { content?: string } }[] }).choices?.[0]?.message?.content || "";
+    const text = replyText(body);
     if (!text.trim()) return { text: "", error: `${NAMES[id][0]} returned an empty reply.` };
     return { text, error: "" };
   } catch (error) {
