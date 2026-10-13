@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { credentials, missingCredentials, oauthProviders, redirectUriFor } from "@/lib/integrations/oauth-providers.server";
 import { resolveOwner, sessionOwner } from "@/lib/integrations/owner.server";
+import { publicOrigin } from "@/lib/integrations/public-origin.server";
 import { listConnections } from "@/lib/integrations/store.server";
 
 /**
@@ -13,8 +14,7 @@ export const Route = createFileRoute("/api/integrations/status")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const origin = new URL(request.url).origin;
-        const redirectUri = redirectUriFor(origin);
+        const redirectUri = redirectUriFor(publicOrigin(request));
         const signedIn = Boolean(await sessionOwner());
         const owner = await resolveOwner();
         if (!owner) {

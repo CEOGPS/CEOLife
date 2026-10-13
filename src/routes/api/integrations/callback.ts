@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { credentials, exchangeCode, identify, oauthProvider, redirectUriFor } from "@/lib/integrations/oauth-providers.server";
+import { publicOrigin } from "@/lib/integrations/public-origin.server";
 import { saveConnection, takeState } from "@/lib/integrations/store.server";
 
 /**
@@ -46,7 +47,9 @@ export const Route = createFileRoute("/api/integrations/callback")({
     handlers: {
       GET: async ({ request }) => {
         const requestUrl = new URL(request.url);
-        const origin = requestUrl.origin;
+        // Where the browser really is, so the window it is redirected back to is
+        // the public one (see public-origin.server.ts).
+        const origin = publicOrigin(request);
         const state = requestUrl.searchParams.get("state") || "";
         const attempt = await takeState(state);
         if (!attempt) {

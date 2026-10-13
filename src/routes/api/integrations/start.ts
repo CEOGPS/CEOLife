@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authorizeUrl, credentials, missingCredentials, oauthProvider, redirectUriFor } from "@/lib/integrations/oauth-providers.server";
 import { resolveOwner } from "@/lib/integrations/owner.server";
+import { publicOrigin } from "@/lib/integrations/public-origin.server";
 import { saveState } from "@/lib/integrations/store.server";
 
 /**
@@ -42,7 +43,9 @@ export const Route = createFileRoute("/api/integrations/start")({
     handlers: {
       GET: async ({ request }) => {
         const requestUrl = new URL(request.url);
-        const origin = requestUrl.origin;
+        // The public origin, not the inbound one — the callback must match the
+        // URL registered with the provider (see public-origin.server.ts).
+        const origin = publicOrigin(request);
         const returnTo = safeReturn(requestUrl.searchParams.get("return"));
         const providerId = (requestUrl.searchParams.get("provider") || "").trim().toLowerCase();
         const sid = (requestUrl.searchParams.get("sid") || "").slice(0, 80);

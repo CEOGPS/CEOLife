@@ -15,10 +15,21 @@ services:
     volumes:
       - ./:/app
       - web_node_modules:/app/node_modules
+    env_file:
+      # Platform-delivered secrets (an absolute path outside the repo, never in
+      # git). `required: false` keeps a plain local `docker compose up` working
+      # when the platform has not written the file.
+      - path: /run/base44/app.env
+        required: false
     environment:
       # Sandbox-only passthroughs (see AGENTS.md). `npm run dev` binds
       # 0.0.0.0:8080; host port 3000 is mapped to it below.
       - BASE44_PREVIEW_MODE
+      # Public host suffix of the preview proxy. The proxy forwards no
+      # `x-forwarded-*` headers, so OAuth callback URLs are rebuilt from this in
+      # the sandbox (see src/lib/integrations/public-origin.server.ts). Ignored
+      # unless BASE44_PREVIEW_MODE is exactly "1".
+      - BASE44_PUBLIC_HOST_SUFFIX
       # Vite >= 6.1 appends this to `server.allowedHosts`, which is what lets the
       # preview proxy's Host header (<port>-<sandbox id>.e2b.app) through.
       - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
