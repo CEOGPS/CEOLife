@@ -349,3 +349,47 @@ auth/db: OFF by default — sign-in, @/lib/db or migrations ONLY on an accounts 
 never:   build an app for a greeting/number/question; invent imagine_* calls;
          ask the user to run commands; delete or abandon /workspace/startup.sh
 ```
+
+---
+
+## Base44 dev environment (this checkout)
+
+Everything above describes the **original Grok sandbox** (`/workspace`, `0.0.0.0:8080`,
+`startup.sh`). This repository is now imported into **Base44's** sandbox, where the
+repo root is `/app`, the preview is served from **host port 3000**, and the runbook
+is `docker-compose.base44.yml` — the `/workspace` paths and `startup.sh` above do
+not apply here.
+
+- **Run it:** `docker compose -f docker-compose.base44.yml up -d` (host `3000` →
+  Vite dev server on `8080`, run via `npm run dev`, so the preview always serves
+  **live source**, never a prebuilt bundle). Dependencies install on startup with
+  `npm ci` into the `web_node_modules` volume; rebuild the volume by removing it
+  if the lockfile changes drastically. Logs: `docker compose -f ... logs -f web`.
+- **No external credentials are needed to boot.** With no `DATABASE_URL`,
+  `src/lib/db.ts` falls back to an embedded **in-memory PGLite** and applies
+  `migrations/*.sql` at startup, and Better Auth falls back to its baked preview
+  secret. Consequence: restarting the `web` service wipes all data — that is the
+  expected reset. The Better Auth "low-entropy secret" warnings in the logs are
+  this documented preview fallback, not a misconfiguration.
+- **Sandbox-only compose passthroughs** (set by the platform, referenced bare in
+  compose so nothing is hardcoded): `BASE44_PREVIEW_MODE` (unused by the app
+  today) and `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` (appended by Vite ≥ 6.1 to
+  `server.allowedHosts`, which is what lets the preview proxy's Host header
+  through). With either unset the app behaves exactly as upstream.
+- **Sign-in cannot complete in this sandbox**: preview OAuth federates to the
+  Grok broker, whose client only accepts `*.grok-sandbox.com` callbacks
+  (`src/lib/auth/preview.ts`). The dashboard itself is not auth-gated and
+  `requireUserId` is only used by the Supabase-backed key/OAuth routes, so the UI
+  renders and works signed-out. Sign-in needs the app's own real provider
+  credentials to be exercised.
+- **Fix applied en route:** `src/lib/lifeos/board.ts` had stub strings with `\0`
+  immediately followed by a digit (`"a1\0Bank\04200…"`), which parses as a
+  deprecated octal escape and failed the whole build with `PARSE_ERROR`; the
+  separators are now `\u0000`. Keep that form when adding rows to those stub sets.
+- **Verify:** `curl -s http://localhost:3000/` returns SSR HTML referencing
+  `/src/styles.css` (live source). The compose healthcheck fetches `/` with Node's
+  built-in `fetch` (the slim image has no curl). `npm run typecheck` /
+  `npm run test` run inside the service:
+  `docker compose -f docker-compose.base44.yml exec web npm run typecheck`.
+- **Deploy config is untouched:** `vercel.json` (site) and `wrangler.toml`
+  (Cloudflare worker) as the README.txt describes.
