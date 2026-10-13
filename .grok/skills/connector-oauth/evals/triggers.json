@@ -1,0 +1,11 @@
+{
+  "skill": "connector-oauth",
+  "test_cases": [
+    {"input": "Connect Spotify on the integrations desk", "should_trigger": true},
+    {"input": "Google OAuth callback says the token was not stored", "should_trigger": true},
+    {"input": "Disconnect Facebook for this user", "should_trigger": true},
+    {"input": "Refresh the Discord access token", "should_trigger": true},
+    {"input": "Change the dashboard accent color", "should_trigger": false},
+    {"input": "Add a journal entry", "should_trigger": false}
+  ]
+}

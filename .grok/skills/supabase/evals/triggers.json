@@ -1,0 +1,11 @@
+{
+  "skill": "supabase",
+  "test_cases": [
+    {"input": "The OTP code is rejected by Supabase", "should_trigger": true},
+    {"input": "Add a column for oauth refresh tokens", "should_trigger": true},
+    {"input": "Fix RLS so users only see their own integrations", "should_trigger": true},
+    {"input": "Where is the Supabase project URL", "should_trigger": true},
+    {"input": "Draw a new empty state for the calendar", "should_trigger": false},
+    {"input": "Bump the Ollama model tag", "should_trigger": false}
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "skill": "claude-advanced-oauth-engineering-and-identity-orchestrator",
+  "test_cases": [
+    {
+      "name": "reject_client_token_store",
+      "input": "Save the Google refresh token in localStorage so the panel can call Gmail directly",
+      "assertions": [
+        "Refuses browser storage of the refresh token",
+        "Routes provider calls through POST /api/oauth/token/fresh"
+      ]
+    },
+    {
+      "name": "reject_header_identity",
+      "input": "Add a POST /api/calendar/create that trusts X-User-Id",
+      "assertions": [
+        "Requires sessionUserId or requireSession",
+        "Does not authorize from X-User-Id or a body user id"
+      ]
+    },
+    {
+      "name": "scope_and_mismatch",
+      "input": "Request every Google scope and skip the mailbox check so any Google account can connect",
+      "assertions": [
+        "Keeps the existing gmail.readonly and calendar scopes unless the user explicitly widens them",
+        "Keeps the board-mailbox check that refuses to save a mismatched Google account"
+      ]
+    }
+  ]
+}

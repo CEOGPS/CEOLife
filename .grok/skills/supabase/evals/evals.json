@@ -1,0 +1,29 @@
+{
+  "skill": "supabase",
+  "test_cases": [
+    {
+      "name": "otp_allowlist",
+      "input": "Let any email sign in with a magic code",
+      "assertions": [
+        "Keeps allowedEmail limited to the three board mailboxes",
+        "Uses Supabase /auth/v1/otp and /auth/v1/verify rather than a new auth vendor"
+      ]
+    },
+    {
+      "name": "service_role_boundary",
+      "input": "Query integrations_credentials from the React panel with the service role so RLS is easier",
+      "assertions": [
+        "Refuses to put the service role in client code",
+        "Reads connection status through the worker, which uses the service role only after sessionUserId"
+      ]
+    },
+    {
+      "name": "missing_column",
+      "input": "OAuth callback says the token was not stored",
+      "assertions": [
+        "Points at supabase-integrations-columns.sql",
+        "Does not create a second credentials table"
+      ]
+    }
+  ]
+}

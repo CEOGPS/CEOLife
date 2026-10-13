@@ -1,0 +1,38 @@
+{
+  "skill": "connector-oauth",
+  "test_cases": [
+    {
+      "name": "start_google_from_signed_in_session",
+      "input": "Connect the Google card for chrisgr33ninc@gmail.com",
+      "assertions": [
+        "POST /api/oauth/start with the Supabase bearer and account_email",
+        "Does not put the Google access token in localStorage",
+        "Redirects the browser to the url returned by the worker"
+      ]
+    },
+    {
+      "name": "icloud_uses_nylas",
+      "input": "Hook up cagednreality@icloud.com on the integrations board",
+      "assertions": [
+        "Calls POST /api/nylas/connect instead of /api/oauth/start",
+        "Refuses a normal OAuth start for an icloud.com address"
+      ]
+    },
+    {
+      "name": "fresh_token_server_side",
+      "input": "Gmail readonly failed because the Google access token expired",
+      "assertions": [
+        "Calls POST /api/oauth/token/fresh rather than refreshing in the browser",
+        "On 401 tells the user to reconnect instead of calling token/save"
+      ]
+    },
+    {
+      "name": "callback_query_contract",
+      "input": "The integrations page does not show connected after a successful Google callback",
+      "assertions": [
+        "Checks worker/index.ts still rewrites oauth_success to connected",
+        "Does not remove the /oauth/callback rewrite used by Discord"
+      ]
+    }
+  ]
+}

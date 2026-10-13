@@ -1,0 +1,11 @@
+{
+  "skill": "claude-advanced-oauth-engineering-and-identity-orchestrator",
+  "test_cases": [
+    {"input": "Review this OAuth change before I deploy the worker", "should_trigger": true},
+    {"input": "Is it safe to put the provider refresh token in the browser", "should_trigger": true},
+    {"input": "Design login for a new connector", "should_trigger": true},
+    {"input": "Who is the user on this worker route", "should_trigger": true},
+    {"input": "Rename the sidebar label", "should_trigger": false},
+    {"input": "Write a SQL report of last month revenue", "should_trigger": false}
+  ]
+}
