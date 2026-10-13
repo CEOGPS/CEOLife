@@ -463,7 +463,7 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
     const state = marks[name]?.state;
     if (state === "error") return "Failed — check again";
     if (state === "connected") return "Connected";
-    if (state === "saved") return "Saved";
+    if (state === "saved") return "Not checked";
     return "Check";
   }
 
@@ -489,7 +489,7 @@ export function IntegrationsDesk({ data, update, accounts, setAccounts, note, se
     const text = !mark || useless ? fallback.text : mark.text;
     const tone = state === "connected" ? "text-[#34d399]" : state === "error" ? "text-[#fb7185]" : "text-white/55";
     const dot = state === "connected" ? "bg-[#34d399] shadow-[0_0_8px_#34d399]" : state === "error" ? "bg-[#fb7185] shadow-[0_0_8px_#fb7185]" : "bg-white/30";
-    const label = state === "connected" ? "Connected" : state === "error" ? "Error" : state === "saved" ? "Saved" : "Not connected";
+    const label = state === "connected" ? "Connected" : state === "error" ? "Error" : "Not checked";
     return (
       <p className={`mt-2 inline-flex max-w-full items-start gap-2 rounded-full border border-white/15 px-3 py-1 text-sm ${tone}`}>
         <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />

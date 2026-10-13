@@ -742,12 +742,8 @@ function Contacts({ kind, data, update }: { kind: "personal" | "crm"; data: Memo
           </select>
           <button type="button" className="quiet" onClick={() => {
             const headers = ["first_name", "last_name", "company", "job_title", "email", "email_2", "phone", "phone_2", "address", "city", "state", "zip", "birthday", "avatar", "website", "linkedin", "socials", "notes"];
-            const sample = ["Jane", "Doe", "Acme", "Owner", "jane@acme.com", "", "14045551212", "", "1 Main St", "Atlanta", "GA", "30301", "01/15/1990", "", "https://acme.com", "", "Instagram: @jane", "Met at the shop"];
-            if (kind === "crm") {
-              headers.push("stage", "deal", "source", "tag");
-              sample.push("New", "1000", "Referral", "Hot");
-            }
-            const csv = `${headers.join(",")}\n${sample.join(",")}\n`;
+            if (kind === "crm") headers.push("stage", "deal", "source", "tag");
+            const csv = `${headers.join(",")}\n`;
             const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
             const link = document.createElement("a");
             link.href = url;

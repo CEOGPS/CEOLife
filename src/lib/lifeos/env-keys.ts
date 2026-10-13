@@ -459,7 +459,7 @@ export async function runProbe(data: { name: string; key: string; email: string 
         if (!response.ok) return { ok: false as const, checked: true as const, text: `VS Code marketplace refused the public API (HTTP ${response.status}).` };
         return { ok: true as const, checked: true as const, text: "VS Code marketplace public API answered. This is not your editor account." };
       }
-      return { ok: true as const, checked: false as const, text: "Saved. This service has no public check." };
+      return { ok: false as const, checked: false as const, text: "Not checked." };
     } catch (error) {
       return { ok: false as const, checked: true as const, text: error instanceof Error ? error.message : "The service did not answer." };
     }

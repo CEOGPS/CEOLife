@@ -147,22 +147,13 @@ export function seed(): Memory {
     contacts: [],
     journal: [],
     mail: [],
-    thread: [
-      {
-        id: "hello",
-        who: "Nyx",
-        text: "I'm here. Ask about the board. I will only use what is saved on it.",
-        mine: false,
-      },
-    ],
+    thread: [],
     projects: [],
     vault: [],
     legal: [],
     media: [],
     songs: [],
-    ideas: [
-      { id: "idea-1", title: "Local listing photos", note: "", approved: false, status: "new", source: "Manual", effort: "low", email: "", funding: "", log: "Offer a same-week photo pack to businesses already in Leads." },
-    ],
+    ideas: [],
     deals: [],
     keys: [],
     facts: [],
@@ -313,6 +304,7 @@ export function sanitizeMemory(input: unknown): Memory {
     thread: list(raw.thread, (row) => {
       if (!row || typeof row !== "object") return null;
       const r = row as ChatLine;
+      if (r.id === "hello" && r.text === "I'm here. Ask about the board. I will only use what is saved on it.") return null;
       return {
         id: String(r.id || id()).slice(0, 40),
         who: String(r.who || "Nyx").slice(0, 40),
@@ -347,6 +339,7 @@ export function sanitizeMemory(input: unknown): Memory {
     ideas: list(raw.ideas, (row) => {
       if (!row || typeof row !== "object") return null;
       const r = row as Idea;
+      if (r.id === "idea-1" && r.title === "Local listing photos" && r.log === "Offer a same-week photo pack to businesses already in Leads.") return null;
       return {
         id: String(r.id || id()).slice(0, 40),
         title: String(r.title || "").slice(0, 160),
@@ -458,8 +451,7 @@ function readVault(): Entry[] {
 const SEED_IDS = new Set(["hello", "idea-1", "lead-nextdoor", "lead-group", "n1", "n2", "j1", "j2", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "p1", "p2", "e1", "e2", "s1", "s2", "m1", "m2"]);
 
 function unionById<T extends { id: string }>(local: T[], remote: T[]) {
-  const remoteIds = new Set(remote.map((row) => row.id));
-  const kept = remote.length ? local.filter((row) => !SEED_IDS.has(row.id) || remoteIds.has(row.id)) : local;
+  const kept = local.filter((row) => !SEED_IDS.has(row.id));
   const map = new Map<string, T>();
   for (const row of remote) map.set(row.id, row);
   for (const row of kept) map.set(row.id, row);
@@ -501,8 +493,8 @@ function absorb(base: Memory, raw: unknown) {
     stats: unionById(base.stats, incoming.stats),
     groups: unionById(base.groups, incoming.groups),
     query: base.query || incoming.query,
-    fico: base.fico === 712 && incoming.fico !== 712 ? incoming.fico : base.fico,
-    vantage: base.vantage === 698 && incoming.vantage !== 698 ? incoming.vantage : base.vantage,
+    fico: base.fico || incoming.fico,
+    vantage: base.vantage || incoming.vantage,
     emailHub: {
       accounts: unionById(base.emailHub.accounts, incoming.emailHub.accounts),
       lists: unionById(base.emailHub.lists, incoming.emailHub.lists),
@@ -796,6 +788,7 @@ export async function hydrateMemory() {
     statusText = "Saved on this browser";
   }
   hydrated = true;
+  if (statusText === "Synced") schedulePush();
   emit();
 }
 

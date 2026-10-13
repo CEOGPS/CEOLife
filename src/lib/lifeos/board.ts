@@ -36,48 +36,19 @@ export const emptyBoard = (): Board => ({
   banner: "",
   notes: [],
   tasks: [],
-  leads: [
-    { id: "lead-nextdoor", name: "Neighborhood intro ask", source: "Nextdoor", status: "New" },
-    { id: "lead-group", name: "Local group recommendation", source: "Facebook Groups", status: "Warm" },
-  ],
-  notifs: [
-    { id: "n1", text: "Two warm leads have no next step.", source: "Leads", seen: false },
-    { id: "n2", text: "Phone bill is still unpaid this cycle.", source: "Budget", seen: false },
-  ],
-  jobs: [
-    { id: "j1", agent: "Erebus", task: "Read the board each morning", active: true },
-    { id: "j2", agent: "Kranos", task: "Queue the unpaid bills", active: false },
-  ],
-  accounts: [
-    { id: "a1", name: "Bank", balance: 4200, prior: 3900 },
-    { id: "a2", name: "Stripe", balance: 860, prior: 640 },
-    { id: "a3", name: "Cards", balance: -1200, prior: -1480 },
-    { id: "a4", name: "Cash App", balance: 140, prior: 90 },
-    { id: "a5", name: "Venmo", balance: 75, prior: 60 },
-    { id: "a6", name: "OnePay", balance: 310, prior: 300 },
-    { id: "a7", name: "Credit Karma", balance: 0, prior: 0 },
-  ],
-  products: [
-    { id: "p1", name: "Listings", cost: 200, revenue: 900 },
-    { id: "p2", name: "Retainers", cost: 400, revenue: 1800 },
-  ],
-  fico: 712,
-  vantage: 698,
-  expenses: [
-    { id: "e1", name: "Rent", amount: 1450, paid: true, fixed: true },
-    { id: "e2", name: "Phone", amount: 85, paid: false, fixed: true },
-  ],
+  leads: [],
+  notifs: [],
+  jobs: [],
+  accounts: [],
+  products: [],
+  fico: 0,
+  vantage: 0,
+  expenses: [],
   events: [],
   links: [],
   tracks: [],
-  social: [
-    { id: "s1", label: "Followers", points: [120, 128, 131, 140, 138, 150, 156] },
-    { id: "s2", label: "Reach", points: [800, 640, 910, 1000, 870, 1200, 1100] },
-  ],
-  marketing: [
-    { id: "m1", label: "Site visits", points: [40, 55, 48, 70, 66, 80, 74] },
-    { id: "m2", label: "Leads", points: [2, 1, 3, 2, 4, 3, 5] },
-  ],
+  social: [],
+  marketing: [],
 });
 
 function arr<T>(value: unknown, map: (row: unknown) => T | null, max = 80): T[] {
@@ -95,10 +66,30 @@ function num(value: unknown, min: number, max: number, fallback: number) {
   return Math.max(min, Math.min(max, Math.round(n)));
 }
 
+function score(value: unknown) {
+  if (value === undefined || value === null || value === "") return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 300 || n > 850) return 0;
+  return Math.round(n);
+}
+
+const STUB_LEADS = new Set(["lead-nextdoor\0Neighborhood intro ask\0Nextdoor\0New", "lead-group\0Local group recommendation\0Facebook Groups\0Warm"]);
+const STUB_NOTIFS = new Set(["n1\0Two warm leads have no next step.\0Leads", "n2\0Phone bill is still unpaid this cycle.\0Budget"]);
+const STUB_JOBS = new Set(["j1\0Erebus\0Read the board each morning\01", "j2\0Kranos\0Queue the unpaid bills\00"]);
+const STUB_ACCOUNTS = new Set(["a1\0Bank\04200\03900", "a2\0Stripe\0860\0640", "a3\0Cards\0-1200\0-1480", "a4\0Cash App\0140\090", "a5\0Venmo\075\060", "a6\0OnePay\0310\0300", "a7\0Credit Karma\00\00"]);
+const STUB_PRODUCTS = new Set(["p1\0Listings\0200\0900", "p2\0Retainers\0400\01800"]);
+const STUB_EXPENSES = new Set(["e1\0Rent\01450\01\01", "e2\0Phone\085\00\01"]);
+const STUB_SERIES = new Set([
+  "s1\0Followers\0120,128,131,140,138,150,156",
+  "s2\0Reach\0800,640,910,1000,870,1200,1100",
+  "m1\0Site visits\040,55,48,70,66,80,74",
+  "m2\0Leads\02,1,3,2,4,3,5",
+]);
+
 export function sanitizeBoard(input: unknown): Board {
   const base = emptyBoard();
   const raw = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
-  return {
+  const board: Board = {
     logo: text(raw.logo, 500_000),
     banner: text(raw.banner, 500_000),
     notes: arr(raw.notes, (row) => {
@@ -160,8 +151,8 @@ export function sanitizeBoard(input: unknown): Board {
         revenue: num(r.revenue, 0, 10_000_000, 0),
       };
     }),
-    fico: num(raw.fico, 300, 850, base.fico),
-    vantage: num(raw.vantage, 300, 850, base.vantage),
+    fico: score(raw.fico),
+    vantage: score(raw.vantage),
     expenses: arr(raw.expenses, (row) => {
       if (!row || typeof row !== "object") return null;
       const r = row as Expense;
@@ -218,9 +209,20 @@ export function sanitizeBoard(input: unknown): Board {
         art: text(r.art, 400),
       };
     }, 400),
-    social: series(raw.social, base.social),
-    marketing: series(raw.marketing, base.marketing),
+    social: series(raw.social, base.social).filter((row) => !STUB_SERIES.has(`${row.id}\0${row.label}\0${row.points.join(",")}`)),
+    marketing: series(raw.marketing, base.marketing).filter((row) => !STUB_SERIES.has(`${row.id}\0${row.label}\0${row.points.join(",")}`)),
   };
+  board.leads = board.leads.filter((row) => !STUB_LEADS.has(`${row.id}\0${row.name}\0${row.source}\0${row.status}`));
+  board.notifs = board.notifs.filter((row) => !STUB_NOTIFS.has(`${row.id}\0${row.text}\0${row.source}`));
+  board.jobs = board.jobs.filter((row) => !STUB_JOBS.has(`${row.id}\0${row.agent}\0${row.task}\0${row.active ? 1 : 0}`));
+  board.accounts = board.accounts.filter((row) => !STUB_ACCOUNTS.has(`${row.id}\0${row.name}\0${row.balance}\0${row.prior}`));
+  board.products = board.products.filter((row) => !STUB_PRODUCTS.has(`${row.id}\0${row.name}\0${row.cost}\0${row.revenue}`));
+  board.expenses = board.expenses.filter((row) => !STUB_EXPENSES.has(`${row.id}\0${row.name}\0${row.amount}\0${row.paid ? 1 : 0}\0${row.fixed ? 1 : 0}`));
+  if (board.fico === 712 && board.vantage === 698 && board.accounts.length === 0) {
+    board.fico = 0;
+    board.vantage = 0;
+  }
+  return board;
 }
 
 function series(value: unknown, fallback: Series[]): Series[] {
@@ -234,10 +236,11 @@ function series(value: unknown, fallback: Series[]): Series[] {
   return rows.length ? rows.slice(0, 4) : fallback;
 }
 
-export function band(score: number) {
-  if (score < 580) return "Poor";
-  if (score < 670) return "Fair";
-  if (score < 740) return "Good";
+export function band(value: number) {
+  if (value < 300) return "No score";
+  if (value < 580) return "Poor";
+  if (value < 670) return "Fair";
+  if (value < 740) return "Good";
   return "Great";
 }
 
@@ -247,8 +250,8 @@ export function moneyTips(board: Board) {
   const tips = [];
   if (unpaid.length) tips.push(`Pay ${unpaid.map((row) => row.name).join(", ")} before adding new spend.`);
   if (debt.length) tips.push(`${debt[0].name} is negative. Extra cash should hit that before savings.`);
-  if (board.fico < 740) tips.push("Keep card use under 30% of the limit to move the FICO band.");
-  if (!tips.length) tips.push("Balances are ahead of last quarter. Leave the surplus parked, not spent.");
+  if (board.fico >= 300 && board.fico < 740) tips.push("Keep card use under 30% of the limit to move the FICO band.");
+  if (!tips.length) tips.push(board.accounts.length ? "No unpaid bill or negative account is on the board." : "No accounts or bills are saved yet.");
   return tips.slice(0, 3);
 }
 
@@ -256,10 +259,11 @@ export function insights(board: Board) {
   const open = board.tasks.filter((row) => !row.done).length;
   const warm = board.leads.filter((row) => row.status !== "Closed").length;
   const net = board.accounts.reduce((sum, row) => sum + row.balance, 0);
+  const accounts = board.accounts.length;
   return [
-    `${open} open tasks and ${warm} open leads. Close one lead before adding another task.`,
-    `Net across the seven accounts is $${net.toLocaleString()}.`,
-    board.notes.length ? `Newest note: ${board.notes[0].title || "Untitled"}.` : "No notes yet. A note gives Erebus something personal to use.",
+    `${open} open tasks and ${warm} open leads.`,
+    accounts ? `Net across ${accounts} account${accounts === 1 ? "" : "s"} is $${net.toLocaleString()}.` : "No accounts are saved yet.",
+    board.notes.length ? `Newest note: ${board.notes[0].title || "Untitled"}.` : "No notes yet.",
   ];
 }
 
