@@ -206,7 +206,9 @@ export function ProviderCard({
               <p className="text-[11px] uppercase tracking-[0.12em] text-white/35">Provider setup</p>
               {provider.scopes ? <p className="font-mono text-[11px] leading-5 text-white/45">{provider.scopes}</p> : <p className="text-[11px] text-white/45">No scopes are requested for this provider.</p>}
               <div className="flex flex-wrap items-center gap-2">
-                <code className="max-w-full truncate rounded-full border border-line bg-black/40 px-3 py-1 text-[11px] text-white/60">{provider.redirectUri}</code>
+                {/* `min-w-0` lets this shrink inside the flex row: a nowrap URL
+                    would otherwise force the whole panel wider than a phone. */}
+                <code className="min-w-0 max-w-full truncate rounded-full border border-line bg-black/40 px-3 py-1 text-[11px] text-white/60">{provider.redirectUri}</code>
                 <button type="button" className="quiet" onClick={copyRedirect}>{copied ? "Copied" : "Copy callback URL"}</button>
                 <a className="quiet" href={provider.docs} target="_blank" rel="noreferrer noopener">Provider console</a>
               </div>
