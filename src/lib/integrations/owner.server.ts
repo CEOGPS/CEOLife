@@ -7,14 +7,28 @@
  * closed instead of sharing one owner across every visitor.
  */
 
+import { getRequest } from "@tanstack/react-start/server";
 import { getSessionUser } from "@/lib/auth/verify.server";
+import { verifyBearer } from "@/lib/lifeos/session-guard.server";
 
 export const LOCAL_OWNER = "local-owner";
 
 export async function sessionOwner(): Promise<string | null> {
   try {
     const user = await getSessionUser();
-    return user?.id || null;
+    if (user?.id) return user.id;
+  } catch {
+    /* Better Auth is not configured for this request */
+  }
+  // The dashboard signs in with the board's Supabase session and sends it as a
+  // bearer. That identity is verified with Supabase, never taken from the body.
+  try {
+    const request = getRequest();
+    const header = request?.headers.get("authorization") || "";
+    const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
+    if (!token) return null;
+    const board = await verifyBearer(token);
+    return board?.id || null;
   } catch {
     return null;
   }

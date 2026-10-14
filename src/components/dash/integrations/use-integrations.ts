@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { sessionAuthHeaders } from "@/lib/lifeos/oauth";
 
 /**
  * Talks to the app's own integration server routes.
@@ -41,6 +42,10 @@ export type IntegrationStatus = {
 const SID_KEY = "lifeos.oauth.sid";
 const POPUP_MS = 180_000;
 
+async function authedHeaders(extra?: Record<string, string>) {
+  return { Accept: "application/json", ...(extra || {}), ...(await sessionAuthHeaders()) };
+}
+
 function tabId() {
   let sid = "";
   try {
@@ -68,7 +73,7 @@ export function useIntegrations() {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/integrations/status", { headers: { Accept: "application/json" }, cache: "no-store" });
+      const response = await fetch("/api/integrations/status", { headers: await authedHeaders(), cache: "no-store" });
       const body = (await response.json().catch(() => ({}))) as IntegrationStatus;
       if (!response.ok || !body.ok) {
         setStatus(null);
@@ -134,20 +139,26 @@ export function useIntegrations() {
   }, []);
 
   const connect = useCallback(
-    (provider: string, returnTo = "/panel/integrations") => {
+    async (provider: string, returnTo = "/panel/integrations") => {
       const sid = tabId();
       const url = `/api/integrations/start?provider=${encodeURIComponent(provider)}&sid=${encodeURIComponent(sid)}&return=${encodeURIComponent(returnTo)}`;
+      const response = await fetch(url, { headers: await authedHeaders(), cache: "no-store" });
+      const body = (await response.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string };
+      if (!response.ok || !body.url) {
+        setMessage(body.error || `Could not start ${provider} (HTTP ${response.status}).`);
+        return;
+      }
       const framed = window.self !== window.top;
       if (framed) {
-        const popup = window.open(url, "lifeos-oauth", "width=540,height=740,noopener=no");
+        const popup = window.open(body.url, "lifeos-oauth", "width=540,height=740,noopener=no");
         if (!popup) {
-          window.location.assign(url);
+          window.location.assign(body.url);
           return;
         }
         watch(provider);
         return;
       }
-      window.location.assign(url);
+      window.location.assign(body.url);
     },
     [watch],
   );
@@ -156,7 +167,7 @@ export function useIntegrations() {
     async (provider: string) => {
       const response = await fetch("/api/integrations/verify", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: await authedHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ provider }),
       });
       const body = (await response.json().catch(() => ({}))) as { ok?: boolean; text?: string };
@@ -171,7 +182,7 @@ export function useIntegrations() {
     async (provider: string) => {
       const response = await fetch("/api/integrations/disconnect", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: await authedHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ provider }),
       });
       const body = (await response.json().catch(() => ({}))) as { ok?: boolean; text?: string };

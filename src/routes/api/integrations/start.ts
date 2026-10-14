@@ -31,7 +31,10 @@ function safeReturn(value: string | null) {
   return path.startsWith("/") && !path.startsWith("//") ? path.slice(0, 200) : "/panel/integrations";
 }
 
-function problem(origin: string, returnTo: string, provider: string, message: string) {
+function problem(origin: string, returnTo: string, provider: string, message: string, asJson: boolean) {
+  if (asJson) {
+    return Response.json({ ok: false, error: message, provider }, { status: 400, headers: { "Cache-Control": "no-store" } });
+  }
   const url = new URL(returnTo, origin);
   url.searchParams.set("oauth_error", message);
   if (provider) url.searchParams.set("oauth_provider", provider);
@@ -46,24 +49,27 @@ export const Route = createFileRoute("/api/integrations/start")({
         // The public origin, not the inbound one — the callback must match the
         // URL registered with the provider (see public-origin.server.ts).
         const origin = publicOrigin(request);
+        const asJson = (request.headers.get("accept") || "").includes("application/json");
         const returnTo = safeReturn(requestUrl.searchParams.get("return"));
         const providerId = (requestUrl.searchParams.get("provider") || "").trim().toLowerCase();
         const sid = (requestUrl.searchParams.get("sid") || "").slice(0, 80);
         const spec = oauthProvider(providerId);
-        if (!spec) return problem(origin, returnTo, providerId, "That service has no authorization flow here.");
+        if (!spec) return problem(origin, returnTo, providerId, "That service has no authorization flow here.", asJson);
         const owner = await resolveOwner();
-        if (!owner) return problem(origin, returnTo, providerId, "Sign in before connecting an integration.");
+        if (!owner) return problem(origin, returnTo, providerId, "Sign in before connecting an integration.", asJson);
         const creds = await credentials(spec);
         const missing = missingCredentials(spec, creds);
         if (missing.length) {
-          return problem(origin, returnTo, providerId, `${spec.name} needs ${missing.join(" and ")} on the server. Add them in Secrets, then reconnect.`);
+          return problem(origin, returnTo, providerId, `${spec.name} needs ${missing.join(" and ")} on the server. Add them in Secrets, then reconnect.`, asJson);
         }
         const state = base64url(randomBytes(24));
         const verifier = spec.pkce ? base64url(randomBytes(32)) : "";
         const redirectUri = redirectUriFor(origin);
         await saveState({ state, ownerId: owner, provider: spec.id, verifier, redirectUri, returnTo, sid, createdAt: new Date().toISOString() });
         const challenge = verifier ? await codeChallenge(verifier) : undefined;
-        return Response.redirect(authorizeUrl(spec, { redirectUri, state, codeChallenge: challenge, clientId: creds.clientId }), 302);
+        const url = authorizeUrl(spec, { redirectUri, state, codeChallenge: challenge, clientId: creds.clientId });
+        if (asJson) return Response.json({ ok: true, url }, { headers: { "Cache-Control": "no-store" } });
+        return Response.redirect(url, 302);
       },
     },
   },

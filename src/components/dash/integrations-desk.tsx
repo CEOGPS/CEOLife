@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { newId, type Memory } from "./memory";
 import { CATALOG, CATEGORY_LABEL, oauthProviderId, type IntegrationCategory } from "@/lib/integrations/catalog";
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
-import { BOARD_EMAILS, confirmSignIn, requestSignIn, sessionToken, signOutSession } from "@/lib/lifeos/oauth";
+import { BOARD_EMAILS, confirmSignIn, pullWorkerLinks, requestSignIn, sessionAuthHeaders, sessionToken, signOutSession } from "@/lib/lifeos/oauth";
 import { ProviderCard, type Mark } from "./integrations/provider-card";
 import { readReturn, sameAttempt, useIntegrations, type Connection } from "./integrations/use-integrations";
 
@@ -65,6 +65,7 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
     if (back.error) setMessage(back.error);
     else if (back.provider && sameAttempt(back.sid)) setMessage(`${back.provider} returned to the app.`);
     void refresh();
+    void pullWorkerLinks().catch(() => undefined);
   }, [refresh, setMessage]);
 
   // Mirror the check results through the cloud copy the board already uses.
@@ -107,7 +108,7 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
     try {
       const response = await fetch("/api/keys/check", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json", ...(await sessionAuthHeaders()) },
         body: JSON.stringify({ name, key, email }),
       });
       const row = (await response.json().catch(() => ({}))) as { ok?: boolean; checked?: boolean; text?: string; reason?: string; error?: string; host?: string };
@@ -146,7 +147,7 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
     try {
       const response = await fetch("/api/keys/account", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json", ...(await sessionAuthHeaders()) },
         body: JSON.stringify({ service, key: values.key || "", secret: values.secret || "", site: values.site || "" }),
       });
       const row = (await response.json().catch(() => ({}))) as { ok?: boolean; text?: string; site?: string };
