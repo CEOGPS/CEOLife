@@ -1,0 +1,52 @@
+# Base44 sandbox dev environment.
+#
+# Runs the app FROM THE CLONED SOURCE on the Vite dev server (no prebuilt bundle),
+# so edits hot-reload into the live preview. The app needs no external service to
+# boot: `src/lib/db.ts` falls back to embedded PGLite (in-memory Postgres) and
+# applies `migrations/*.sql` at startup, and Better Auth falls back to its
+# preview secret. See AGENTS.md ("Base44 dev environment").
+services:
+  web:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    # Install from the lockfile on startup (node_modules lives in a named volume,
+    # so it survives reloads but not a fresh checkout) then exec the dev server.
+    command: ["sh", "-ec", "npm ci --no-audit --no-fund && exec npm run dev"]
+    volumes:
+      - ./:/app
+      - web_node_modules:/app/node_modules
+    env_file:
+      # Platform-delivered secrets (an absolute path outside the repo, never in
+      # git). `required: false` keeps a plain local `docker compose up` working
+      # when the platform has not written the file.
+      - path: /run/base44/app.env
+        required: false
+    environment:
+      # Sandbox-only passthroughs (see AGENTS.md). `npm run dev` binds
+      # 0.0.0.0:8080; host port 3000 is mapped to it below.
+      - BASE44_PREVIEW_MODE
+      # Public host suffix of the preview proxy. The proxy forwards no
+      # `x-forwarded-*` headers, so OAuth callback URLs are rebuilt from this in
+      # the sandbox (see src/lib/integrations/public-origin.server.ts). Ignored
+      # unless BASE44_PREVIEW_MODE is exactly "1".
+      - BASE44_PUBLIC_HOST_SUFFIX
+      # Vite >= 6.1 appends this to `server.allowedHosts`, which is what lets the
+      # preview proxy's Host header (<port>-<sandbox id>.e2b.app) through.
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
+    ports:
+      - "3000:8080"
+    restart: on-failure
+    healthcheck:
+      # Node's built-in fetch — the slim image has no curl/wget.
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8080/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+
+volumes:
+  web_node_modules:

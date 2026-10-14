@@ -1,0 +1,43 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "BETTER_AUTH_SECRET",
+      "description": "Signs Better Auth sessions and encrypts stored OAuth tokens. A development placeholder is generated so the app boots without the low-entropy warning; replace it with `openssl rand -base64 32` for any real deployment (changing it invalidates existing sessions).",
+      "requiredAtBoot": true,
+      "generatedForDevelopment": true
+    },
+    {
+      "name": "GOOGLE_CLIENT_ID",
+      "description": "Google Cloud Console → APIs & Services → Credentials → OAuth client ID (web application). Add the callback URL shown on the Integrations card.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "GOOGLE_CLIENT_SECRET",
+      "description": "Same Google OAuth client as GOOGLE_CLIENT_ID.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "MICROSOFT_CLIENT_ID",
+      "description": "Entra (Azure AD) → App registrations → your app → Application (client) ID.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "MICROSOFT_CLIENT_SECRET",
+      "description": "Entra app registration → Certificates & secrets → client secret value.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "GITHUB_CLIENT_ID",
+      "description": "GitHub → Settings → Developer settings → OAuth Apps → Client ID.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "GITHUB_CLIENT_SECRET",
+      "description": "Same GitHub OAuth App → generate a client secret.",
+      "requiredAtBoot": false
+    }
+  ]
+}

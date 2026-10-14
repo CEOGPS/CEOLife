@@ -73,17 +73,17 @@ function score(value: unknown) {
   return Math.round(n);
 }
 
-const STUB_LEADS = new Set(["lead-nextdoor\0Neighborhood intro ask\0Nextdoor\0New", "lead-group\0Local group recommendation\0Facebook Groups\0Warm"]);
-const STUB_NOTIFS = new Set(["n1\0Two warm leads have no next step.\0Leads", "n2\0Phone bill is still unpaid this cycle.\0Budget"]);
-const STUB_JOBS = new Set(["j1\0Erebus\0Read the board each morning\01", "j2\0Kranos\0Queue the unpaid bills\00"]);
-const STUB_ACCOUNTS = new Set(["a1\0Bank\04200\03900", "a2\0Stripe\0860\0640", "a3\0Cards\0-1200\0-1480", "a4\0Cash App\0140\090", "a5\0Venmo\075\060", "a6\0OnePay\0310\0300", "a7\0Credit Karma\00\00"]);
-const STUB_PRODUCTS = new Set(["p1\0Listings\0200\0900", "p2\0Retainers\0400\01800"]);
-const STUB_EXPENSES = new Set(["e1\0Rent\01450\01\01", "e2\0Phone\085\00\01"]);
+const STUB_LEADS = new Set(["lead-nextdoor\u0000Neighborhood intro ask\u0000Nextdoor\u0000New", "lead-group\u0000Local group recommendation\u0000Facebook Groups\u0000Warm"]);
+const STUB_NOTIFS = new Set(["n1\u0000Two warm leads have no next step.\u0000Leads", "n2\u0000Phone bill is still unpaid this cycle.\u0000Budget"]);
+const STUB_JOBS = new Set(["j1\u0000Erebus\u0000Read the board each morning\u00001", "j2\u0000Kranos\u0000Queue the unpaid bills\u00000"]);
+const STUB_ACCOUNTS = new Set(["a1\u0000Bank\u00004200\u00003900", "a2\u0000Stripe\u0000860\u0000640", "a3\u0000Cards\u0000-1200\u0000-1480", "a4\u0000Cash App\u0000140\u000090", "a5\u0000Venmo\u000075\u000060", "a6\u0000OnePay\u0000310\u0000300", "a7\u0000Credit Karma\u00000\u00000"]);
+const STUB_PRODUCTS = new Set(["p1\u0000Listings\u0000200\u0000900", "p2\u0000Retainers\u0000400\u00001800"]);
+const STUB_EXPENSES = new Set(["e1\u0000Rent\u00001450\u00001\u00001", "e2\u0000Phone\u000085\u00000\u00001"]);
 const STUB_SERIES = new Set([
-  "s1\0Followers\0120,128,131,140,138,150,156",
-  "s2\0Reach\0800,640,910,1000,870,1200,1100",
-  "m1\0Site visits\040,55,48,70,66,80,74",
-  "m2\0Leads\02,1,3,2,4,3,5",
+  "s1\u0000Followers\u0000120,128,131,140,138,150,156",
+  "s2\u0000Reach\u0000800,640,910,1000,870,1200,1100",
+  "m1\u0000Site visits\u000040,55,48,70,66,80,74",
+  "m2\u0000Leads\u00002,1,3,2,4,3,5",
 ]);
 
 export function sanitizeBoard(input: unknown): Board {
@@ -209,15 +209,15 @@ export function sanitizeBoard(input: unknown): Board {
         art: text(r.art, 400),
       };
     }, 400),
-    social: series(raw.social, base.social).filter((row) => !STUB_SERIES.has(`${row.id}\0${row.label}\0${row.points.join(",")}`)),
-    marketing: series(raw.marketing, base.marketing).filter((row) => !STUB_SERIES.has(`${row.id}\0${row.label}\0${row.points.join(",")}`)),
+    social: series(raw.social, base.social).filter((row) => !STUB_SERIES.has(`${row.id}\u0000${row.label}\u0000${row.points.join(",")}`)),
+    marketing: series(raw.marketing, base.marketing).filter((row) => !STUB_SERIES.has(`${row.id}\u0000${row.label}\u0000${row.points.join(",")}`)),
   };
-  board.leads = board.leads.filter((row) => !STUB_LEADS.has(`${row.id}\0${row.name}\0${row.source}\0${row.status}`));
-  board.notifs = board.notifs.filter((row) => !STUB_NOTIFS.has(`${row.id}\0${row.text}\0${row.source}`));
-  board.jobs = board.jobs.filter((row) => !STUB_JOBS.has(`${row.id}\0${row.agent}\0${row.task}\0${row.active ? 1 : 0}`));
-  board.accounts = board.accounts.filter((row) => !STUB_ACCOUNTS.has(`${row.id}\0${row.name}\0${row.balance}\0${row.prior}`));
-  board.products = board.products.filter((row) => !STUB_PRODUCTS.has(`${row.id}\0${row.name}\0${row.cost}\0${row.revenue}`));
-  board.expenses = board.expenses.filter((row) => !STUB_EXPENSES.has(`${row.id}\0${row.name}\0${row.amount}\0${row.paid ? 1 : 0}\0${row.fixed ? 1 : 0}`));
+  board.leads = board.leads.filter((row) => !STUB_LEADS.has(`${row.id}\u0000${row.name}\u0000${row.source}\u0000${row.status}`));
+  board.notifs = board.notifs.filter((row) => !STUB_NOTIFS.has(`${row.id}\u0000${row.text}\u0000${row.source}`));
+  board.jobs = board.jobs.filter((row) => !STUB_JOBS.has(`${row.id}\u0000${row.agent}\u0000${row.task}\u0000${row.active ? 1 : 0}`));
+  board.accounts = board.accounts.filter((row) => !STUB_ACCOUNTS.has(`${row.id}\u0000${row.name}\u0000${row.balance}\u0000${row.prior}`));
+  board.products = board.products.filter((row) => !STUB_PRODUCTS.has(`${row.id}\u0000${row.name}\u0000${row.cost}\u0000${row.revenue}`));
+  board.expenses = board.expenses.filter((row) => !STUB_EXPENSES.has(`${row.id}\u0000${row.name}\u0000${row.amount}\u0000${row.paid ? 1 : 0}\u0000${row.fixed ? 1 : 0}`));
   if (board.fico === 712 && board.vantage === 698 && board.accounts.length === 0) {
     board.fico = 0;
     board.vantage = 0;

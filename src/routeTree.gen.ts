@@ -13,9 +13,15 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PanelSlugRouteImport } from './routes/panel/$slug'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiIntegrationsCallbackRouteImport } from './routes/api/integrations/callback'
+import { Route as ApiIntegrationsDisconnectRouteImport } from './routes/api/integrations/disconnect'
+import { Route as ApiIntegrationsStartRouteImport } from './routes/api/integrations/start'
+import { Route as ApiIntegrationsStatusRouteImport } from './routes/api/integrations/status'
+import { Route as ApiIntegrationsVerifyRouteImport } from './routes/api/integrations/verify'
 import { Route as ApiKeysAccountRouteImport } from './routes/api/keys/account'
 import { Route as ApiKeysCheckRouteImport } from './routes/api/keys/check'
 import { Route as ApiKeysMachineRouteImport } from './routes/api/keys/machine'
+import { Route as ApiOauthExchangeRouteImport } from './routes/api/oauth/exchange'
 import { Route as ApiWebhooksFacebookRouteImport } from './routes/api/webhooks/facebook'
 
 const IndexRoute = IndexRouteImport.update({
@@ -38,6 +44,32 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiIntegrationsCallbackRoute = ApiIntegrationsCallbackRouteImport.update({
+  id: '/api/integrations/callback',
+  path: '/api/integrations/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiIntegrationsDisconnectRoute =
+  ApiIntegrationsDisconnectRouteImport.update({
+    id: '/api/integrations/disconnect',
+    path: '/api/integrations/disconnect',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiIntegrationsStartRoute = ApiIntegrationsStartRouteImport.update({
+  id: '/api/integrations/start',
+  path: '/api/integrations/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiIntegrationsStatusRoute = ApiIntegrationsStatusRouteImport.update({
+  id: '/api/integrations/status',
+  path: '/api/integrations/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiIntegrationsVerifyRoute = ApiIntegrationsVerifyRouteImport.update({
+  id: '/api/integrations/verify',
+  path: '/api/integrations/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiKeysAccountRoute = ApiKeysAccountRouteImport.update({
   id: '/api/keys/account',
   path: '/api/keys/account',
@@ -53,6 +85,11 @@ const ApiKeysMachineRoute = ApiKeysMachineRouteImport.update({
   path: '/api/keys/machine',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOauthExchangeRoute = ApiOauthExchangeRouteImport.update({
+  id: '/api/oauth/exchange',
+  path: '/api/oauth/exchange',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksFacebookRoute = ApiWebhooksFacebookRouteImport.update({
   id: '/api/webhooks/facebook',
   path: '/api/webhooks/facebook',
@@ -64,9 +101,15 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/panel/$slug': typeof PanelSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/integrations/callback': typeof ApiIntegrationsCallbackRoute
+  '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
+  '/api/integrations/start': typeof ApiIntegrationsStartRoute
+  '/api/integrations/status': typeof ApiIntegrationsStatusRoute
+  '/api/integrations/verify': typeof ApiIntegrationsVerifyRoute
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
+  '/api/oauth/exchange': typeof ApiOauthExchangeRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
 }
 export interface FileRoutesByTo {
@@ -74,9 +117,15 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/panel/$slug': typeof PanelSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/integrations/callback': typeof ApiIntegrationsCallbackRoute
+  '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
+  '/api/integrations/start': typeof ApiIntegrationsStartRoute
+  '/api/integrations/status': typeof ApiIntegrationsStatusRoute
+  '/api/integrations/verify': typeof ApiIntegrationsVerifyRoute
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
+  '/api/oauth/exchange': typeof ApiOauthExchangeRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
 }
 export interface FileRoutesById {
@@ -85,9 +134,15 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/panel/$slug': typeof PanelSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/integrations/callback': typeof ApiIntegrationsCallbackRoute
+  '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
+  '/api/integrations/start': typeof ApiIntegrationsStartRoute
+  '/api/integrations/status': typeof ApiIntegrationsStatusRoute
+  '/api/integrations/verify': typeof ApiIntegrationsVerifyRoute
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
+  '/api/oauth/exchange': typeof ApiOauthExchangeRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
 }
 export interface FileRouteTypes {
@@ -97,9 +152,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/panel/$slug'
     | '/api/auth/$'
+    | '/api/integrations/callback'
+    | '/api/integrations/disconnect'
+    | '/api/integrations/start'
+    | '/api/integrations/status'
+    | '/api/integrations/verify'
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
+    | '/api/oauth/exchange'
     | '/api/webhooks/facebook'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -107,9 +168,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/panel/$slug'
     | '/api/auth/$'
+    | '/api/integrations/callback'
+    | '/api/integrations/disconnect'
+    | '/api/integrations/start'
+    | '/api/integrations/status'
+    | '/api/integrations/verify'
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
+    | '/api/oauth/exchange'
     | '/api/webhooks/facebook'
   id:
     | '__root__'
@@ -117,9 +184,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/panel/$slug'
     | '/api/auth/$'
+    | '/api/integrations/callback'
+    | '/api/integrations/disconnect'
+    | '/api/integrations/start'
+    | '/api/integrations/status'
+    | '/api/integrations/verify'
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
+    | '/api/oauth/exchange'
     | '/api/webhooks/facebook'
   fileRoutesById: FileRoutesById
 }
@@ -128,9 +201,15 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PanelSlugRoute: typeof PanelSlugRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiIntegrationsCallbackRoute: typeof ApiIntegrationsCallbackRoute
+  ApiIntegrationsDisconnectRoute: typeof ApiIntegrationsDisconnectRoute
+  ApiIntegrationsStartRoute: typeof ApiIntegrationsStartRoute
+  ApiIntegrationsStatusRoute: typeof ApiIntegrationsStatusRoute
+  ApiIntegrationsVerifyRoute: typeof ApiIntegrationsVerifyRoute
   ApiKeysAccountRoute: typeof ApiKeysAccountRoute
   ApiKeysCheckRoute: typeof ApiKeysCheckRoute
   ApiKeysMachineRoute: typeof ApiKeysMachineRoute
+  ApiOauthExchangeRoute: typeof ApiOauthExchangeRoute
   ApiWebhooksFacebookRoute: typeof ApiWebhooksFacebookRoute
 }
 
@@ -164,6 +243,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/callback': {
+      id: '/api/integrations/callback'
+      path: '/api/integrations/callback'
+      fullPath: '/api/integrations/callback'
+      preLoaderRoute: typeof ApiIntegrationsCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/disconnect': {
+      id: '/api/integrations/disconnect'
+      path: '/api/integrations/disconnect'
+      fullPath: '/api/integrations/disconnect'
+      preLoaderRoute: typeof ApiIntegrationsDisconnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/start': {
+      id: '/api/integrations/start'
+      path: '/api/integrations/start'
+      fullPath: '/api/integrations/start'
+      preLoaderRoute: typeof ApiIntegrationsStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/status': {
+      id: '/api/integrations/status'
+      path: '/api/integrations/status'
+      fullPath: '/api/integrations/status'
+      preLoaderRoute: typeof ApiIntegrationsStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/verify': {
+      id: '/api/integrations/verify'
+      path: '/api/integrations/verify'
+      fullPath: '/api/integrations/verify'
+      preLoaderRoute: typeof ApiIntegrationsVerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/keys/account': {
       id: '/api/keys/account'
       path: '/api/keys/account'
@@ -185,6 +299,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiKeysMachineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/oauth/exchange': {
+      id: '/api/oauth/exchange'
+      path: '/api/oauth/exchange'
+      fullPath: '/api/oauth/exchange'
+      preLoaderRoute: typeof ApiOauthExchangeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/facebook': {
       id: '/api/webhooks/facebook'
       path: '/api/webhooks/facebook'
@@ -200,9 +321,15 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PanelSlugRoute: PanelSlugRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiIntegrationsCallbackRoute: ApiIntegrationsCallbackRoute,
+  ApiIntegrationsDisconnectRoute: ApiIntegrationsDisconnectRoute,
+  ApiIntegrationsStartRoute: ApiIntegrationsStartRoute,
+  ApiIntegrationsStatusRoute: ApiIntegrationsStatusRoute,
+  ApiIntegrationsVerifyRoute: ApiIntegrationsVerifyRoute,
   ApiKeysAccountRoute: ApiKeysAccountRoute,
   ApiKeysCheckRoute: ApiKeysCheckRoute,
   ApiKeysMachineRoute: ApiKeysMachineRoute,
+  ApiOauthExchangeRoute: ApiOauthExchangeRoute,
   ApiWebhooksFacebookRoute: ApiWebhooksFacebookRoute,
 }
 export const routeTree = rootRouteImport
