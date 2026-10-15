@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { credentials, exchangeCode, identify, oauthProvider, redirectUriFor } from "@/lib/integrations/oauth-providers.server";
+import { credentials, exchangeCode, identify, oauthProvider, redirectUriFor, upgradeFacebookToken } from "@/lib/integrations/oauth-providers.server";
 import { publicOrigin } from "@/lib/integrations/public-origin.server";
 import { saveConnection, takeState } from "@/lib/integrations/store.server";
 
@@ -36,6 +36,16 @@ function page(input: { provider: string; ok: boolean; message: string; sid: stri
   else { window.location.replace(fallback); }
 </script>
 </body></html>`;
+}
+
+function googleAllowed(email: string) {
+  const raw = (process.env.INTEGRATIONS_GOOGLE_ALLOWED || "").trim();
+  if (raw === "*") return true;
+  const list = (raw || "chris@ceogps.com,chrisgr33ninc@gmail.com,cagednreality@icloud.com")
+    .split(",")
+    .map((row) => row.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(email.trim().toLowerCase());
 }
 
 function html(body: string) {
@@ -85,15 +95,35 @@ export const Route = createFileRoute("/api/integrations/callback")({
           });
           return html(page({ provider: spec.id, ok: false, message: exchanged.text, sid: attempt.sid, returnTo, origin }));
         }
-        const proof = await identify(spec, exchanged.tokens.accessToken);
+        let tokens = exchanged.tokens;
+        if (spec.id === "facebook") {
+          const longer = await upgradeFacebookToken(creds, tokens.accessToken);
+          if (longer) tokens = { ...tokens, accessToken: longer.accessToken, expiresAt: longer.expiresAt || tokens.expiresAt };
+        }
+        const proof = await identify(spec, tokens.accessToken);
+        if (proof.ok && spec.id === "google" && proof.label.includes("@") && !googleAllowed(proof.label)) {
+          const message = `${proof.label} is not one of the board mailboxes. Nothing was saved.`;
+          await saveConnection(attempt.ownerId, {
+            provider: spec.id,
+            label: "",
+            status: "error",
+            scopes: tokens.scopes,
+            accessToken: "",
+            refreshToken: "",
+            expiresAt: null,
+            lastError: message,
+            verifiedAt: null,
+          });
+          return html(page({ provider: spec.id, ok: false, message, sid: attempt.sid, returnTo, origin }));
+        }
         await saveConnection(attempt.ownerId, {
           provider: spec.id,
           label: proof.ok ? proof.label : "",
           status: proof.ok ? "connected" : "error",
-          scopes: exchanged.tokens.scopes,
-          accessToken: exchanged.tokens.accessToken,
-          refreshToken: exchanged.tokens.refreshToken,
-          expiresAt: exchanged.tokens.expiresAt,
+          scopes: tokens.scopes,
+          accessToken: proof.ok ? tokens.accessToken : "",
+          refreshToken: proof.ok ? tokens.refreshToken : "",
+          expiresAt: tokens.expiresAt,
           lastError: proof.ok ? "" : proof.text,
           verifiedAt: proof.ok ? new Date().toISOString() : null,
         });

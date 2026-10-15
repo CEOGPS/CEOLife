@@ -18,6 +18,7 @@ import { Route as ApiIntegrationsDisconnectRouteImport } from './routes/api/inte
 import { Route as ApiIntegrationsStartRouteImport } from './routes/api/integrations/start'
 import { Route as ApiIntegrationsStatusRouteImport } from './routes/api/integrations/status'
 import { Route as ApiIntegrationsVerifyRouteImport } from './routes/api/integrations/verify'
+import { Route as ApiIntegrationsTokenRouteImport } from './routes/api/integrations/token'
 import { Route as ApiKeysAccountRouteImport } from './routes/api/keys/account'
 import { Route as ApiKeysCheckRouteImport } from './routes/api/keys/check'
 import { Route as ApiKeysMachineRouteImport } from './routes/api/keys/machine'
@@ -70,6 +71,11 @@ const ApiIntegrationsVerifyRoute = ApiIntegrationsVerifyRouteImport.update({
   path: '/api/integrations/verify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiIntegrationsTokenRoute = ApiIntegrationsTokenRouteImport.update({
+  id: '/api/integrations/token',
+  path: '/api/integrations/token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiKeysAccountRoute = ApiKeysAccountRouteImport.update({
   id: '/api/keys/account',
   path: '/api/keys/account',
@@ -106,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
   '/api/integrations/status': typeof ApiIntegrationsStatusRoute
   '/api/integrations/verify': typeof ApiIntegrationsVerifyRoute
+  '/api/integrations/token': typeof ApiIntegrationsTokenRoute
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
   '/api/integrations/status': typeof ApiIntegrationsStatusRoute
   '/api/integrations/verify': typeof ApiIntegrationsVerifyRoute
+  '/api/integrations/token': typeof ApiIntegrationsTokenRoute
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
   '/api/integrations/status': typeof ApiIntegrationsStatusRoute
   '/api/integrations/verify': typeof ApiIntegrationsVerifyRoute
+  '/api/integrations/token': typeof ApiIntegrationsTokenRoute
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/api/integrations/start'
     | '/api/integrations/status'
     | '/api/integrations/verify'
+    | '/api/integrations/token'
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
@@ -173,6 +183,7 @@ export interface FileRouteTypes {
     | '/api/integrations/start'
     | '/api/integrations/status'
     | '/api/integrations/verify'
+    | '/api/integrations/token'
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/api/integrations/start'
     | '/api/integrations/status'
     | '/api/integrations/verify'
+    | '/api/integrations/token'
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
@@ -206,6 +218,7 @@ export interface RootRouteChildren {
   ApiIntegrationsStartRoute: typeof ApiIntegrationsStartRoute
   ApiIntegrationsStatusRoute: typeof ApiIntegrationsStatusRoute
   ApiIntegrationsVerifyRoute: typeof ApiIntegrationsVerifyRoute
+  ApiIntegrationsTokenRoute: typeof ApiIntegrationsTokenRoute
   ApiKeysAccountRoute: typeof ApiKeysAccountRoute
   ApiKeysCheckRoute: typeof ApiKeysCheckRoute
   ApiKeysMachineRoute: typeof ApiKeysMachineRoute
@@ -278,6 +291,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIntegrationsVerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/token': {
+      id: '/api/integrations/token'
+      path: '/api/integrations/token'
+      fullPath: '/api/integrations/token'
+      preLoaderRoute: typeof ApiIntegrationsTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/keys/account': {
       id: '/api/keys/account'
       path: '/api/keys/account'
@@ -326,6 +346,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIntegrationsStartRoute: ApiIntegrationsStartRoute,
   ApiIntegrationsStatusRoute: ApiIntegrationsStatusRoute,
   ApiIntegrationsVerifyRoute: ApiIntegrationsVerifyRoute,
+  ApiIntegrationsTokenRoute: ApiIntegrationsTokenRoute,
   ApiKeysAccountRoute: ApiKeysAccountRoute,
   ApiKeysCheckRoute: ApiKeysCheckRoute,
   ApiKeysMachineRoute: ApiKeysMachineRoute,

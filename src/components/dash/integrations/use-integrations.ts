@@ -139,9 +139,10 @@ export function useIntegrations() {
   }, []);
 
   const connect = useCallback(
-    async (provider: string, returnTo = "/panel/integrations") => {
+    async (provider: string, returnTo = "/panel/integrations", hint = "") => {
       const sid = tabId();
-      const url = `/api/integrations/start?provider=${encodeURIComponent(provider)}&sid=${encodeURIComponent(sid)}&return=${encodeURIComponent(returnTo)}`;
+      const hintQuery = hint.trim() ? `&hint=${encodeURIComponent(hint.trim())}` : "";
+      const url = `/api/integrations/start?provider=${encodeURIComponent(provider)}&sid=${encodeURIComponent(sid)}&return=${encodeURIComponent(returnTo)}${hintQuery}`;
       const response = await fetch(url, { headers: await authedHeaders(), cache: "no-store" });
       const body = (await response.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string };
       if (!response.ok || !body.url) {

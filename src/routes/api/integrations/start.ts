@@ -67,7 +67,13 @@ export const Route = createFileRoute("/api/integrations/start")({
         const redirectUri = redirectUriFor(origin);
         await saveState({ state, ownerId: owner, provider: spec.id, verifier, redirectUri, returnTo, sid, createdAt: new Date().toISOString() });
         const challenge = verifier ? await codeChallenge(verifier) : undefined;
-        const url = authorizeUrl(spec, { redirectUri, state, codeChallenge: challenge, clientId: creds.clientId });
+        const hint = (requestUrl.searchParams.get("hint") || "").trim().toLowerCase().slice(0, 200);
+        let url = authorizeUrl(spec, { redirectUri, state, codeChallenge: challenge, clientId: creds.clientId });
+        if (hint && (spec.id === "google" || spec.id === "microsoft") && hint.includes("@")) {
+          const next = new URL(url);
+          next.searchParams.set("login_hint", hint);
+          url = next.toString();
+        }
         if (asJson) return Response.json({ ok: true, url }, { headers: { "Cache-Control": "no-store" } });
         return Response.redirect(url, 302);
       },

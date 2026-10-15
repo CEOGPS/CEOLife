@@ -133,9 +133,9 @@ function clock(value: string) {
 type Update = (recipe: (prev: Memory) => Memory) => void;
 
 export async function syncGoogleEvent(action: "list" | "create" | "update" | "delete", row: Partial<WeekEvent> = {}) {
-  const { readOauth } = await import("@/lib/lifeos/oauth");
+  const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
   const { googleCalendar } = await import("@/lib/lifeos/sync");
-  const token = readOauth().find((item) => item.provider === "google")?.token || "";
+  const token = readOauth().find((item) => item.provider === "google")?.token || await freshToken("google");
   return googleCalendar({
     data: {
       token,

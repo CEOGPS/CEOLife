@@ -39,7 +39,7 @@ export function AnalyticsDesk({ data, update }: { data: Memory; update: Update }
       google: await freshGoogleToken() || readOauth().find((row) => row.provider === "google")?.token || "",
       property,
       site,
-      facebook: readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "",
+      facebook: (await freshToken("facebook")) || readOauth().find((row) => row.provider === "facebook")?.token || "",
       x: keyOf(data, "X"),
       linkedin: keyOf(data, "LinkedIn"),
       tiktok: keyOf(data, "TikTok"),

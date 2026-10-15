@@ -68,6 +68,7 @@ export const OAUTH_PROVIDERS: OAuthProvider[] = [
       "openid",
       "email",
       "profile",
+      "https://www.googleapis.com/auth/gmail.readonly",
       "https://www.googleapis.com/auth/calendar.readonly",
       "https://www.googleapis.com/auth/drive.metadata.readonly",
       "https://www.googleapis.com/auth/webmasters.readonly",
@@ -503,6 +504,21 @@ export async function identify(spec: OAuthProvider, accessToken: string) {
     return { ok: true as const, label, text: `Connected · ${label}` };
   } catch (error) {
     return { ok: false as const, label: "", text: error instanceof Error ? error.message : `${spec.name} did not answer.` };
+  }
+}
+
+/** Swap Facebook's short token for the ~60 day one. Returns the original set if Meta refuses. */
+export async function upgradeFacebookToken(creds: OAuthCredentials, accessToken: string) {
+  const url = `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${encodeURIComponent(creds.clientId)}&client_secret=${encodeURIComponent(creds.clientSecret)}&fb_exchange_token=${encodeURIComponent(accessToken)}`;
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    const next = text(body.access_token);
+    if (!response.ok || !next) return null;
+    const seconds = Number(body.expires_in || 0);
+    return { accessToken: next, expiresAt: seconds > 0 ? new Date(Date.now() + seconds * 1000).toISOString() : null };
+  } catch {
+    return null;
   }
 }
 

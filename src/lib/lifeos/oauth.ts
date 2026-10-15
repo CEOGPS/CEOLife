@@ -246,8 +246,23 @@ export async function finishOAuth(): Promise<OauthSession | null> {
   return null;
 }
 
-/** Asks the worker for a live access token. The worker refreshes it with the stored refresh token when needed. */
+/** A live access token. The app's own connection is tried first, then the worker. */
 export async function freshToken(provider: OauthProvider, email?: string) {
+  try {
+    const headers = await sessionAuthHeaders({ "Content-Type": "application/json", Accept: "application/json" });
+    const response = await fetch("/api/integrations/token", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ provider, email: email || "" }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (response.ok) {
+      const body = await response.json() as { access_token?: string };
+      if (body.access_token) return body.access_token;
+    }
+  } catch {
+    /* the worker is the fallback */
+  }
   const token = await getSessionToken();
   if (!token) return "";
   try {

@@ -8,6 +8,7 @@
  */
 
 import { getSql } from "@/lib/db";
+import { decryptText, encryptionSecret, encryptText } from "@/lib/integrations/crypto.server";
 
 export type ConnectionSummary = {
   provider: string;
@@ -72,6 +73,24 @@ type Row = {
   refresh_token?: string;
 };
 
+async function seal(value: string) {
+  if (!value) return "";
+  const secret = encryptionSecret();
+  if (!secret || value.startsWith("v1.")) return value;
+  return encryptText(value, secret);
+}
+
+async function open(value: string) {
+  if (!value || !value.startsWith("v1.")) return value;
+  const secret = encryptionSecret();
+  if (!secret) return "";
+  try {
+    return await decryptText(value, secret);
+  } catch {
+    return "";
+  }
+}
+
 function summary(row: Row): ConnectionSummary {
   return {
     provider: row.provider,
@@ -106,7 +125,7 @@ export async function getConnection(ownerId: string, provider: string): Promise<
   `;
   const row = rows[0];
   if (!row) return null;
-  return { ...summary(row), accessToken: row.access_token || "", refreshToken: row.refresh_token || "" };
+  return { ...summary(row), accessToken: await open(row.access_token || ""), refreshToken: await open(row.refresh_token || "") };
 }
 
 /** Insert or replace this owner's connection for the provider. */
@@ -117,7 +136,7 @@ export async function saveConnection(ownerId: string, row: NewConnection): Promi
       (id, owner_id, provider, account_label, status, scopes, access_token, refresh_token, expires_at, connected_at, verified_at, last_error)
     values
       (${`${ownerId}:${row.provider}`}, ${ownerId}, ${row.provider}, ${row.label}, ${row.status}, ${row.scopes},
-       ${row.accessToken}, ${row.refreshToken}, ${row.expiresAt}, now(), ${row.verifiedAt}, ${row.lastError})
+       ${await seal(row.accessToken)}, ${await seal(row.refreshToken)}, ${row.expiresAt}, now(), ${row.verifiedAt}, ${row.lastError})
     on conflict (owner_id, provider) do update set
       account_label = excluded.account_label,
       status = excluded.status,
@@ -141,8 +160,8 @@ export async function touchConnection(
   if (!current) return;
   await sql`
     update integration_connections set
-      access_token = ${patch.accessToken ?? current.accessToken},
-      refresh_token = ${patch.refreshToken ?? current.refreshToken},
+      access_token = ${await seal(patch.accessToken ?? current.accessToken)},
+      refresh_token = ${await seal(patch.refreshToken ?? current.refreshToken)},
       expires_at = ${patch.expiresAt !== undefined ? patch.expiresAt : current.expiresAt},
       account_label = ${patch.label ?? current.label},
       status = ${patch.status ?? current.status},

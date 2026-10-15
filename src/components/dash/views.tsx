@@ -230,8 +230,8 @@ export function Dashboard() {
   }, [update]);
 
   useEffect(() => {
-    void import("@/lib/lifeos/oauth").then(({ readOauth }) => {
-      const token = readOauth().find((row) => row.provider === "spotify")?.token || "";
+    void import("@/lib/lifeos/oauth").then(async ({ readOauth, freshToken }) => {
+      const token = readOauth().find((row) => row.provider === "spotify")?.token || await freshToken("spotify");
       return import("@/lib/lifeos/env-keys").then(({ spotifyHub }) => spotifyHub({ data: { token, action: "home", query: "" } }));
     }).then((result) => setSpotLists(result.playlists || [])).catch(() => setSpotLists([]));
   }, []);

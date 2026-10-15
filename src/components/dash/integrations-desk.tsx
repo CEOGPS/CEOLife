@@ -362,7 +362,7 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
               onConnect={() => {
                 if (!providerId) return;
                 setMessage("");
-                connect(providerId, window.location.pathname);
+                connect(providerId, window.location.pathname, providerId === "google" || providerId === "microsoft" ? inbox : "");
               }}
               onVerify={() => {
                 if (!providerId) return;
