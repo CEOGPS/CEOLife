@@ -43,7 +43,7 @@ function looksLikeModel(value: string) {
 export function ollamaTarget(saved = "") {
   const value = clean(saved);
   const fromValue = hostBase(value);
-  const fromEnv = hostBase(process.env.OLLAMA_URL || process.env.OLLAMA_HOST || "");
+  const fromEnv = hostBase(process.env.OLLAMA_URL || process.env.OLLAMA_HOST || process.env.OLLAMA_BASE_URL || "");
   const base = fromValue || fromEnv || DEFAULT_BASE;
   const prefer = !fromValue && looksLikeModel(value) ? value : clean(process.env.OLLAMA_MODEL || "");
   const key = fromValue || looksLikeModel(value) ? clean(process.env.OLLAMA_API_KEY || "") : value || clean(process.env.OLLAMA_API_KEY || "");
