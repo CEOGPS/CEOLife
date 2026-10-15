@@ -32,6 +32,26 @@ function chatBody(line: { who: string; text: string; mine: boolean }) {
   return line.text;
 }
 
+function showPlatform(raw: string) {
+  if (raw === "telegram") return "Telegram";
+  if (raw === "messenger") return "Messenger";
+  if (raw === "instagram") return "Instagram";
+  if (raw === "voice") return "Google Voice";
+  if (raw === "sms") return "SMS";
+  if (raw === "email") return "Email";
+  return raw || "SMS";
+}
+
+function sendPlatform(label: string) {
+  if (label === "Telegram") return "telegram";
+  if (label === "Messenger") return "messenger";
+  if (label === "Instagram") return "instagram";
+  if (label === "Google Voice") return "voice";
+  if (label === "Email") return "email";
+  if (label === "WhatsApp") return "whatsapp";
+  return "sms";
+}
+
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).slice(0, 2);
   return parts.map((part) => part[0]?.toUpperCase() || "").join("") || "?";
@@ -44,6 +64,8 @@ export function MessagesDesk({ data, update }: { data: Memory; update: Update })
   const [platform, setPlatform] = useState<(typeof PLATFORMS)[number]>("All");
   const [picking, setPicking] = useState(false);
   const [whoId, setWhoId] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState("");
   const needle = q.trim().toLowerCase();
   const conversations = useMemo(() => {
     const map = new Map<string, { last: string; platform: string }>();
@@ -74,6 +96,70 @@ export function MessagesDesk({ data, update }: { data: Memory; update: Update })
     setWhoId(id);
     setPicking(false);
     setQ("");
+    setNote("");
+  }
+
+  async function pull() {
+    setBusy("pull");
+    setNote("Pulling…");
+    try {
+      const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
+      const { pullChats } = await import("@/lib/lifeos/sync");
+      const facebook = readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "";
+      const result = await pullChats({ data: { facebook } });
+      update((prev) => {
+        const have = new Set(prev.thread.map((row) => row.id));
+        const fresh = result.messages.filter((row) => row.id && !have.has(row.id)).map((row) => ({
+          id: row.id,
+          who: row.who,
+          text: row.text,
+          mine: row.mine,
+          platform: showPlatform(row.platform),
+        }));
+        return fresh.length ? { ...prev, thread: [...prev.thread, ...fresh] } : prev;
+      });
+      setNote(result.text || (result.messages.length ? "Pulled." : "Nothing new."));
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "Pull did not answer.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function send() {
+    const body = text.trim();
+    if (!body || !who) return;
+    const latest = [...data.thread].reverse().find((line) => chatPartner(line) === who);
+    const label = latest?.platform || (platform === "All" ? "" : platform);
+    const provider = sendPlatform(label);
+    if (provider === "whatsapp" || !label) {
+      setNote(provider === "whatsapp" ? "WhatsApp opens in its own app." : "Pull the chat first, or pick SMS or Email.");
+      return;
+    }
+    const phone = (person?.phone || person?.phones?.find((item) => /\d/.test(item)) || who).replace(/\D/g, "").slice(-10);
+    const route = provider === "sms" ? phone : provider === "email" ? (person?.email || who) : (latest?.id || "");
+    setBusy("send");
+    setNote("Sending…");
+    try {
+      const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
+      const { sendChat } = await import("@/lib/lifeos/sync");
+      const facebook = readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "";
+      const result = await sendChat({ data: { platform: provider, route, text: body, facebook } });
+      if (!result.ok) {
+        setNote(result.error || "Not sent.");
+        return;
+      }
+      update((prev) => ({
+        ...prev,
+        thread: [...prev.thread, { id: result.id || newId(), who, text: body, mine: true, platform: label }],
+      }));
+      setText("");
+      setNote("Sent.");
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "Not sent.");
+    } finally {
+      setBusy("");
+    }
   }
 
   return (
@@ -81,7 +167,8 @@ export function MessagesDesk({ data, update }: { data: Memory; update: Update })
       <aside className="flex min-h-0 flex-col border-b border-white/10 lg:border-r lg:border-b-0">
         <div className="flex items-center gap-2 border-b border-white/10 px-3 py-3">
           <h2 className="module-title">Chats</h2>
-          <button type="button" className="ml-auto bg-blue" onClick={() => setPicking((value) => !value)}>{picking ? "Close" : "New"}</button>
+          <button type="button" className={`ml-auto quiet ${busy === "pull" ? "is-busy" : ""}`} aria-busy={busy === "pull"} disabled={busy === "pull"} onClick={() => void pull()}>{busy === "pull" ? "Pulling" : "Pull"}</button>
+          <button type="button" className="bg-blue" onClick={() => setPicking((value) => !value)}>{picking ? "Close" : "New"}</button>
         </div>
         <label className="px-3 py-2">
           <input className={field} value={q} placeholder="Search chats, contacts, CRM" onChange={(event) => { setQ(event.target.value); setPicking(true); }} />
@@ -147,15 +234,14 @@ export function MessagesDesk({ data, update }: { data: Memory; update: Update })
           )) : <li className="m-auto text-sm text-white/40">Choose a conversation. Contacts stay in Contacts until you message them.</li>}
           {who && lines.length === 0 ? <li className="m-auto text-sm text-white/40">No messages with {who} yet.</li> : null}
         </ul>
-        <form className="mt-auto flex gap-2 border-t border-white/10 p-3" onSubmit={(event) => {
-          event.preventDefault();
-          if (!text.trim() || !who) return;
-          update((prev) => ({ ...prev, thread: [...prev.thread, { id: newId(), who, text: text.trim(), mine: true, platform: platform === "All" ? "SMS" : platform }] }));
-          setText("");
-        }}>
-          <input className={field} value={text} placeholder={who ? `Message ${who}` : "Choose a conversation"} disabled={!who} onChange={(event) => setText(event.target.value)} />
-          <button type="submit" className="bg-blue" disabled={!who}>Send</button>
+        <form className="sticky bottom-0 z-10 mt-auto flex shrink-0 items-center gap-2 border-t border-white/10 bg-black/80 p-3" onSubmit={(event) => { event.preventDefault(); void send(); }}>
+          <input className={field} value={text} placeholder={who ? `Message ${who}` : "Choose a conversation"} disabled={!who || busy === "send"} onChange={(event) => setText(event.target.value)} />
+          <button type="submit" className="msg-send" aria-busy={busy === "send"} disabled={!who || busy === "send" || !text.trim()}>
+            {busy === "send" ? <span aria-hidden="true" className="msg-spin" /> : null}
+            {busy === "send" ? "Sending" : "Send"}
+          </button>
         </form>
+        {note ? <p className="px-3 pb-3 text-xs text-white/50">{note}</p> : null}
       </div>
     </section>
   );
@@ -198,7 +284,7 @@ export function SearchDesk({ data, update }: { data: Memory; update: Update }) {
         }).catch(() => setNote("Search did not answer."));
       }}>
         <input className={field} value={q} placeholder={kind === "image" ? "Image URL" : kind === "phone" ? "Phone" : kind === "email" ? "Email" : "Search"} onChange={(event) => setQ(kind === "phone" ? fmtPhone(event.target.value) : event.target.value)} />
-        <button type="submit" className="bg-blue">Search</button>
+        <button type="submit" className={`bg-blue ${note === "Searching…" ? "is-busy" : ""}`} aria-busy={note === "Searching…"} disabled={note === "Searching…"}>Search</button>
       </form>
       <div className="dock-bar mt-3 flex gap-3">
         {(["web", "phone", "email", "image"] as const).map((item) => <button key={item} type="button" className={kind === item ? "on" : ""} onClick={() => setKind(item)}>{item}</button>)}

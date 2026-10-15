@@ -268,13 +268,33 @@ export const PROVIDER_CONFIG: Record<ProviderId, ProviderConfig> = {
   },
 };
 
+const CRED_ALIASES: Partial<Record<ProviderId, { id: string[]; secret: string[] }>> = {
+  google: { id: ["GOOGLE_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_ID"], secret: ["GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_CLIENT_SECRET"] },
+  github: { id: ["GITHUB_CLIENT_ID", "GITHUB_OAUTH_CLIENT_ID"], secret: ["GITHUB_CLIENT_SECRET", "GITHUB_OAUTH_CLIENT_SECRET"] },
+  notion: { id: ["NOTION_CLIENT_ID", "NOTION_OAUTH_CLIENT_ID"], secret: ["NOTION_CLIENT_SECRET", "NOTION_OAUTH_CLIENT_SECRET"] },
+  twitter: { id: ["TWITTER_CLIENT_ID", "X_CLIENT_ID"], secret: ["TWITTER_CLIENT_SECRET", "X_CLIENT_SECRET"] },
+  facebook: { id: ["FACEBOOK_CLIENT_ID", "META_CLIENT_ID", "FACEBOOK_APP_ID", "META_APP_ID"], secret: ["FACEBOOK_CLIENT_SECRET", "META_CLIENT_SECRET", "FACEBOOK_APP_SECRET", "META_APP_SECRET"] },
+};
+
+function firstSet(read: EnvReader, names: string[]) {
+  for (const name of names) {
+    const value = read(name);
+    if (value) return value;
+  }
+  return "";
+}
+
 export function credsFor(id: ProviderId, read: EnvReader): Creds {
   if (id === "nylas") {
     // The Nylas application id is the client id; the API key is the client secret.
     return { clientId: read("NYLAS_CLIENT_ID") || "", clientSecret: read("NYLAS_API_KEY") || read("NYLAS_CLIENT_SECRET") || "" };
   }
+  const alias = CRED_ALIASES[id];
   const key = id.toUpperCase();
-  return { clientId: read(`${key}_CLIENT_ID`) || "", clientSecret: read(`${key}_CLIENT_SECRET`) || "" };
+  return {
+    clientId: firstSet(read, alias?.id || [`${key}_CLIENT_ID`]),
+    clientSecret: firstSet(read, alias?.secret || [`${key}_CLIENT_SECRET`]),
+  };
 }
 
 function urlsFor(id: ProviderId, read: EnvReader) {

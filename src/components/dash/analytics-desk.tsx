@@ -76,7 +76,7 @@ export function AnalyticsDesk({ data, update }: { data: Memory; update: Update }
         <label className="min-w-36 flex-1 text-[10px] text-white/40">Brilliant Directories
           <input className="mt-1 h-7 w-full rounded-full border border-line bg-black/40 px-3 text-xs" value={bdSite} placeholder="https://ceogps.com" onChange={(event) => setBdSite(event.target.value)} />
         </label>
-        <button type="button" className="bg-blue" disabled={busy} onClick={() => void sync()}>{busy ? "Pulling" : "Sync"}</button>
+        <button type="button" className={`bg-blue ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => void sync()}>{busy ? "Pulling" : "Sync"}</button>
       </div>
       {note ? <p className="text-xs text-white/60">{note}</p> : null}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">

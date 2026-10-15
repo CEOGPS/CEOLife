@@ -303,7 +303,7 @@ export function EinsteinDesk({ data, update }: { data: Memory; update: Update })
               )}
               <div className="mt-4 flex items-center justify-between gap-3">
                 <p className="text-[11px] text-white/35">{engine === "ace" ? "ACE-Step on Replicate. Open weights, about 48 seconds." : "Eleven Music. Closest sung quality on a key you already have."}</p>
-                <button type="button" className="quiet is-on" disabled={busy} onClick={() => void create()}>{busy ? "Working" : job ? "Check song" : "Create"}</button>
+                <button type="button" className={`quiet is-on ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => void create()}>{busy ? "Working" : job ? "Check song" : "Create"}</button>
               </div>
               {status ? <p className="mt-3 text-sm text-white/50">{status}</p> : null}
             </section>

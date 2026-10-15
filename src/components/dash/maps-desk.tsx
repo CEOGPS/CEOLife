@@ -185,7 +185,7 @@ export function MapsDesk(_props: { data: Memory; update: Update }) {
           ) : null}
         </div>
         <div className="mt-3 flex gap-3">
-          <button type="button" className="bg-blue" onClick={() => void highlight()}>Highlight</button>
+          <button type="button" className={`bg-blue ${note === "Looking up the area…" ? "is-busy" : ""}`} aria-busy={note === "Looking up the area…"} disabled={note === "Looking up the area…"} onClick={() => void highlight()}>Highlight</button>
           <button type="button" className="quiet" disabled={!preview} onClick={keep}>Save</button>
         </div>
         {note ? <p className="mt-2 text-[11px] text-white/45">{note}</p> : null}

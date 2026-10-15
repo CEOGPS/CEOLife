@@ -93,7 +93,7 @@ function LeadsDesk({ data, update }: { data: Memory; update: Update }) {
         <div className="mt-3 grid gap-2">
           <input className="h-8 rounded-full border border-line bg-black/40 px-3 text-sm" value={service} placeholder="Service" onChange={(event) => setService(event.target.value)} />
           <input className="h-8 rounded-full border border-line bg-black/40 px-3 text-sm" value={city} placeholder="City, blank = national" onChange={(event) => setCity(event.target.value)} />
-          <button type="button" className="bg-blue w-fit" disabled={busy} onClick={() => void search()}>{busy ? "Searching" : "Search"}</button>
+          <button type="button" className={`bg-blue w-fit ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => void search()}>{busy ? "Searching" : "Search"}</button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {SOURCES.map((row) => (

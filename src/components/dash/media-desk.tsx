@@ -246,7 +246,7 @@ export function YoutubeBox({ apiKey = "", query = "" }: { apiKey?: string; query
     <div className="min-w-0">
       <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void search(q).catch(() => setNote("YouTube search did not answer.")); }}>
         <input className="h-8 min-w-0 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder="Search YouTube" value={q} onChange={(event) => setQ(event.target.value)} />
-        <button type="submit" className="quiet accent-orange">Search</button>
+        <button type="submit" className={`quiet accent-orange ${note === "Searching…" ? "is-busy" : ""}`} aria-busy={note === "Searching…"} disabled={note === "Searching…"}>Search</button>
       </form>
       {play ? (
         <div className="relative mt-3">
@@ -316,7 +316,7 @@ function ResizeBox({ item, onClose, onSave }: { item: Item; onClose: () => void;
         <p className="text-[11px] text-white/40">{note}</p>
         <div className="mt-4 flex justify-end gap-3">
           <button type="button" className="quiet" onClick={onClose}>Cancel</button>
-          <button type="button" className="quiet" onClick={() => void best()}>Best size</button>
+          <button type="button" className={`quiet ${note.startsWith("Looking for the smallest") ? "is-busy" : ""}`} aria-busy={note.startsWith("Looking for the smallest")} disabled={note.startsWith("Looking for the smallest")} onClick={() => void best()}>Best size</button>
           <button type="button" className="quiet is-on" disabled={!shot} onClick={() => shot && onSave(shot.blob, shot.w, shot.h)}>Save copy</button>
         </div>
       </div>

@@ -308,7 +308,7 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
           <section className="module-card h-fit p-3">
             <div className="mb-2 flex gap-3">
               <button type="button" className="quiet is-on" onClick={() => { setCompose(true); setOpenId(null); }}>Compose</button>
-              <button type="button" className="quiet" disabled={busy === "pull"} onClick={() => void pullMail()}>{busy === "pull" ? "Pulling" : "Pull all three"}</button>
+              <button type="button" className={`quiet ${busy === "pull" ? "is-busy" : ""}`} aria-busy={busy === "pull"} disabled={busy === "pull"} onClick={() => void pullMail()}>{busy === "pull" ? "Pulling" : "Pull all three"}</button>
             </div>
             <input className={field} placeholder="Search mail" value={search} onChange={(event) => setSearch(event.target.value)} />
             <ul className="mt-2 max-h-[34rem] overflow-y-auto">
@@ -372,11 +372,11 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
             </div>
             <div className="flex gap-2">
               <input className={field} placeholder="Subject" value={campaign.subject} onChange={(event) => setCampaign({ ...campaign, subject: event.target.value })} />
-              <button type="button" className="quiet" disabled={busy === "subject"} onClick={() => void writeSubject()}>Subject</button>
+              <button type="button" className={`quiet ${busy === "subject" ? "is-busy" : ""}`} aria-busy={busy === "subject"} disabled={busy === "subject"} onClick={() => void writeSubject()}>Subject</button>
             </div>
             <textarea className="min-h-36 rounded-2xl border border-line bg-black/40 px-3 py-2 text-sm" style={{ caretColor: "transparent" }} placeholder="Body" value={campaign.body} onChange={(event) => setCampaign({ ...campaign, body: event.target.value })} />
             <div className="flex flex-wrap gap-4">
-              <button type="button" className="quiet" disabled={busy === "body"} onClick={() => void writeBody()}>Write body</button>
+              <button type="button" className={`quiet ${busy === "body" ? "is-busy" : ""}`} aria-busy={busy === "body"} disabled={busy === "body"} onClick={() => void writeBody()}>Write body</button>
               <button type="button" className="quiet" onClick={() => storeCampaign("draft")}>Save draft</button>
               <input className={field + " max-w-48"} type="datetime-local" value={campaign.when} onChange={(event) => setCampaign({ ...campaign, when: event.target.value })} />
               <button type="button" className="quiet" onClick={() => storeCampaign("scheduled")}>Schedule</button>
@@ -441,7 +441,7 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
             <div key={row.id} className="border-t border-white/10 pt-3 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span>{row.domain}</span>
-                <button type="button" className="quiet" disabled={busy === row.id} onClick={() => void check(row)}>{busy === row.id ? "Checking" : "Check DNS"}</button>
+                <button type="button" className={`quiet ${busy === row.id ? "is-busy" : ""}`} aria-busy={busy === row.id} disabled={busy === row.id} onClick={() => void check(row)}>{busy === row.id ? "Checking" : "Check DNS"}</button>
               </div>
               <p className="mt-1 text-xs text-white/50">SPF {row.spf ? "found" : "missing"} · DKIM {row.dkim ? "found" : "missing"} · DMARC {row.dmarc ? "found" : "missing"}{row.checkedAt ? ` · ${new Date(row.checkedAt).toLocaleString()}` : ""}</p>
             </div>

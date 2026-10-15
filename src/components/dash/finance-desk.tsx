@@ -202,7 +202,7 @@ export function FinanceDesk({ data, update }: { data: Memory; update: Update }) 
             }}>
               <input className="h-9 min-w-48 flex-1 rounded-full border border-line bg-black/40 px-4 text-sm" placeholder="Search stocks or crypto" value={lookup.symbol} onChange={(event) => setLookup({ ...lookup, symbol: event.target.value.toUpperCase() })} />
               {["all", "crypto", "stock"].map((kind) => <button key={kind} type="button" className={`quiet ${lookup.kind === kind ? "is-on" : ""}`} onClick={() => setLookup({ ...lookup, kind })}>{kind}</button>)}
-              <button type="submit" className="quiet is-on">Search</button>
+              <button type="submit" className={`quiet is-on ${lookupNote === "Searching…" ? "is-busy" : ""}`} aria-busy={lookupNote === "Searching…"} disabled={lookupNote === "Searching…"}>Search</button>
             </form>
             {found ? <p className="mt-2 text-sm">{found.symbol} {money(found.price)} <span className={found.change >= 0 ? "text-green" : "text-ember"}>{found.change.toFixed(1)}%</span></p> : null}
             {lookupNote ? <p className="mt-2 text-sm text-white/50">{lookupNote}</p> : null}

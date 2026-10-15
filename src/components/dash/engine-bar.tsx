@@ -47,7 +47,7 @@ export function EngineBar({ panel, data, update }: { panel: string; data: Memory
         }).catch(() => setNote("The service did not answer."));
       }}>
         <input className="h-8 min-w-48 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" value={query} placeholder={chosen?.note || "Job"} onChange={(event) => setQuery(event.target.value)} />
-        <button type="submit" className="quiet is-on">Run</button>
+        <button type="submit" className={`quiet is-on ${note === "Checking…" ? "is-busy" : ""}`} aria-busy={note === "Checking…"} disabled={note === "Checking…"}>Run</button>
       </form>
       {note ? <p className="mt-2 text-xs text-white/50">{note}</p> : null}
       <p className="mt-1 text-[11px] text-white/35">{(data.facts || []).filter((row) => row.source === chosen?.name).length} saved from {chosen?.name}</p>

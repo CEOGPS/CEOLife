@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EngineBar } from "./engine-bar";
-import { newId, type Memory } from "./memory";
+import { hubNoteId, newId, type Memory } from "./memory";
+import { deleteAgent, pullAgents, pushAgent, readAgentCache, writeAgentCache, type AgentSettings } from "@/lib/lifeos/agent-store";
 import { defaultVoice, readClones, voiceId, VOICES } from "./voices";
 import { VoiceClone } from "./dock";
 import { AGENT_SKILLS, matchedSkill, runAgentTool, skillBrief } from "./agent-tools";
@@ -122,7 +123,7 @@ function readChat(data: Memory, name: string) {
 function saveChat(update: Update, name: string, lines: { role: "user" | "ai"; text: string }[]) {
   update((prev) => ({
     ...prev,
-    notes: [{ id: newId(), title: `Chat · ${name}`, body: JSON.stringify(lines.slice(-24)) }, ...prev.notes.filter((row) => row.title !== `Chat · ${name}`)],
+    notes: [{ id: hubNoteId(`Chat · ${name}`), title: `Chat · ${name}`, body: JSON.stringify(lines.slice(-24)) }, ...prev.notes.filter((row) => row.title !== `Chat · ${name}`)],
   }));
 }
 
@@ -160,8 +161,11 @@ function readSkins(data: Memory) {
 }
 
 function readAgent(data: Memory, name: string) {
+  const cached = readAgentCache()[name];
   const row = data.notes.find((item) => item.title === `Agent · ${name}`);
   const pick = (label: string) => row?.body.split("\n").find((line) => line.startsWith(label))?.slice(label.length).trim() || "";
+  const job = data.jobs.find((item) => item.agent === name);
+  if (cached) return { ...cached, task: cached.task || job?.task || "", active: cached.active };
   return {
     soul: pick("Soul: "),
     personality: pick("Personality: "),
@@ -170,29 +174,33 @@ function readAgent(data: Memory, name: string) {
     voice: pick("Voice: ") || defaultVoice(name),
     skin: pick("Skin: ") || "Nova",
     avatar: pick("Avatar: ") || "nova",
-    task: data.jobs.find((job) => job.agent === name)?.task || "",
-    active: Boolean(data.jobs.find((job) => job.agent === name)?.active),
+    task: job?.task || "",
+    active: Boolean(job?.active),
   };
 }
 
-function saveAgent(update: Update, name: string, form: ReturnType<typeof readAgent>) {
+function saveAgent(update: Update, name: string, form: AgentSettings) {
+  const cache = readAgentCache();
+  cache[name] = form;
+  writeAgentCache(cache);
+  void pushAgent(name, form);
   update((prev) => ({
     ...prev,
-    notes: [{ id: newId(), title: `Agent · ${name}`, body: `Soul: ${form.soul}\nPersonality: ${form.personality}\nInstructions: ${form.instructions}\nRules: ${form.rules}\nVoice: ${form.voice}\nSkin: ${form.skin}\nAvatar: ${form.avatar}` }, ...prev.notes.filter((row) => row.title !== `Agent · ${name}`)],
-    jobs: [{ id: newId(), agent: name, task: form.task.trim() || "Awaiting assignment", active: form.active }, ...prev.jobs.filter((row) => row.agent !== name)],
+    jobs: [{ id: hubNoteId(`Job · ${name}`), agent: name, task: form.task.trim() || "Awaiting assignment", active: form.active }, ...prev.jobs.filter((row) => row.agent !== name)],
   }));
 }
 
-function Profile({ name, blurb, data, update }: { name: string; blurb: string; data: Memory; update: Update }) {
+function Profile({ name, blurb, data, update, stamp }: { name: string; blurb: string; data: Memory; update: Update; stamp: number }) {
   const roster = ROSTER.find((agent) => agent.name === name);
-  const saved = data.notes.some((row) => row.title === `Agent · ${name}`);
+  const saved = Boolean(readAgentCache()[name]) || data.notes.some((row) => row.title === `Agent · ${name}`);
   const base = readAgent(data, name);
   const current = !saved && roster ? { ...base, soul: roster.tagline, personality: roster.role, instructions: roster.prompt, avatar: roster.avatar } : base;
   const [form, setForm] = useState(current);
   const [loaded, setLoaded] = useState(name);
+  const [seen, setSeen] = useState(stamp);
   const [skinName, setSkinName] = useState("");
   const [skinNote, setSkinNote] = useState("");
-  if (loaded !== name) { setLoaded(name); setForm(readAgent(data, name)); }
+  if (loaded !== name || seen !== stamp) { setLoaded(name); setSeen(stamp); setForm(readAgent(data, name)); }
   const skins = readSkins(data);
   const clip = AVATARS.includes(form.avatar) ? `/agents/avatars/${form.avatar}.mp4` : "";
   return (
@@ -226,7 +234,7 @@ function Profile({ name, blurb, data, update }: { name: string; blurb: string; d
           const next = skinName.trim();
           if (!next) return;
           const custom = readSkins(data).filter((skin) => !BUILT_SKINS.some((item) => item.name === skin.name) && skin.name !== next);
-          update((prev) => ({ ...prev, notes: [{ id: newId(), title: "Hub · Skins", body: JSON.stringify([...custom, { name: next, note: skinNote.trim() }]) }, ...prev.notes.filter((row) => row.title !== "Hub · Skins")] }));
+          update((prev) => ({ ...prev, notes: [{ id: hubNoteId("Hub · Skins"), title: "Hub · Skins", body: JSON.stringify([...custom, { name: next, note: skinNote.trim() }]) }, ...prev.notes.filter((row) => row.title !== "Hub · Skins")] }));
           setForm({ ...form, skin: next });
           setSkinName("");
           setSkinNote("");
@@ -275,7 +283,34 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
     const { askNyx } = await import("@/lib/lifeos/sync");
     const row = CATALOG.find((item) => item.id === model);
     const preface = [boardFacts(data, question), history, skillBrief(), matchedSkill(question), prompt, tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
-    const turned = await askWithAbilities(data, question, preface, (nextQuestion, sheet) => askNyx({ data: { question: nextQuestion, facts: sheet, name, prompt, model, key: keyFor(data, model), mind: mindOf(row?.key || ""), endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "" } }));
+    const call = (nextQuestion: string, sheet: string) => askNyx({ data: { question: nextQuestion, facts: sheet, name, prompt, model, key: keyFor(data, model), mind: mindOf(row?.key || ""), endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "" } });
+    if (name === "Erebus") {
+      try {
+        const { askErebus } = await import("@/routes/api/agents/erebus");
+        const skill = matchedSkill(question);
+        const turned = await askErebus({
+          data: {
+            question,
+            facts: preface,
+            mind: mindOf(row?.key || ""),
+            model,
+            endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "",
+            prompt,
+            key: keyFor(data, model),
+            memory: { leads: data.leads, tasks: data.tasks, ideas: data.ideas, events: data.events, facts: data.facts },
+            skills: skill ? [{ id: "matched", name: "Matched skill", text: skill }] : [],
+          },
+        });
+        applyActs(update, turned.acts || []);
+        const reply = [tool?.text, turned.text].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
+        const done = [...next, { role: "ai" as const, text: reply }];
+        setLines(done);
+        setNote(turned.ok ? turned.mind : "Offline");
+        saveChat(update, name, done);
+        return;
+      } catch { /* no session: the browser loop below still answers */ }
+    }
+    const turned = await askWithAbilities(data, question, preface, call);
     applyActs(update, turned.acts);
     const reply = [tool?.text, turned.text].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
     const done = [...next, { role: "ai" as const, text: reply }];
@@ -347,7 +382,7 @@ function Models({ data, update }: { data: Memory; update: Update }) {
           return (
             <div key={model.id} className="border-b border-white/10 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <button type="button" className={`quiet ${active === model.id ? "is-on" : ""}`} onClick={() => update((prev) => ({ ...prev, notes: [{ id: newId(), title: "Hub · Model", body: model.id }, ...prev.notes.filter((row) => row.title !== "Hub · Model")] }))}>
+                <button type="button" className={`quiet ${active === model.id ? "is-on" : ""}`} onClick={() => update((prev) => ({ ...prev, notes: [{ id: hubNoteId("Hub · Model"), title: "Hub · Model", body: model.id }, ...prev.notes.filter((row) => row.title !== "Hub · Model")] }))}>
                   {model.name}
                   <span className="ml-2 text-[11px] text-white/40">{model.note} · {saved ? "Key saved" : "No key"}</span>
                 </button>
@@ -381,7 +416,7 @@ function LocalLink({ name, urlName, fallback, data, update, cli }: { name: strin
       <input className="mt-2 h-8 w-full rounded-full border border-line bg-black/40 px-3 text-sm" placeholder={savedKey ? "Key saved" : "API key if this server requires one"} value={key} onChange={(event) => setKey(event.target.value)} />
       <div className="mt-2 flex gap-3">
         <button type="button" className="quiet is-on" onClick={() => { put(urlName, url.trim()); if (key.trim()) put(name, key.trim()); setNote("Saved."); }}>Save</button>
-        <button type="button" className="quiet" onClick={() => { setNote("Checking the command…"); void pingCli(cli).then(setNote); }}>Check CLI</button>
+        <button type="button" className={`quiet ${note === "Checking the command…" ? "is-busy" : ""}`} aria-busy={note === "Checking the command…"} disabled={note === "Checking the command…"} onClick={() => { setNote("Checking the command…"); void pingCli(cli).then(setNote); }}>Check CLI</button>
       </div>
       {note ? <p className="mt-2 text-sm text-white/70">{note}</p> : null}
     </div>
@@ -396,13 +431,13 @@ function TelegramBox({ token }: { token: string }) {
     <div className="mt-4 border-t border-white/10 pt-4">
       <p className="text-sm text-white/50">Send one message. The token stays on the server call. It does not broadcast.</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        <button type="button" className="quiet" onClick={() => {
+        <button type="button" className={`quiet ${note === "Checking the bot…" ? "is-busy" : ""}`} aria-busy={note === "Checking the bot…"} disabled={note === "Checking the bot…"} onClick={() => {
           setNote("Checking the bot…");
           void import("@/lib/lifeos/sync").then(({ telegramBot }) => telegramBot({ data: { token } })).then((result) => setNote(result.ok ? `Connected ${result.bot}` : result.error));
         }}>Check bot</button>
         <input className="h-8 w-36 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder="Chat id" value={chat} onChange={(event) => setChat(event.target.value)} />
         <input className="h-8 min-w-40 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder="Message" value={text} onChange={(event) => setText(event.target.value)} />
-        <button type="button" className="quiet is-on" onClick={() => {
+        <button type="button" className={`quiet is-on ${note === "Sending…" ? "is-busy" : ""}`} aria-busy={note === "Sending…"} disabled={note === "Sending…" || !text.trim()} onClick={() => {
           setNote("Sending…");
           void import("@/lib/lifeos/sync").then(({ telegramBot }) => telegramBot({ data: { token, chat, text } })).then((result) => setNote(result.ok ? "Sent." : result.error));
         }}>Send</button>
@@ -418,7 +453,10 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
   const [openAgent, setOpenAgent] = useState("");
   const [brief, setBrief] = useState("");
   const [briefing, setBriefing] = useState(false);
+  const [stamp, setStamp] = useState(0);
   const savedBrief = data.notes.find((row) => row.title === "Kranos · Report")?.body || "";
+  const notesRef = useRef(data.notes);
+  notesRef.current = data.notes;
   useEffect(() => {
     update((prev) => {
       const have = new Set(prev.jobs.map((row) => row.agent));
@@ -427,7 +465,43 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
       return { ...prev, jobs: [...add, ...prev.jobs] };
     });
   }, [update]);
-  const custom = data.notes.filter((row) => row.title.startsWith("Agent ·")).map((row) => row.title.replace("Agent · ", "")).filter((name) => !["Erebus", "Kranos", "Telegram", "Hermes", "Qwen", ...ROSTER.map((agent) => agent.name), ...STAFF.map((agent) => agent.name)].includes(name));
+  useEffect(() => {
+    const notes = notesRef.current;
+    void (async () => {
+      const remote = await pullAgents();
+      const merged = { ...readAgentCache() };
+      if (remote) {
+        for (const [name, row] of Object.entries(remote)) {
+          const local = merged[name];
+          if (!local || row.instructions.length >= local.instructions.length) merged[name] = row;
+        }
+      }
+      for (const note of notes) {
+        if (!note.title.startsWith("Agent · ")) continue;
+        const name = note.title.slice("Agent · ".length);
+        if (merged[name]?.soul || merged[name]?.instructions || merged[name]?.rules) continue;
+        const pick = (label: string) => note.body.split("\n").find((line) => line.startsWith(label))?.slice(label.length).trim() || "";
+        const form = {
+          soul: pick("Soul: "),
+          personality: pick("Personality: "),
+          instructions: pick("Instructions: "),
+          rules: pick("Rules: "),
+          voice: pick("Voice: "),
+          skin: pick("Skin: ") || "Nova",
+          avatar: pick("Avatar: ") || "nova",
+          task: pick("Task: "),
+          active: false,
+        };
+        if (!form.soul && !form.instructions && !form.rules) continue;
+        merged[name] = form;
+        void pushAgent(name, form);
+      }
+      writeAgentCache(merged);
+      setStamp((value) => value + 1);
+    })();
+  }, []);
+  const known = new Set(["Erebus", "Kranos", "Telegram", "Hermes", "Qwen", ...ROSTER.map((agent) => agent.name), ...STAFF.map((agent) => agent.name)]);
+  const custom = [...new Set([...Object.keys(readAgentCache()), ...data.notes.filter((row) => row.title.startsWith("Agent ·")).map((row) => row.title.replace("Agent · ", ""))])].filter((name) => !known.has(name));
   const workers = data.jobs.filter((row) => !["Erebus", "Kranos"].includes(row.agent));
   const telegram = data.keys.some((row) => row.name === "Telegram" && row.value);
 
@@ -446,18 +520,18 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
       </aside>
       <section className="module-card p-4">
         <EngineBar panel="AI Hub" data={data} update={update} />
-        {section === "erebus" ? <Profile name="Erebus" blurb="Coding agent. Builds, edits, and checks the work. Creation tools stay here." data={data} update={update} /> : null}
-        {section === "kranos" ? <Profile name="Kranos" blurb="Every other agent reports here. Kranos writes the progress summary and what should change." data={data} update={update} /> : null}
+        {section === "erebus" ? <Profile name="Erebus" stamp={stamp} blurb="Coding agent. Builds, edits, and checks the work. Creation tools stay here." data={data} update={update} /> : null}
+        {section === "kranos" ? <Profile name="Kranos" stamp={stamp} blurb="Every other agent reports here. Kranos writes the progress summary and what should change." data={data} update={update} /> : null}
         {section === "messaging" ? (
           <div>
-            <Profile name="Telegram" blurb={telegram ? "Bot token is on this machine. It only sends and reads messages." : "No Telegram token on this machine. Settings still save."} data={data} update={update} />
+            <Profile name="Telegram" stamp={stamp} blurb={telegram ? "Bot token is on this machine. It only sends and reads messages." : "No Telegram token on this machine. Settings still save."} data={data} update={update} />
             <TelegramBox token={data.keys.find((row) => row.name === "Telegram")?.value || ""} />
           </div>
         ) : null}
-        {section === "hermes" ? <div><Profile name="Hermes" blurb="Files, browser, and the terminal, through the hermes command. Erebus sends that work here." data={data} update={update} /><LocalLink name="Hermes" urlName="Hermes URL" fallback="http://127.0.0.1:8642" cli="hermes" data={data} update={update} /></div> : null}
-        {section === "qwen" ? <div><Profile name="Qwen" blurb="Images and video, through the qwen command. Erebus sends that work here." data={data} update={update} /><LocalLink name="Qwen" urlName="Qwen URL" fallback="http://127.0.0.1:8000" cli="qwen" data={data} update={update} /></div> : null}
+        {section === "hermes" ? <div><Profile name="Hermes" stamp={stamp} blurb="Files, browser, and the terminal, through the hermes command. Erebus sends that work here." data={data} update={update} /><LocalLink name="Hermes" urlName="Hermes URL" fallback="http://127.0.0.1:8642" cli="hermes" data={data} update={update} /></div> : null}
+        {section === "qwen" ? <div><Profile name="Qwen" stamp={stamp} blurb="Images and video, through the qwen command. Erebus sends that work here." data={data} update={update} /><LocalLink name="Qwen" urlName="Qwen URL" fallback="http://127.0.0.1:8000" cli="qwen" data={data} update={update} /></div> : null}
         {section === "agents" ? (
-          openAgent ? <div><button type="button" className="quiet" onClick={() => setOpenAgent("")}>Back</button><Profile name={openAgent} blurb={ROSTER.find((agent) => agent.name === openAgent)?.tagline || "Change the skin, voice, and rules without deleting this agent."} data={data} update={update} /></div> : (
+          openAgent ? <div><button type="button" className="quiet" onClick={() => setOpenAgent("")}>Back</button><Profile name={openAgent} stamp={stamp} blurb={ROSTER.find((agent) => agent.name === openAgent)?.tagline || "Change the skin, voice, and rules without deleting this agent."} data={data} update={update} /></div> : (
           <div>
             <h1 className="text-2xl">Agents</h1>
             <p className="text-sm text-white/50">Specialists report to Kranos. Erebus stays on the code. Open one to change voice, rules, and chat.</p>
@@ -494,7 +568,7 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
                 return (
                   <div key={name} className="flex items-center justify-between border-b border-white/10 py-2 text-sm">
                     <button type="button" className="quiet" onClick={() => setOpenAgent(name)}>{name}<span className="ml-2 text-[11px] text-white/40">{row.skin} · {row.active ? "On" : "Off"}</span></button>
-                    <button type="button" className="link-remove" onClick={() => update((prev) => ({ ...prev, notes: prev.notes.filter((item) => item.title !== `Agent · ${name}`), jobs: prev.jobs.filter((item) => item.agent !== name) }))}>Remove</button>
+                    <button type="button" className="link-remove" onClick={() => { void deleteAgent(name); update((prev) => ({ ...prev, notes: prev.notes.filter((item) => item.title !== `Agent · ${name}`), jobs: prev.jobs.filter((item) => item.agent !== name) })); }}>Remove</button>
                   </div>
                 );
               })}
@@ -535,7 +609,7 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
                 setBrief(text);
                 update((prev) => ({
                   ...prev,
-                  notes: [{ id: newId(), title: "Kranos · Report", body: text }, ...prev.notes.filter((row) => row.title !== "Kranos · Report")],
+                  notes: [{ id: hubNoteId("Kranos · Report"), title: "Kranos · Report", body: text }, ...prev.notes.filter((row) => row.title !== "Kranos · Report")],
                   thread: [...prev.thread, { id: newId(), who: "Kranos", text: text.slice(0, 4000), mine: false, platform: "kranos" }],
                 }));
               }).catch(() => setBrief(facts)).finally(() => setBriefing(false));

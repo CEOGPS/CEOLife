@@ -374,8 +374,8 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
           {studio === "audio" ? <div className="mt-3 flex flex-wrap gap-3">{VOICES.map((item) => <button key={item.id} type="button" className={`quiet ${voice === item.id ? "is-on" : ""}`} onClick={() => setVoice(item.id)}>{item.name}</button>)}</div> : null}
           {studio === "image" || studio === "video" || studio === "animate" || studio === "wan" ? <div className="mt-3 flex flex-wrap gap-3">{ASPECTS.map((name) => <button key={name} type="button" className={`quiet ${aspect === name ? "is-on" : ""}`} onClick={() => setAspect(name)}>{name}</button>)}</div> : null}
           <div className="mt-4 flex flex-wrap items-center gap-4">
-            <button type="button" className="quiet is-on" disabled={busy} onClick={() => void run()}>{busy ? "Working" : "Create"}</button>
-            {job ? <button type="button" className="quiet" onClick={() => {
+            <button type="button" className={`quiet is-on ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => void run()}>{busy ? "Working" : "Create"}</button>
+            {job ? <button type="button" className={`quiet ${note === "Checking the video…" ? "is-busy" : ""}`} aria-busy={note === "Checking the video…"} disabled={note === "Checking the video…"} onClick={() => {
               setNote("Checking the video…");
               const check = engine === "wan"
                 ? import("@/lib/lifeos/sync").then(({ wanClip }) => wanClip({ data: { key: replicate, id: job } }))

@@ -56,6 +56,34 @@ function arr<T>(value: unknown, map: (row: unknown) => T | null, max = 80): T[] 
   return value.map(map).filter((row): row is T => row !== null).slice(0, max);
 }
 
+const HUB_NOTE = /^(Agent|Chat|Hub|Voice|Kranos) · /;
+
+function oneNote(row: unknown): Note | null {
+  if (!row || typeof row !== "object") return null;
+  const r = row as Note;
+  const title = text(r.title, 80);
+  if (!title) return null;
+  const roomy = HUB_NOTE.test(title) || title.startsWith("Doc ·") || title.startsWith("Sheet ·");
+  return { id: text(r.id, 40) || crypto.randomUUID(), title, body: text(r.body, roomy ? 20000 : 4000) };
+}
+
+function notesOf(value: unknown): Note[] {
+  if (!Array.isArray(value)) return [];
+  const hub = new Map<string, Note>();
+  const rest: Note[] = [];
+  for (const row of value) {
+    const note = oneNote(row);
+    if (!note) continue;
+    if (!HUB_NOTE.test(note.title)) {
+      rest.push(note);
+      continue;
+    }
+    const prev = hub.get(note.title);
+    if (!prev || note.body.length >= prev.body.length) hub.set(note.title, note);
+  }
+  return [...hub.values(), ...rest].slice(0, 400);
+}
+
 function text(value: unknown, max: number) {
   return String(value ?? "").slice(0, max);
 }
@@ -92,13 +120,7 @@ export function sanitizeBoard(input: unknown): Board {
   const board: Board = {
     logo: text(raw.logo, 500_000),
     banner: text(raw.banner, 500_000),
-    notes: arr(raw.notes, (row) => {
-      if (!row || typeof row !== "object") return null;
-      const r = row as Note;
-      const title = text(r.title, 80);
-      const office = title.startsWith("Doc ·") || title.startsWith("Sheet ·");
-      return { id: text(r.id, 40) || crypto.randomUUID(), title, body: text(r.body, office ? 20000 : 4000) };
-    }),
+    notes: notesOf(raw.notes),
     tasks: arr(raw.tasks, (row) => {
       if (!row || typeof row !== "object") return null;
       const r = row as Task;

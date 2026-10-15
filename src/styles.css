@@ -47,7 +47,7 @@
   }
 }
 
-button:not(.cal-day):not(.cal-cell):not(.flex):not(.w-full):not(.block):not(.link-add):not(.link-remove):not(.menu):not(.quiet):not(.icon):not(.inbox-row):not(.int-btn):not(.int-chip),
+button:not(.cal-day):not(.cal-cell):not(.flex):not(.w-full):not(.block):not(.link-add):not(.link-remove):not(.menu):not(.quiet):not(.icon):not(.inbox-row):not(.int-btn):not(.int-chip):not(.msg-send):not(.art-play),
 a.bg-blue,
 button.bg-blue,
 button:not(.cal-day):not(.flex).on,
@@ -257,6 +257,87 @@ button.quiet.check-btn {
   border-radius: 999px !important;
   background: rgba(79, 210, 255, 0.12) !important;
   color: #fff !important;
+}
+button.msg-send {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  height: 2rem !important;
+  min-height: 2rem !important;
+  padding: 0 1rem !important;
+  border-radius: 999px !important;
+  border: 0 !important;
+  background: oklch(0.62 0.14 230) !important;
+  color: #fff !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  gap: 0.4rem !important;
+}
+button.msg-send:disabled {
+  opacity: 0.45 !important;
+}
+button.msg-send[aria-busy="true"]:disabled {
+  opacity: 1 !important;
+  cursor: wait !important;
+}
+button.msg-send .msg-spin {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 999px;
+  animation: msg-spin 0.7s linear infinite;
+}
+@keyframes msg-spin {
+  to { transform: rotate(360deg); }
+}
+button.is-busy {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.4rem !important;
+}
+button.is-busy::before {
+  content: "";
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: msg-spin 0.7s linear infinite;
+}
+button.art-play {
+  position: relative;
+  display: grid !important;
+  place-items: center;
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0.375rem !important;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+button.art-play img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+button.art-play .art-play-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.38);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1;
 }
 button.icon {
   display: inline-flex !important;
@@ -564,6 +645,8 @@ button.quiet.accent-orange {
 
 @media (prefers-reduced-motion: reduce) {
   .blink { animation: none; }
+  button.msg-send .msg-spin,
+  button.is-busy::before { animation: none; }
 }
 
 /* Integrations panel controls. They opt out of the flat button reset above so state is visible. */

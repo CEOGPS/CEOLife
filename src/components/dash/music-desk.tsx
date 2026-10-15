@@ -144,7 +144,7 @@ export function MusicDesk({ data, update }: { data: Memory; update: Update }) {
           <div className="mt-4 flex flex-wrap gap-2">
             <input className="h-8 min-w-40 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" value={filter} placeholder="Filter this list" onChange={(event) => setFilter(event.target.value)} />
             <input className="h-8 min-w-40 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" value={q} placeholder="Search Spotify" onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && q.trim()) void ask("search", q).catch(() => setNote("Spotify search did not answer.")); }} />
-            <button type="button" className="quiet" onClick={() => { if (q.trim()) void ask("search", q).catch(() => setNote("Spotify search did not answer.")); }}>Search</button>
+            <button type="button" className={`quiet ${note === "Searching Spotify…" ? "is-busy" : ""}`} aria-busy={note === "Searching Spotify…"} disabled={note === "Searching Spotify…"} onClick={() => { if (q.trim()) void ask("search", q).catch(() => setNote("Spotify search did not answer.")); }}>Search</button>
             {hits.length ? <button type="button" className="quiet" onClick={() => setHits([])}>Back</button> : null}
           </div>
           {note ? <p className="mt-3 text-sm text-white/50">{note}</p> : null}
@@ -160,15 +160,24 @@ export function MusicDesk({ data, update }: { data: Memory; update: Update }) {
             const active = playing?.id === (hit ? hit.id : row.id);
             return (
               <div key={`${row.title}-${index}`} className={`grid grid-cols-[2rem_1fr_8rem] items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-white/5 ${active ? "bg-white/5" : ""}`}>
-                <button type="button" className="text-left text-[11px] text-white/40" onClick={() => {
-                  if (saved) { playCut(cuts[index] || cuts[0], cuts); return; }
-                  if (!hit) return;
-                  const next = { id: hit.id || newId(), title: hit.title, artist: hit.artist, album: hit.album, url: hit.preview || "", page: hit.url, art: hit.art };
-                  playCut(next, [next]);
-                  saveHit(hit, "Library");
-                }}>{active && !play.paused ? "▶" : index + 1}</button>
+                <span className="text-left text-[11px] text-white/40">{index + 1}</span>
                 <div className="flex min-w-0 items-center gap-2">
-                  {art ? <img src={art} alt="" className="h-10 w-10 rounded-md object-cover" /> : <span className="grid h-10 w-10 place-items-center rounded-md bg-white/10 text-[10px] text-white/40">♪</span>}
+                  <button
+                    type="button"
+                    className="art-play"
+                    aria-label={active && !play.paused ? `Pause ${row.title}` : `Play ${row.title}`}
+                    onClick={() => {
+                      if (active) { togglePause(); return; }
+                      if (saved) { playCut(cuts[index] || cuts[0], cuts); return; }
+                      if (!hit) return;
+                      const next = { id: hit.id || newId(), title: hit.title, artist: hit.artist, album: hit.album, url: hit.preview || "", page: hit.url, art: hit.art };
+                      playCut(next, [next]);
+                      saveHit(hit, "Library");
+                    }}
+                  >
+                    {art ? <img src={art} alt="" /> : <span className="text-[10px] text-white/40">♪</span>}
+                    <span className="art-play-mark" aria-hidden="true">{active && !play.paused ? "❚❚" : "▶"}</span>
+                  </button>
                   <span className="min-w-0">
                     <span className="block truncate">{row.title}</span>
                     <span className="block truncate text-[11px] text-white/40">{row.artist || "Local"}</span>
@@ -190,7 +199,7 @@ export function MusicDesk({ data, update }: { data: Memory; update: Update }) {
             <div className="flex flex-wrap gap-2">
               <input className="h-8 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder="Singing with" value={duet.who} onChange={(event) => setDuet({ ...duet, who: event.target.value })} />
               {["Silly", "Heartfelt", "Roast"].map((style) => <button key={style} type="button" className={`quiet ${duet.style === style ? "is-on" : ""}`} onClick={() => setDuet({ ...duet, style })}>{style}</button>)}
-              <button type="button" className="quiet is-on" onClick={() => {
+              <button type="button" className={`quiet is-on ${note === "Writing an original duet…" ? "is-busy" : ""}`} aria-busy={note === "Writing an original duet…"} disabled={note === "Writing an original duet…"} onClick={() => {
                 if (!duet.who.trim()) { setNote("Name who you are singing with."); return; }
                 setNote("Writing an original duet…");
                 void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { name: "Duet", prompt: "Write an original G-rated duet. No copyrighted lyrics. Verse for Chris, verse for the partner, chorus for both. Under 180 words.", facts: `Partner: ${duet.who}. Style: ${duet.style}. Setting: ${duet.setting}. Note: ${duet.extra || "none"}.`, question: "Write the duet." } })).then((result) => {

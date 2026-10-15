@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { newId, useMemory, type Memory } from "./memory";
+import { hubNoteId, newId, useMemory, type Memory } from "./memory";
 import { soundPrefs } from "./sound";
 import { defaultVoice, readClones, VOICES } from "./voices";
 import { boardFacts } from "./facts";
@@ -94,7 +94,7 @@ export function VoiceClone({ data, update, onReady }: { data: Memory; update: Up
     update((prev) => {
       const clones = readClones(prev.notes).filter((row) => row.id !== result.id);
       clones.push({ name: label, id: result.id });
-      return { ...prev, notes: [{ id: newId(), title: "Voice · Clones", body: JSON.stringify(clones) }, ...prev.notes.filter((row) => row.title !== "Voice · Clones")] };
+      return { ...prev, notes: [{ id: hubNoteId("Voice · Clones"), title: "Voice · Clones", body: JSON.stringify(clones) }, ...prev.notes.filter((row) => row.title !== "Voice · Clones")] };
     });
     onReady?.(result.id);
     setNote(`${label} is ready. Pick it in Voice.`);
@@ -356,7 +356,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
       ) : null}
       <form className="flex w-full shrink-0 items-center gap-2" onSubmit={run}>
         <input className="h-9 min-w-0 flex-1 rounded-full border border-white/15 bg-black/50 px-4 text-sm" value={draft} placeholder={mode === "chat" ? `Message ${agent}` : mode} onChange={(event) => setDraft(event.target.value)} />
-        <button type="submit" className="quiet is-on">Send</button>
+        <button type="submit" className={`quiet is-on ${status === "Checking tools" ? "is-busy" : ""}`} aria-busy={status === "Checking tools"} disabled={status === "Checking tools"}>Send</button>
       </form>
       <div className="flex w-full shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1">
         <button type="button" className={`quiet ${mic ? "is-on" : ""}`} onClick={toggleMic}>{mic ? "Mic on" : "Mic"}</button>

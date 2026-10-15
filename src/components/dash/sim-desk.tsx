@@ -301,7 +301,7 @@ export function SimDesk({ data, update }: { data: Memory; update: Update }) {
               {echoChat.map((row, index) => <p key={`${index}-${row.text.slice(0, 12)}`} className={row.mine ? "text-sm" : "text-sm text-white/70"}>{row.mine ? "You" : "Echo"} · {row.text}</p>)}
               <div className="flex gap-2">
                 <input className="h-8 min-w-0 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" value={echoLine} placeholder="Ask your future self" onChange={(event) => setEchoLine(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void askEcho(); }} />
-                <button type="button" className="quiet is-on" onClick={() => void askEcho()}>{busy ? "…" : "Send"}</button>
+                <button type="button" className={`quiet is-on ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => void askEcho()}>{busy ? "…" : "Send"}</button>
               </div>
             </div>
           ) : null}
@@ -325,7 +325,7 @@ export function SimDesk({ data, update }: { data: Memory; update: Update }) {
               {friendChat.map((row, index) => <p key={`${index}-${row.text.slice(0, 12)}`} className={row.mine ? "text-sm" : "text-sm text-white/70"}>{row.mine ? "You" : arch} · {row.text}</p>)}
               <div className="flex gap-2">
                 <input className="h-8 min-w-0 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" value={friendLine} placeholder="Say something" onChange={(event) => setFriendLine(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void talkFriend(); }} />
-                <button type="button" className="quiet is-on" onClick={() => void talkFriend()}>{busy ? "…" : "Send"}</button>
+                <button type="button" className={`quiet is-on ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => void talkFriend()}>{busy ? "…" : "Send"}</button>
               </div>
             </div>
           ) : null}
@@ -346,7 +346,7 @@ export function SimDesk({ data, update }: { data: Memory; update: Update }) {
               {data.accounts.map((row) => <p key={row.id} className="flex justify-between border-b border-white/10 py-1"><span>{row.name}</span><span>{fmtMoney(row.balance)}</span></p>)}
               {unpaid.map((row) => <p key={row.id} className="flex justify-between border-b border-white/10 py-1 text-white/60"><span>{row.name} due</span><span>{fmtMoney(row.amount)}</span></p>)}
               {!data.accounts.length && !unpaid.length ? <p className="text-white/40">No accounts or bills are saved.</p> : null}
-              <button type="button" className="quiet is-on w-fit" onClick={() => {
+              <button type="button" className={`quiet is-on w-fit ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => {
                 setBusy(true);
                 setNote("Reading the books…");
                 void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { name: "Oracle", prompt: "Read the finance sheet only. Say what is unpaid, which account moved, and one bill to pay first. Do not invent a balance or a return.", facts: boardFacts(data, "budget invoices accounts bills"), question: "What should be paid first?" } })).then((result) => { setNote(result.text || "No read came back."); setBusy(false); });
@@ -359,7 +359,7 @@ export function SimDesk({ data, update }: { data: Memory; update: Update }) {
                 {["Silly", "Chill", "Social", "Solo"].map((item) => <button key={item} type="button" className={`quiet ${joyMood === item ? "is-on" : ""}`} onClick={() => setJoyMood(item)}>{item}</button>)}
                 {["Low", "Medium", "High"].map((item) => <button key={item} type="button" className={`quiet ${joyEnergy === item ? "is-on" : ""}`} onClick={() => setJoyEnergy(item)}>{item}</button>)}
               </div>
-              <button type="button" className="quiet is-on" onClick={() => {
+              <button type="button" className={`quiet is-on ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => {
                 setBusy(true);
                 setNote("Spinning…");
                 const recent = data.notes.filter((row) => row.title.startsWith("Joy ·")).slice(0, 5).map((row) => row.title).join(", ");
@@ -396,7 +396,7 @@ export function SimDesk({ data, update }: { data: Memory; update: Update }) {
               {[["Notes", data.notes.length], ["Tasks", data.tasks.length], ["Contacts", data.contacts.length], ["Mail", data.mail.length], ["Events", data.events.length], ["Leads", data.leads.length]].map((row) => (
                 <p key={String(row[0])} className="flex justify-between border-b border-white/10 py-1"><span>{row[0]}</span><span className={row[1] === 0 ? "text-ember" : ""}>{row[1]}</span></p>
               ))}
-              <button type="button" className="quiet is-on mt-2 w-fit" onClick={() => {
+              <button type="button" className={`quiet is-on mt-2 w-fit ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => {
                 setBusy(true);
                 setNote("Auditing…");
                 void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { name: "Audit", prompt: "Audit the saved board. Name what is empty, what is full, and one next action that uses a saved item. Do not invent records.", facts: boardFacts(data, "audit contacts tasks mail events"), question: "What is missing and what is the next real step?" } })).then((result) => { setNote(result.text || "No audit came back."); setBusy(false); });
@@ -406,11 +406,11 @@ export function SimDesk({ data, update }: { data: Memory; update: Update }) {
         </div>
         <div className="mt-4 flex gap-4">
           <button type="button" className="quiet is-on" onClick={run}>Run</button>
-          {name === "Alternate Life" ? <button type="button" className="quiet is-on" onClick={() => void simulate()}>{busy ? "Working" : "Simulate"}</button> : null}
-          {name === "Dream Forge" ? <button type="button" className="quiet is-on" onClick={() => void forge()}>{busy ? "Working" : "Forge"}</button> : null}
+          {name === "Alternate Life" ? <button type="button" className={`quiet is-on ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => void simulate()}>{busy ? "Working" : "Simulate"}</button> : null}
+          {name === "Dream Forge" ? <button type="button" className={`quiet is-on ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => void forge()}>{busy ? "Working" : "Forge"}</button> : null}
           {name === "Dream Forge" && note.includes("{") ? <button type="button" className="quiet" onClick={takeTasks}>Add tasks</button> : null}
           {name === "Dark Card" ? <button type="button" className="quiet is-on" onClick={deal}>Deal</button> : null}
-          {name === "Life RPG" ? <button type="button" className="quiet is-on" onClick={() => void readState()}>{busy ? "Working" : "Read state"}</button> : null}
+          {name === "Life RPG" ? <button type="button" className={`quiet is-on ${busy ? "is-busy" : ""}`} aria-busy={busy} disabled={busy} onClick={() => void readState()}>{busy ? "Working" : "Read state"}</button> : null}
           {note ? <button type="button" className="quiet" onClick={() => save(update, name, note)}>Save run</button> : null}
         </div>
         {alt ? (

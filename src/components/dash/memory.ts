@@ -450,6 +450,47 @@ function readVault(): Entry[] {
 
 const SEED_IDS = new Set(["hello", "idea-1", "lead-nextdoor", "lead-group", "n1", "n2", "j1", "j2", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "p1", "p2", "e1", "e2", "s1", "s2", "m1", "m2"]);
 
+const HUB_NOTE = /^(Agent|Chat|Hub|Voice|Kranos) · /;
+
+export function hubNoteId(title: string) {
+  let h1 = 2166136261;
+  let h2 = 2166136261;
+  for (let i = 0; i < title.length; i += 1) {
+    h1 ^= title.charCodeAt(i);
+    h1 = Math.imul(h1, 16777619);
+    h2 ^= title.charCodeAt(title.length - 1 - i);
+    h2 = Math.imul(h2, 16777619);
+  }
+  return `hub-${(h1 >>> 0).toString(16)}-${(h2 >>> 0).toString(16)}`;
+}
+
+function unionNotes(local: { id: string; title: string; body: string }[], remote: { id: string; title: string; body: string }[]) {
+  const merged = unionById(local, remote);
+  const hub = new Map<string, { id: string; title: string; body: string }>();
+  const rest: { id: string; title: string; body: string }[] = [];
+  for (const row of merged) {
+    if (!HUB_NOTE.test(row.title)) {
+      rest.push(row);
+      continue;
+    }
+    const prev = hub.get(row.title);
+    if (!prev || row.body.length >= prev.body.length) hub.set(row.title, row);
+  }
+  return [...hub.values(), ...rest];
+}
+
+function takeCloud(current: Memory, incoming: Memory): Memory {
+  return {
+    ...incoming,
+    notes: unionNotes(current.notes, incoming.notes),
+    jobs: unionById(current.jobs, incoming.jobs),
+    keys: current.keys.length ? current.keys : incoming.keys,
+    vault: current.vault.length ? current.vault : incoming.vault,
+    banner: incoming.banner || current.banner,
+    logo: incoming.logo || current.logo,
+  };
+}
+
 function unionById<T extends { id: string }>(local: T[], remote: T[]) {
   const kept = local.filter((row) => !SEED_IDS.has(row.id));
   const map = new Map<string, T>();
@@ -464,7 +505,7 @@ function absorb(base: Memory, raw: unknown) {
     ...base,
     logo: base.logo || incoming.logo,
     banner: base.banner || incoming.banner,
-    notes: unionById(base.notes, incoming.notes),
+    notes: unionNotes(base.notes, incoming.notes),
     tasks: unionById(base.tasks, incoming.tasks),
     leads: unionById(base.leads, incoming.leads),
     notifs: unionById(base.notifs, incoming.notifs),
@@ -732,15 +773,8 @@ async function pushNow() {
       return;
     }
     const localAt = Number(localStorage.getItem(AT) || 0);
-    if (cloud.doc && cloud.at && localAt && cloud.at > localAt + 1500) {
-      const incoming = sanitizeMemory(cloud.doc);
-      memory = { ...incoming, keys: memory.keys.length ? memory.keys : incoming.keys, vault: memory.vault.length ? memory.vault : incoming.vault, banner: incoming.banner || memory.banner, logo: incoming.logo || memory.logo };
-      rememberLocal();
-      statusText = "Loaded the newer board.";
-      emit();
-      return;
-    }
-    if (cloud.doc) memory = absorb(memory, cloud.doc);
+    if (cloud.doc && cloud.at && localAt && cloud.at > localAt + 1500) memory = takeCloud(memory, sanitizeMemory(cloud.doc));
+    else if (cloud.doc) memory = absorb(memory, cloud.doc);
     const cloudKeys = await pullKeys().catch(() => []);
     if (cloudKeys.length) memory = { ...memory, keys: unionKeys(memory.keys, cloudKeys) };
     const copy = { ...memory, keys: [], vault: [] };
@@ -775,7 +809,7 @@ export async function hydrateMemory() {
     const localAt = Number(localStorage.getItem(AT) || 0);
     if (cloud?.doc && (!localAt || (cloud.at && cloud.at >= localAt))) {
       const incoming = sanitizeMemory(cloud.doc);
-      memory = { ...incoming, keys: memory.keys.length ? memory.keys : incoming.keys, vault: memory.vault.length ? memory.vault : incoming.vault, banner: incoming.banner || memory.banner, logo: incoming.logo || memory.logo };
+      memory = takeCloud(memory, incoming);
     } else if (cloud?.doc) {
       memory = absorb(memory, cloud.doc);
     }

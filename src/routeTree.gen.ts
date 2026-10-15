@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PanelSlugRouteImport } from './routes/panel/$slug'
+import { Route as ApiAgentsErebusRouteImport } from './routes/api/agents/erebus'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiIntegrationsIndexRouteImport } from './routes/api/integrations/index'
 import { Route as ApiIntegrationsDisconnectRouteImport } from './routes/api/integrations/disconnect'
@@ -22,8 +23,8 @@ import { Route as ApiIntegrationsTokenRouteImport } from './routes/api/integrati
 import { Route as ApiKeysAccountRouteImport } from './routes/api/keys/account'
 import { Route as ApiKeysCheckRouteImport } from './routes/api/keys/check'
 import { Route as ApiKeysMachineRouteImport } from './routes/api/keys/machine'
-import { Route as ApiWebhooksFacebookRouteImport } from './routes/api/webhooks/facebook'
 import { Route as ApiOauthExchangeRouteImport } from './routes/api/oauth/exchange'
+import { Route as ApiWebhooksFacebookRouteImport } from './routes/api/webhooks/facebook'
 import { Route as ApiIntegrationsCallbackProviderRouteImport } from './routes/api/integrations/callback/$provider'
 
 const IndexRoute = IndexRouteImport.update({
@@ -39,6 +40,11 @@ const LoginRoute = LoginRouteImport.update({
 const PanelSlugRoute = PanelSlugRouteImport.update({
   id: '/panel/$slug',
   path: '/panel/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentsErebusRoute = ApiAgentsErebusRouteImport.update({
+  id: '/api/agents/erebus',
+  path: '/api/agents/erebus',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/panel/$slug': typeof PanelSlugRoute
+  '/api/agents/erebus': typeof ApiAgentsErebusRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
   '/api/integrations/settings': typeof ApiIntegrationsSettingsRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/panel/$slug': typeof PanelSlugRoute
+  '/api/agents/erebus': typeof ApiAgentsErebusRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
   '/api/integrations/settings': typeof ApiIntegrationsSettingsRoute
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/panel/$slug': typeof PanelSlugRoute
+  '/api/agents/erebus': typeof ApiAgentsErebusRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
   '/api/integrations/settings': typeof ApiIntegrationsSettingsRoute
@@ -170,6 +179,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/panel/$slug'
+    | '/api/agents/erebus'
     | '/api/auth/$'
     | '/api/integrations/disconnect'
     | '/api/integrations/settings'
@@ -188,6 +198,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/panel/$slug'
+    | '/api/agents/erebus'
     | '/api/auth/$'
     | '/api/integrations/disconnect'
     | '/api/integrations/settings'
@@ -206,6 +217,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/panel/$slug'
+    | '/api/agents/erebus'
     | '/api/auth/$'
     | '/api/integrations/disconnect'
     | '/api/integrations/settings'
@@ -225,6 +237,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   PanelSlugRoute: typeof PanelSlugRoute
+  ApiAgentsErebusRoute: typeof ApiAgentsErebusRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiIntegrationsDisconnectRoute: typeof ApiIntegrationsDisconnectRoute
   ApiIntegrationsSettingsRoute: typeof ApiIntegrationsSettingsRoute
@@ -261,6 +274,13 @@ declare module '@tanstack/react-router' {
       path: '/panel/$slug'
       fullPath: '/panel/$slug'
       preLoaderRoute: typeof PanelSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agents/erebus': {
+      id: '/api/agents/erebus'
+      path: '/api/agents/erebus'
+      fullPath: '/api/agents/erebus'
+      preLoaderRoute: typeof ApiAgentsErebusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -361,6 +381,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   PanelSlugRoute: PanelSlugRoute,
+  ApiAgentsErebusRoute: ApiAgentsErebusRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiIntegrationsDisconnectRoute: ApiIntegrationsDisconnectRoute,
   ApiIntegrationsSettingsRoute: ApiIntegrationsSettingsRoute,

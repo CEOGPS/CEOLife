@@ -160,7 +160,7 @@ export function MarketingDesk({ data, update }: { data: Memory; update: Update }
             <p className="mt-2 text-sm text-white/50">{seoTitle.length >= 50 && seoTitle.length <= 60 ? "Title length is in range." : "Title should be 50–60 characters."} {seoMeta.length >= 120 && seoMeta.length <= 160 ? "Description length is in range." : "Description should be 120–160 characters."}</p>
             <div className="mt-3 flex items-center gap-4">
               <button type="button" className="bg-blue" onClick={() => { saveNote(update, "SEO · page", `${seoTitle}\n${seoMeta}`); setNote("SEO draft saved."); }}>Save</button>
-              <button type="button" className="link-add" onClick={() => {
+              <button type="button" className={`link-add ${note === "Writing…" ? "is-busy" : ""}`} aria-busy={note === "Writing…"} disabled={note === "Writing…"} onClick={() => {
                 setNote("Writing…");
                 void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: `Write one SEO title under 60 characters and one meta description under 160 characters for ${seoTitle || "CEO GPS"}. No invented numbers.`, facts: seoMeta } })).then((result) => setNote(result.text || "No draft came back."));
               }}>Draft</button>
@@ -172,7 +172,7 @@ export function MarketingDesk({ data, update }: { data: Memory; update: Update }
           <Box title="Page audit">
             <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void runAudit(url).catch((error: unknown) => setNote(error instanceof Error ? error.message : "The page did not load.")); }}>
               <input className="h-8 min-w-0 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" value={url} onChange={(event) => setUrl(event.target.value)} />
-              <button type="submit" className="bg-blue">Audit</button>
+              <button type="submit" className={`bg-blue ${note === "Checking the page…" ? "is-busy" : ""}`} aria-busy={note === "Checking the page…"} disabled={note === "Checking the page…"}>Audit</button>
             </form>
             {audit ? <pre className="mt-3 whitespace-pre-wrap text-sm">{audit}</pre> : null}
             <div className="mt-3">{audits.map((row) => <button key={row.id} type="button" className="menu" onClick={() => setAudit(row.body)}>{row.title.replace("Audit · ", "")}</button>)}</div>
@@ -245,7 +245,7 @@ export function MarketingDesk({ data, update }: { data: Memory; update: Update }
             <div className="mb-2 flex gap-4">{["Post", "Email", "Ad", "Blog"].map((item) => <button key={item} type="button" className={`quiet ${channel === item ? "is-on" : ""}`} onClick={() => setChannel(item)}>{item}</button>)}</div>
             <textarea className="min-h-24 w-full rounded-2xl border border-line bg-black/40 px-3 py-2 text-sm" value={brief} placeholder="What should it say?" onChange={(event) => setBrief(event.target.value)} />
             <div className="mt-2 flex items-center gap-4">
-              <button type="button" className="bg-blue" onClick={() => {
+              <button type="button" className={`bg-blue ${note === "Writing…" ? "is-busy" : ""}`} aria-busy={note === "Writing…"} disabled={note === "Writing…"} onClick={() => {
                 setNote("Writing…");
                 void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: `Write a short ${channel.toLowerCase()} about ${brief || "CEO GPS"}. No invented numbers or testimonials.`, facts: "" } })).then((result) => { setDraft(result.text || ""); setNote(result.text ? "" : "No draft came back."); });
               }}>Write</button>
@@ -294,7 +294,7 @@ export function MarketingDesk({ data, update }: { data: Memory; update: Update }
             }}>
               <input className="h-8 w-48 rounded-full border border-line bg-black/40 px-3 text-sm" value={niche} placeholder="Offer or niche" onChange={(event) => setNiche(event.target.value)} />
               <input className="h-8 w-36 rounded-full border border-line bg-black/40 px-3 text-sm" value={city} placeholder="City" onChange={(event) => setCity(event.target.value)} />
-              <button type="submit" className="bg-blue">Generate</button>
+              <button type="submit" className={`bg-blue ${note === "Looking for lead titles…" ? "is-busy" : ""}`} aria-busy={note === "Looking for lead titles…"} disabled={note === "Looking for lead titles…"}>Generate</button>
             </form>
             <ul className="mt-3">{generated.map((row) => <li key={row.id} className="text-sm">{row.name} <span className="text-white/40">{row.status}</span></li>)}</ul>
           </Box>

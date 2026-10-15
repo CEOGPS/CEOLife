@@ -267,7 +267,7 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
           <input className="mt-2 h-8 w-full rounded-full border border-line bg-black/40 px-3 text-sm" type="datetime-local" value={when} onChange={(event) => setWhen(event.target.value)} />
           <div className="mt-3 flex items-center gap-4">
             <button type="button" className="bg-blue" onClick={post}>Post</button>
-            <button type="button" className="link-add" onClick={() => {
+            <button type="button" className={`link-add ${note === "Writing…" ? "is-busy" : ""}`} aria-busy={note === "Writing…"} disabled={note === "Writing…"} onClick={() => {
               setNote("Writing…");
               void import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: `Write a short social post. ${text || "CEO GPS update"}. No invented numbers.`, facts: "" } })).then((result) => { if (result.text) setText(result.text); setNote(result.text ? "" : "No draft came back."); });
             }}>Write</button>
