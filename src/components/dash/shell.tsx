@@ -5,7 +5,8 @@ import { onSoundChange, playTone, setMuted, setVolume, soundPrefs } from "./soun
 import { applyMotion, listNotices, markNoticesRead, onAppSettings, type Notice } from "./app-settings";
 import { fmtPhone } from "./format";
 import { AgentFloat } from "./dock";
-import { stopCut, togglePause, usePlayer } from "./player";
+import { usePlayer } from "./player";
+import { NowPlaying } from "./now-playing";
 import {
   Bell,
   BarChart3,
@@ -357,22 +358,7 @@ export function Shell({
           <div className={`px-4 py-4 ${playing.track ? "pb-24" : ""}`}><PageKeep page={active}>{children}</PageKeep></div>
         </div>
       </div>
-      {playing.track ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/85 px-4 py-2 backdrop-blur" data-sound="off">
-          <div className="mx-auto flex max-w-5xl items-center gap-3">
-            {playing.track.art ? <img src={playing.track.art} alt="" className="h-10 w-10 rounded-lg object-cover" /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-white/10 text-white/40">♪</span>}
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm">{playing.track.title}</p>
-              <p className="truncate text-[11px] text-white/40">{playing.track.artist}</p>
-            </div>
-            <button type="button" className="quiet is-on" onClick={togglePause}>{playing.paused ? "Play" : "Pause"}</button>
-            <button type="button" className="link-remove" onClick={stopCut}>Stop</button>
-          </div>
-          {!playing.track.url && playing.track.page.includes("open.spotify.com/") ? (
-            <iframe title={playing.track.title} className="mx-auto mt-2 h-20 w-full max-w-5xl rounded-xl" src={`${playing.track.page.replace("open.spotify.com/", "open.spotify.com/embed/")}?autoplay=1`} allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" />
-          ) : null}
-        </div>
-      ) : null}
+      {playing.track ? <NowPlaying /> : null}
       <AgentFloat />
     </div>
   );
