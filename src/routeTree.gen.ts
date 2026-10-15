@@ -13,18 +13,18 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PanelSlugRouteImport } from './routes/panel/$slug'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
-import { Route as ApiIntegrationsCallbackRouteImport } from './routes/api/integrations/callback'
-import { Route as ApiIntegrationsCallbackProviderRouteImport } from './routes/api/integrations/callback/$provider'
+import { Route as ApiIntegrationsIndexRouteImport } from './routes/api/integrations/index'
 import { Route as ApiIntegrationsDisconnectRouteImport } from './routes/api/integrations/disconnect'
+import { Route as ApiIntegrationsSettingsRouteImport } from './routes/api/integrations/settings'
 import { Route as ApiIntegrationsStartRouteImport } from './routes/api/integrations/start'
-import { Route as ApiIntegrationsStatusRouteImport } from './routes/api/integrations/status'
-import { Route as ApiIntegrationsVerifyRouteImport } from './routes/api/integrations/verify'
+import { Route as ApiIntegrationsTestRouteImport } from './routes/api/integrations/test'
 import { Route as ApiIntegrationsTokenRouteImport } from './routes/api/integrations/token'
 import { Route as ApiKeysAccountRouteImport } from './routes/api/keys/account'
 import { Route as ApiKeysCheckRouteImport } from './routes/api/keys/check'
 import { Route as ApiKeysMachineRouteImport } from './routes/api/keys/machine'
-import { Route as ApiOauthExchangeRouteImport } from './routes/api/oauth/exchange'
 import { Route as ApiWebhooksFacebookRouteImport } from './routes/api/webhooks/facebook'
+import { Route as ApiOauthExchangeRouteImport } from './routes/api/oauth/exchange'
+import { Route as ApiIntegrationsCallbackProviderRouteImport } from './routes/api/integrations/callback/$provider'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,14 +46,9 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiIntegrationsCallbackRoute = ApiIntegrationsCallbackRouteImport.update({
-  id: '/api/integrations/callback',
-  path: '/api/integrations/callback',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiIntegrationsCallbackProviderRoute = ApiIntegrationsCallbackProviderRouteImport.update({
-  id: '/api/integrations/callback/$provider',
-  path: '/api/integrations/callback/$provider',
+const ApiIntegrationsIndexRoute = ApiIntegrationsIndexRouteImport.update({
+  id: '/api/integrations/',
+  path: '/api/integrations/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiIntegrationsDisconnectRoute =
@@ -62,19 +57,19 @@ const ApiIntegrationsDisconnectRoute =
     path: '/api/integrations/disconnect',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiIntegrationsSettingsRoute = ApiIntegrationsSettingsRouteImport.update({
+  id: '/api/integrations/settings',
+  path: '/api/integrations/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiIntegrationsStartRoute = ApiIntegrationsStartRouteImport.update({
   id: '/api/integrations/start',
   path: '/api/integrations/start',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiIntegrationsStatusRoute = ApiIntegrationsStatusRouteImport.update({
-  id: '/api/integrations/status',
-  path: '/api/integrations/status',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiIntegrationsVerifyRoute = ApiIntegrationsVerifyRouteImport.update({
-  id: '/api/integrations/verify',
-  path: '/api/integrations/verify',
+const ApiIntegrationsTestRoute = ApiIntegrationsTestRouteImport.update({
+  id: '/api/integrations/test',
+  path: '/api/integrations/test',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiIntegrationsTokenRoute = ApiIntegrationsTokenRouteImport.update({
@@ -107,42 +102,48 @@ const ApiWebhooksFacebookRoute = ApiWebhooksFacebookRouteImport.update({
   path: '/api/webhooks/facebook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiIntegrationsCallbackProviderRoute =
+  ApiIntegrationsCallbackProviderRouteImport.update({
+    id: '/api/integrations/callback/$provider',
+    path: '/api/integrations/callback/$provider',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/panel/$slug': typeof PanelSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/integrations/callback': typeof ApiIntegrationsCallbackRoute
-  '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
+  '/api/integrations/settings': typeof ApiIntegrationsSettingsRoute
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
-  '/api/integrations/status': typeof ApiIntegrationsStatusRoute
-  '/api/integrations/verify': typeof ApiIntegrationsVerifyRoute
+  '/api/integrations/test': typeof ApiIntegrationsTestRoute
   '/api/integrations/token': typeof ApiIntegrationsTokenRoute
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
   '/api/oauth/exchange': typeof ApiOauthExchangeRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
+  '/api/integrations/': typeof ApiIntegrationsIndexRoute
+  '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/panel/$slug': typeof PanelSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/integrations/callback': typeof ApiIntegrationsCallbackRoute
-  '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
+  '/api/integrations/settings': typeof ApiIntegrationsSettingsRoute
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
-  '/api/integrations/status': typeof ApiIntegrationsStatusRoute
-  '/api/integrations/verify': typeof ApiIntegrationsVerifyRoute
+  '/api/integrations/test': typeof ApiIntegrationsTestRoute
   '/api/integrations/token': typeof ApiIntegrationsTokenRoute
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
   '/api/oauth/exchange': typeof ApiOauthExchangeRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
+  '/api/integrations': typeof ApiIntegrationsIndexRoute
+  '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -150,18 +151,18 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/panel/$slug': typeof PanelSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/integrations/callback': typeof ApiIntegrationsCallbackRoute
-  '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
+  '/api/integrations/settings': typeof ApiIntegrationsSettingsRoute
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
-  '/api/integrations/status': typeof ApiIntegrationsStatusRoute
-  '/api/integrations/verify': typeof ApiIntegrationsVerifyRoute
+  '/api/integrations/test': typeof ApiIntegrationsTestRoute
   '/api/integrations/token': typeof ApiIntegrationsTokenRoute
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
   '/api/oauth/exchange': typeof ApiOauthExchangeRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
+  '/api/integrations/': typeof ApiIntegrationsIndexRoute
+  '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -170,54 +171,54 @@ export interface FileRouteTypes {
     | '/login'
     | '/panel/$slug'
     | '/api/auth/$'
-    | '/api/integrations/callback'
-    | '/api/integrations/callback/$provider'
     | '/api/integrations/disconnect'
+    | '/api/integrations/settings'
     | '/api/integrations/start'
-    | '/api/integrations/status'
-    | '/api/integrations/verify'
+    | '/api/integrations/test'
     | '/api/integrations/token'
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
     | '/api/oauth/exchange'
     | '/api/webhooks/facebook'
+    | '/api/integrations/'
+    | '/api/integrations/callback/$provider'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/panel/$slug'
     | '/api/auth/$'
-    | '/api/integrations/callback'
-    | '/api/integrations/callback/$provider'
     | '/api/integrations/disconnect'
+    | '/api/integrations/settings'
     | '/api/integrations/start'
-    | '/api/integrations/status'
-    | '/api/integrations/verify'
+    | '/api/integrations/test'
     | '/api/integrations/token'
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
     | '/api/oauth/exchange'
     | '/api/webhooks/facebook'
+    | '/api/integrations'
+    | '/api/integrations/callback/$provider'
   id:
     | '__root__'
     | '/'
     | '/login'
     | '/panel/$slug'
     | '/api/auth/$'
-    | '/api/integrations/callback'
-    | '/api/integrations/callback/$provider'
     | '/api/integrations/disconnect'
+    | '/api/integrations/settings'
     | '/api/integrations/start'
-    | '/api/integrations/status'
-    | '/api/integrations/verify'
+    | '/api/integrations/test'
     | '/api/integrations/token'
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
     | '/api/oauth/exchange'
     | '/api/webhooks/facebook'
+    | '/api/integrations/'
+    | '/api/integrations/callback/$provider'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -225,18 +226,18 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PanelSlugRoute: typeof PanelSlugRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
-  ApiIntegrationsCallbackRoute: typeof ApiIntegrationsCallbackRoute
-  ApiIntegrationsCallbackProviderRoute: typeof ApiIntegrationsCallbackProviderRoute
   ApiIntegrationsDisconnectRoute: typeof ApiIntegrationsDisconnectRoute
+  ApiIntegrationsSettingsRoute: typeof ApiIntegrationsSettingsRoute
   ApiIntegrationsStartRoute: typeof ApiIntegrationsStartRoute
-  ApiIntegrationsStatusRoute: typeof ApiIntegrationsStatusRoute
-  ApiIntegrationsVerifyRoute: typeof ApiIntegrationsVerifyRoute
+  ApiIntegrationsTestRoute: typeof ApiIntegrationsTestRoute
   ApiIntegrationsTokenRoute: typeof ApiIntegrationsTokenRoute
   ApiKeysAccountRoute: typeof ApiKeysAccountRoute
   ApiKeysCheckRoute: typeof ApiKeysCheckRoute
   ApiKeysMachineRoute: typeof ApiKeysMachineRoute
   ApiOauthExchangeRoute: typeof ApiOauthExchangeRoute
   ApiWebhooksFacebookRoute: typeof ApiWebhooksFacebookRoute
+  ApiIntegrationsIndexRoute: typeof ApiIntegrationsIndexRoute
+  ApiIntegrationsCallbackProviderRoute: typeof ApiIntegrationsCallbackProviderRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -269,18 +270,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/integrations/callback': {
-      id: '/api/integrations/callback'
-      path: '/api/integrations/callback'
-      fullPath: '/api/integrations/callback'
-      preLoaderRoute: typeof ApiIntegrationsCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/integrations/callback/$provider': {
-      id: '/api/integrations/callback/$provider'
-      path: '/api/integrations/callback/$provider'
-      fullPath: '/api/integrations/callback/$provider'
-      preLoaderRoute: typeof ApiIntegrationsCallbackProviderRouteImport
+    '/api/integrations/': {
+      id: '/api/integrations/'
+      path: '/api/integrations'
+      fullPath: '/api/integrations/'
+      preLoaderRoute: typeof ApiIntegrationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/integrations/disconnect': {
@@ -290,6 +284,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIntegrationsDisconnectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/settings': {
+      id: '/api/integrations/settings'
+      path: '/api/integrations/settings'
+      fullPath: '/api/integrations/settings'
+      preLoaderRoute: typeof ApiIntegrationsSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/integrations/start': {
       id: '/api/integrations/start'
       path: '/api/integrations/start'
@@ -297,18 +298,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIntegrationsStartRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/integrations/status': {
-      id: '/api/integrations/status'
-      path: '/api/integrations/status'
-      fullPath: '/api/integrations/status'
-      preLoaderRoute: typeof ApiIntegrationsStatusRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/integrations/verify': {
-      id: '/api/integrations/verify'
-      path: '/api/integrations/verify'
-      fullPath: '/api/integrations/verify'
-      preLoaderRoute: typeof ApiIntegrationsVerifyRouteImport
+    '/api/integrations/test': {
+      id: '/api/integrations/test'
+      path: '/api/integrations/test'
+      fullPath: '/api/integrations/test'
+      preLoaderRoute: typeof ApiIntegrationsTestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/integrations/token': {
@@ -353,6 +347,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksFacebookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/callback/$provider': {
+      id: '/api/integrations/callback/$provider'
+      path: '/api/integrations/callback/$provider'
+      fullPath: '/api/integrations/callback/$provider'
+      preLoaderRoute: typeof ApiIntegrationsCallbackProviderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -361,18 +362,18 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PanelSlugRoute: PanelSlugRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
-  ApiIntegrationsCallbackRoute: ApiIntegrationsCallbackRoute,
-  ApiIntegrationsCallbackProviderRoute: ApiIntegrationsCallbackProviderRoute,
   ApiIntegrationsDisconnectRoute: ApiIntegrationsDisconnectRoute,
+  ApiIntegrationsSettingsRoute: ApiIntegrationsSettingsRoute,
   ApiIntegrationsStartRoute: ApiIntegrationsStartRoute,
-  ApiIntegrationsStatusRoute: ApiIntegrationsStatusRoute,
-  ApiIntegrationsVerifyRoute: ApiIntegrationsVerifyRoute,
+  ApiIntegrationsTestRoute: ApiIntegrationsTestRoute,
   ApiIntegrationsTokenRoute: ApiIntegrationsTokenRoute,
   ApiKeysAccountRoute: ApiKeysAccountRoute,
   ApiKeysCheckRoute: ApiKeysCheckRoute,
   ApiKeysMachineRoute: ApiKeysMachineRoute,
   ApiOauthExchangeRoute: ApiOauthExchangeRoute,
   ApiWebhooksFacebookRoute: ApiWebhooksFacebookRoute,
+  ApiIntegrationsIndexRoute: ApiIntegrationsIndexRoute,
+  ApiIntegrationsCallbackProviderRoute: ApiIntegrationsCallbackProviderRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,221 +1,328 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { sessionAuthHeaders } from "@/lib/lifeos/oauth";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { integrationsApi, IntegrationsApiError } from "@/lib/integrations/client";
+import { PROVIDERS, providerMeta, type AccountView, type CheckView, type IntegrationsPayload, type MailboxView, type ProviderId } from "@/lib/integrations/providers";
+import { catchReturn, GMAIL_ACCOUNT, rememberAccounts } from "@/lib/lifeos/oauth";
+import { sheetKeys } from "@/lib/lifeos/sheet-keys";
+import { newId, type Memory } from "../memory";
+import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
 
-/**
- * Talks to the app's own integration server routes.
- *
- * The panel never sees a token: it asks the server what is connected, tells it
- * to connect or re-test, and reacts to the result. An authorization started in
- * the preview runs in a popup (providers refuse to render inside the preview
- * frame) and reports back with a message; a top-level page just navigates.
- */
+export type Update = (recipe: (prev: Memory) => Memory) => void;
+export type Notice = { tone: "ok" | "error" | "info"; text: string } | null;
+export type KeyState = "ok" | "error" | "saved" | "untested" | "empty";
+export type KeyRowModel = KeyService & { value: string; check: CheckView | null; state: KeyState };
 
-export type Connection = {
-  provider: string;
-  label: string;
-  status: string;
-  scopes: string;
-  connectedAt: string;
-  verifiedAt: string | null;
-  expiresAt: string | null;
-  lastError: string;
-};
+const message = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
 
-export type ProviderInfo = {
-  name: string;
-  docs: string;
-  scopes: string;
-  configured: boolean;
-  missing: string[];
-  redirectUri: string;
-};
+export function useIntegrations(args: {
+  data: Memory;
+  update: Update;
+  setAccounts: (rows: { provider: string; name: string; email: string }[]) => void;
+  setNote: (value: string) => void;
+}) {
+  const { update, setAccounts, setNote } = args;
+  const dataRef = useRef(args.data);
+  dataRef.current = args.data;
 
-export type IntegrationStatus = {
-  ok: boolean;
-  signedIn: boolean;
-  redirectUri: string;
-  connections: Connection[];
-  providers: Record<string, ProviderInfo>;
-  error?: string;
-};
-
-const SID_KEY = "lifeos.oauth.sid";
-const POPUP_MS = 180_000;
-
-async function authedHeaders(extra?: Record<string, string>) {
-  return { Accept: "application/json", ...(extra || {}), ...(await sessionAuthHeaders()) };
-}
-
-function tabId() {
-  let sid = "";
-  try {
-    sid = sessionStorage.getItem(SID_KEY) || "";
-  } catch {
-    sid = "";
-  }
-  if (!sid) {
-    sid = crypto.randomUUID();
-    try {
-      sessionStorage.setItem(SID_KEY, sid);
-    } catch {
-      /* a non-persisted id still binds this attempt */
-    }
-  }
-  return sid;
-}
-
-export function useIntegrations() {
-  const [status, setStatus] = useState<IntegrationStatus | null>(null);
+  const [payload, setPayload] = useState<IntegrationsPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const waiting = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [pending, setPending] = useState("");
+  const [loadError, setLoadError] = useState<{ status: number; text: string } | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [notice, setNotice] = useState<Notice>(null);
+
+  const say = useCallback((tone: "ok" | "error" | "info", text: string) => {
+    setNotice({ tone, text });
+    setNote(text);
+  }, [setNote]);
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/integrations/status", { headers: await authedHeaders(), cache: "no-store" });
-      const body = (await response.json().catch(() => ({}))) as IntegrationStatus;
-      if (!response.ok || !body.ok) {
-        setStatus(null);
-        setMessage(body.error || `The connection list did not load (HTTP ${response.status}).`);
-      } else {
-        setStatus(body);
-      }
-      return body;
+      const next = await integrationsApi.list();
+      setPayload(next);
+      setLoadError(null);
+      const live = next.accounts.filter((row) => row.status === "ok");
+      rememberAccounts(live.map((row) => ({ provider: row.provider, email: row.email, primary: row.primary })));
+      setAccounts(live.map((row) => ({ provider: row.provider, name: providerMeta(row.provider).name, email: row.email })));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The connection list did not load.");
-      return null;
+      setLoadError({ status: error instanceof IntegrationsApiError ? error.status : 0, text: message(error, "Integrations could not be loaded.") });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setAccounts]);
 
   useEffect(() => {
+    const back = catchReturn();
+    if (back.provider) say("ok", `${providerMeta(back.provider).name} is connected${back.account ? ` as ${back.account}` : ""}.`);
+    else if (back.error) say("error", back.error);
     void refresh();
-  }, [refresh]);
+  }, [refresh, say]);
 
-  // The authorization window reports its result here, and the connection list is
-  // re-read so the card shows the provider's own answer, not the message alone.
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; provider?: string; ok?: boolean; message?: string; sid?: string };
-      if (!data || data.type !== "lifeos-oauth") return;
-      if (data.sid && data.sid !== tabId()) return;
-      setPending("");
-      setMessage(data.message || (data.ok ? `${data.provider} connected.` : "The authorization did not finish."));
-      void refresh();
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [refresh]);
+  const flag = (key: string, on: boolean) => setBusy((prev) => ({ ...prev, [key]: on }));
+  const keyValue = (name: string) => (dataRef.current.keys.find((row) => row.name === name)?.value || "").trim();
 
-  // While a popup is open, poll so a closed window or a slow provider still resolves.
-  const watch = useCallback(
-    (provider: string) => {
-      setPending(provider);
-      if (waiting.current) clearInterval(waiting.current);
-      const started = Date.now();
-      waiting.current = setInterval(() => {
-        if (Date.now() - started > POPUP_MS) {
-          if (waiting.current) clearInterval(waiting.current);
-          waiting.current = null;
-          setPending("");
-          setMessage("No answer from the authorization window. Start again if it closed early.");
-          return;
-        }
-        void refresh().then((body) => {
-          if (!body?.connections?.some((row) => row.provider === provider)) return;
-          if (waiting.current) clearInterval(waiting.current);
-          waiting.current = null;
-          setPending("");
+  const accounts = useMemo(() => payload?.accounts ?? [], [payload]);
+  const checks = useMemo(() => payload?.checks ?? {}, [payload]);
+  const mailboxes = useMemo<MailboxView[]>(() => payload?.mailboxes ?? [], [payload]);
+  const expected = useMemo(() => payload?.expected ?? {}, [payload]);
+  // The primary Google account (listed first) is the one Google-family checks use.
+  const googleEmail = accounts.find((row) => row.provider === "google" && row.status === "ok")?.email || "";
+
+  const byProvider = useMemo(() => {
+    const map = new Map<ProviderId, AccountView[]>();
+    for (const row of accounts) map.set(row.provider, [...(map.get(row.provider) || []), row]);
+    return map;
+  }, [accounts]);
+
+  const keyRows = useMemo<KeyRowModel[]>(() => {
+    return KEY_SERVICES
+      .map((svc) => {
+        const value = (args.data.keys.find((row) => row.name === svc.name)?.value || "").trim();
+        const check = checks[`key:${svc.name}`] || null;
+        // A card with nothing pasted is "empty" even if it can be tested (server-held or Google-verified),
+        // unless a real test result exists. Stale results for a removed key are ignored.
+        const testableWithoutKey = SERVER_HELD.has(svc.name) || NO_KEY_NEEDED.has(svc.name);
+        const mapped: KeyState | null = check ? (check.state === "ok" ? "ok" : check.state === "error" ? "error" : "saved") : null;
+        const state: KeyState = value ? (mapped ?? "untested") : testableWithoutKey ? (mapped ?? "empty") : "empty";
+        return { ...svc, value, check, state } as KeyRowModel;
+      })
+      .filter((row) => !COVERED_BY_LOGIN.has(row.name) || row.value);
+  }, [args.data.keys, checks]);
+
+  const stats = useMemo(() => {
+    const working = accounts.filter((row) => row.status === "ok").length + mailboxes.filter((row) => row.status === "valid").length + keyRows.filter((row) => row.state === "ok").length;
+    const attention = accounts.filter((row) => row.status === "needs_reauth").length + mailboxes.filter((row) => row.status !== "valid").length + keyRows.filter((row) => row.state === "error").length;
+    const untested = keyRows.filter((row) => row.state === "untested" || row.state === "saved").length;
+    return { working, attention, untested, providers: PROVIDERS.length, keys: keyRows.length };
+  }, [accounts, keyRows, mailboxes]);
+
+  /** Every email the dashboard touches, with the services connected under it. */
+  const inUse = useMemo(() => {
+    type Item = { label: string; ok: boolean; primary: boolean };
+    const map = new Map<string, Item[]>();
+    const push = (email: string, item: Item) => map.set(email, [...(map.get(email) || []), item]);
+    for (const row of accounts) {
+      push(row.email || "Email not reported", { label: providerMeta(row.provider).name, ok: row.status === "ok", primary: row.primary });
+    }
+    for (const row of mailboxes) {
+      push(row.email, { label: row.provider === "icloud" ? "iCloud Mail" : `${row.provider || "Mailbox"} mail`, ok: row.status === "valid", primary: false });
+    }
+    const emails = [...new Set([...BOARD_EMAIL_LIST, ...map.keys()])];
+    const rows = emails.map((email) => ({ email, items: map.get(email) || [], board: BOARD_EMAIL_LIST.includes(email) }));
+    const misses: string[] = [];
+    for (const [provider, email] of Object.entries(expected) as [ProviderId, string][]) {
+      if (!email) continue;
+      const linked = provider === "nylas" ? mailboxes.some((row) => row.email === email) : accounts.some((row) => row.provider === provider && row.email === email);
+      const any = provider === "nylas" ? mailboxes.length > 0 : accounts.some((row) => row.provider === provider);
+      if (!linked && any) misses.push(`${providerMeta(provider).name} is set to use ${email}, but is connected with a different account.`);
+    }
+    return { rows, misses };
+  }, [accounts, mailboxes, expected]);
+
+  const connect = useCallback(async (provider: ProviderId, hint?: string) => {
+    flag(`connect:${provider}`, true);
+    try {
+      const { url } = await integrationsApi.start(provider, hint, !hint);
+      window.location.assign(url);
+    } catch (error) {
+      say("error", message(error, `${providerMeta(provider).name} could not start.`));
+      flag(`connect:${provider}`, false);
+    }
+  }, [say]);
+
+  const testAccount = useCallback(async (account: AccountView) => {
+    flag(account.id, true);
+    try {
+      const result = await integrationsApi.testAccount(account.id);
+      say(result.ok ? "ok" : "error", `${providerMeta(account.provider).name}${account.email ? ` (${account.email})` : ""}: ${result.text}`);
+    } catch (error) {
+      say("error", message(error, "The check could not run."));
+    } finally {
+      await refresh();
+      flag(account.id, false);
+    }
+    return undefined;
+  }, [refresh, say]);
+
+  const disconnect = useCallback(async (account: AccountView) => {
+    flag(account.id, true);
+    try {
+      await integrationsApi.disconnectAccount(account.id);
+      say("info", `${providerMeta(account.provider).name}${account.email ? ` (${account.email})` : ""} was disconnected.`);
+    } catch (error) {
+      say("error", message(error, "Disconnecting failed."));
+    } finally {
+      await refresh();
+      flag(account.id, false);
+    }
+  }, [refresh, say]);
+
+  const setExpected = useCallback(async (provider: ProviderId, email: string) => {
+    flag(`expected:${provider}`, true);
+    try {
+      await integrationsApi.setExpected(provider, email.trim());
+      say("ok", email.trim() ? `${providerMeta(provider).name} will use ${email.trim().toLowerCase()}.` : `${providerMeta(provider).name} can use any account.`);
+    } catch (error) {
+      say("error", message(error, "That could not be saved."));
+    } finally {
+      await refresh();
+      flag(`expected:${provider}`, false);
+    }
+  }, [refresh, say]);
+
+  const applyPlan = useCallback(async () => {
+    flag("plan", true);
+    try {
+      await integrationsApi.setExpectedMany(recommendedPlan());
+      say("ok", "Account plan applied: Google → Gmail, the iCloud mailbox → iCloud, every other platform → your work address.");
+    } catch (error) {
+      say("error", message(error, "The plan could not be applied."));
+    } finally {
+      await refresh();
+      flag("plan", false);
+    }
+  }, [refresh, say]);
+
+  const makePrimary = useCallback(async (account: AccountView) => {
+    flag(account.id, true);
+    try {
+      await integrationsApi.makePrimary(account.id);
+      say("ok", `${account.email || providerMeta(account.provider).name} is now the primary ${providerMeta(account.provider).name} account.`);
+    } catch (error) {
+      say("error", message(error, "That could not be changed."));
+    } finally {
+      await refresh();
+      flag(account.id, false);
+    }
+  }, [refresh, say]);
+
+  const testMailbox = useCallback(async (box: MailboxView) => {
+    flag(box.id, true);
+    try {
+      const result = await integrationsApi.testMailbox(box.id);
+      say(result.ok ? "ok" : "error", result.text);
+    } catch (error) {
+      say("error", message(error, "The check could not run."));
+    } finally {
+      await refresh();
+      flag(box.id, false);
+    }
+  }, [refresh, say]);
+
+  const disconnectMailbox = useCallback(async (box: MailboxView) => {
+    flag(box.id, true);
+    try {
+      await integrationsApi.disconnectMailbox(box.id);
+      say("info", `${box.email} was disconnected.`);
+    } catch (error) {
+      say("error", message(error, "Disconnecting failed."));
+    } finally {
+      await refresh();
+      flag(box.id, false);
+    }
+  }, [refresh, say]);
+
+  const saveKey = useCallback((name: string, value: string) => {
+    const names = KEY_TWINS[name] || [name];
+    update((prev) => ({ ...prev, keys: [...names.map((item) => ({ id: newId(), name: item, value })), ...prev.keys.filter((item) => !names.includes(item.name))] }));
+  }, [update]);
+
+  const removeKey = useCallback(async (name: string) => {
+    const names = KEY_TWINS[name] || [name];
+    update((prev) => ({ ...prev, keys: prev.keys.filter((item) => !names.includes(item.name)) }));
+    await integrationsApi.forgetKey(name).catch(() => undefined);
+    await refresh();
+    say("info", `${name}: key removed.`);
+  }, [refresh, say, update]);
+
+  /** Tests a card. `value` and `extras` let the form test what was typed before it is saved. */
+  const testKey = useCallback(async (name: string, value?: string, extras: Record<string, string> = {}) => {
+    flag(`key:${name}`, true);
+    try {
+      const kind = ACCOUNT_SERVICES[name];
+      if (kind) {
+        const extra = EXTRA_FIELD[name];
+        const key = (value ?? keyValue(name)).trim();
+        const extraValue = extra ? (extras[extra.keyName] ?? keyValue(extra.keyName)).trim() : "";
+        const result = await integrationsApi.testAccountService(name, kind, {
+          key,
+          secret: kind === "godaddy" ? extraValue : "",
+          site: kind === "brilliant" ? extraValue : "",
+          email: googleEmail,
         });
-      }, 2500);
-    },
-    [refresh],
-  );
-
-  useEffect(() => () => {
-    if (waiting.current) clearInterval(waiting.current);
-  }, []);
-
-  const connect = useCallback(
-    async (provider: string, returnTo = "/panel/integrations", hint = "") => {
-      const sid = tabId();
-      const hintQuery = hint.trim() ? `&hint=${encodeURIComponent(hint.trim())}` : "";
-      const url = `/api/integrations/start?provider=${encodeURIComponent(provider)}&sid=${encodeURIComponent(sid)}&return=${encodeURIComponent(returnTo)}${hintQuery}`;
-      const response = await fetch(url, { headers: await authedHeaders(), cache: "no-store" });
-      const body = (await response.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string };
-      if (!response.ok || !body.url) {
-        setMessage(body.error || `Could not start ${provider} (HTTP ${response.status}).`);
-        return;
-      }
-      const framed = window.self !== window.top;
-      if (framed) {
-        const popup = window.open(body.url, "lifeos-oauth", "width=540,height=740,noopener=no");
-        if (!popup) {
-          window.location.assign(body.url);
-          return;
+        if (result.ok) {
+          if (kind === "search-console" && result.site) saveKey("Search Console", result.site);
+          if (kind === "google-analytics" && result.site) saveKey("Google Analytics", result.site);
+          if (kind === "godaddy") { if (key) saveKey("GoDaddy", key); if (extraValue) saveKey("GoDaddy Secret", extraValue); }
+          if (kind === "brilliant") { if (key) saveKey("Brilliant Directories", key); if (extraValue) saveKey("Brilliant Site", extraValue); }
         }
-        watch(provider);
-        return;
+        say(result.ok ? "ok" : "error", `${name}: ${result.text}`);
+        return result.ok ? "ok" as const : "error" as const;
       }
-      window.location.assign(body.url);
-    },
-    [watch],
-  );
-
-  const verify = useCallback(
-    async (provider: string) => {
-      const response = await fetch("/api/integrations/verify", {
-        method: "POST",
-        headers: await authedHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ provider }),
-      });
-      const body = (await response.json().catch(() => ({}))) as { ok?: boolean; text?: string };
-      setMessage(body.text || `The check returned HTTP ${response.status}.`);
+      const twin = (KEY_TWINS[name] || []).map(keyValue).find(Boolean) || "";
+      const key = (value ?? keyValue(name)).trim() || twin;
+      if (!key && !SERVER_HELD.has(name)) {
+        say("error", `${name}: add a key first.`);
+        return "error" as const;
+      }
+      const aux = GOOGLE_FAMILY.test(name) ? googleEmail || GMAIL_ACCOUNT
+        : name === "grok2api" ? keyValue("grok2api URL")
+        : name === "grok2api URL" ? keyValue("grok2api")
+        : name === "Grok (xAI)" || name === "xAI" ? "chris@ceogps.com" : "";
+      const result = await integrationsApi.testKey(name, key, aux);
+      say(result.ok ? "ok" : result.checked === false ? "info" : "error", `${name}: ${result.text}`);
+      return result.checked === false ? "saved" as const : result.ok ? "ok" as const : "error" as const;
+    } catch (error) {
+      say("error", `${name}: ${message(error, "The check could not run.")}`);
+      return "error" as const;
+    } finally {
       await refresh();
-      return Boolean(body.ok);
-    },
-    [refresh],
-  );
+      flag(`key:${name}`, false);
+    }
+  }, [googleEmail, refresh, say, saveKey]);
 
-  const disconnect = useCallback(
-    async (provider: string) => {
-      const response = await fetch("/api/integrations/disconnect", {
-        method: "POST",
-        headers: await authedHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ provider }),
-      });
-      const body = (await response.json().catch(() => ({}))) as { ok?: boolean; text?: string };
-      setMessage(body.text || `The disconnect returned HTTP ${response.status}.`);
+  const testAll = useCallback(async () => {
+    flag("all", true);
+    let ok = 0;
+    let bad = 0;
+    try {
+      const jobs: (() => Promise<boolean>)[] = [
+        ...accounts.map((row) => async () => (await integrationsApi.testAccount(row.id).catch(() => ({ ok: false }))).ok),
+        ...keyRows.filter((row) => row.value && !ACCOUNT_SERVICES[row.name]).map((row) => async () => {
+          const result = await integrationsApi.testKey(row.name, row.value).catch(() => null);
+          return Boolean(result?.ok || result?.checked === false);
+        }),
+      ];
+      if (!jobs.length) { say("info", "Nothing is connected yet, so there is nothing to test."); return; }
+      for (let index = 0; index < jobs.length; index += 4) {
+        say("info", `Testing ${Math.min(index + 4, jobs.length)} of ${jobs.length}…`);
+        const results = await Promise.all(jobs.slice(index, index + 4).map((job) => job()));
+        for (const passed of results) { if (passed) ok += 1; else bad += 1; }
+      }
+      say(bad ? "error" : "ok", `${jobs.length} checked · ${ok} working${bad ? ` · ${bad} need attention` : ""}.`);
+    } finally {
       await refresh();
-      return Boolean(body.ok);
-    },
-    [refresh],
-  );
+      flag("all", false);
+    }
+  }, [accounts, keyRows, refresh, say]);
 
-  return { status, loading, message, setMessage, pending, refresh, connect, verify, disconnect };
-}
+  const importSheet = useCallback((text: string) => {
+    const found = sheetKeys(text, KEY_SERVICES.map((row) => row.name));
+    if (!found.length) return "Nothing matched a service. Paste two columns (name, value) or lines like OPENAI_API_KEY=…";
+    update((prev) => ({
+      ...prev,
+      keys: [
+        ...found.map((row) => ({ id: newId(), name: row.name, value: row.value })),
+        ...prev.keys.filter((row) => !found.some((item) => item.name === row.name)),
+      ],
+    }));
+    const done = `Saved ${found.length} keys: ${found.map((row) => row.name).slice(0, 10).join(", ")}${found.length > 10 ? "…" : ""}. Press “Test everything” to verify them.`;
+    say("ok", done);
+    return done;
+  }, [say, update]);
 
-/** Reads the `?connected=` / `?oauth_error=` a returning authorization leaves behind. */
-export function readReturn() {
-  if (typeof window === "undefined") return { provider: "", error: "", sid: "" };
-  const params = new URLSearchParams(window.location.search);
-  const provider = params.get("connected") || params.get("oauth_provider") || "";
-  const error = params.get("oauth_error") || "";
-  const sid = params.get("sid") || "";
-  if (provider || error) {
-    params.delete("connected");
-    params.delete("oauth_error");
-    params.delete("oauth_provider");
-    params.delete("sid");
-    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
-    window.history.replaceState({}, "", next);
-  }
-  return { provider, error, sid };
-}
-
-export function sameAttempt(sid: string) {
-  if (!sid) return true;
-  return sid === tabId();
+  return {
+    payload, loading, loadError, busy, notice, dismiss: () => setNotice(null),
+    byProvider, keyRows, stats, googleEmail,
+    mailboxes, expected, inUse, setExpected, applyPlan, makePrimary, testMailbox, disconnectMailbox,
+    refresh, connect, testAccount, disconnect, saveKey, removeKey, testKey, testAll, importSheet,
+  };
 }

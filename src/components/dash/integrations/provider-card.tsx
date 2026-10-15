@@ -1,318 +1,163 @@
 import { useState } from "react";
-import { CATEGORY_LABEL, type Integration } from "@/lib/integrations/catalog";
-import type { Connection, ProviderInfo } from "./use-integrations";
+import type { AccountView, ProviderMeta } from "@/lib/integrations/providers";
+import { BOARD_EMAIL_LIST } from "./catalog";
+import { timeAgo } from "./format";
+import { Button, StatusPill } from "./ui";
 
-export type Mark = { state: "connected" | "error" | "saved"; text: string };
-
-export type CardHandlers = {
-  connect: () => void;
-  verify: () => void;
-  disconnect: () => void;
-  saveKey: (value: string) => void;
-  testKey: (value?: string) => void;
-  accountCheck: (values: { key?: string; secret?: string; site?: string }) => void;
+const ACCENT: Record<string, string> = {
+  google: "#4285f4", microsoft: "#00a4ef", github: "#8b949e", slack: "#e01e5a", notion: "#e5e5e5",
+  spotify: "#1db954", discord: "#5865f2", facebook: "#1877f2", linkedin: "#0a66c2", twitter: "#9aa4b2",
 };
 
-const METHOD_LABEL: Record<string, string> = {
-  oauth: "Sign in with the provider",
-  apikey: "API key",
-  local: "This computer",
-  none: "No public API",
-};
-
-function mask(value: string) {
-  const clean = value.trim();
-  if (clean.length <= 8) return "saved";
-  return `${clean.slice(0, 3)}····${clean.slice(-4)}`;
-}
-
-function Pill({ tone, label }: { tone: "ok" | "bad" | "warn" | "idle"; label: string }) {
-  const style =
-    tone === "ok"
-      ? "border-[#34d399]/50 text-[#34d399]"
-      : tone === "bad"
-        ? "border-[#fb7185]/50 text-[#fb7185]"
-        : tone === "warn"
-          ? "border-[#fbbf24]/50 text-[#fbbf24]"
-          : "border-white/15 text-white/50";
-  const dot = tone === "ok" ? "bg-[#34d399]" : tone === "bad" ? "bg-[#fb7185]" : tone === "warn" ? "bg-[#fbbf24]" : "bg-white/30";
+/** "Which account should this service use?" Shows the choice and lets the owner change it. */
+function ExpectedRow({ expected, busy, onSave, label }: { expected: string; busy: boolean; onSave: (email: string) => void; label: string }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(expected);
+  const id = `expected-${label.replace(/[^a-z0-9]+/gi, "-")}`;
+  if (!editing) {
+    return (
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/60">
+        <span>Account to use:</span>
+        <strong className="font-medium text-white/85">{expected || "any account"}</strong>
+        <button type="button" className="underline decoration-white/30 hover:text-white" onClick={() => { setValue(expected); setEditing(true); }} aria-label={`Change the account ${label} uses`}>
+          {expected ? "Change" : "Choose"}
+        </button>
+      </p>
+    );
+  }
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-wide ${style}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-      {label}
-    </span>
+    <form className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3" onSubmit={(event) => { event.preventDefault(); onSave(value.trim()); setEditing(false); }}>
+      <label htmlFor={id} className="block text-xs text-white/60">Which email should {label} use?</label>
+      <input
+        id={id}
+        type="email"
+        autoComplete="off"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder="name@example.com"
+        className="w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300"
+      />
+      <div className="flex flex-wrap gap-1.5" aria-label="Your usual addresses">
+        {BOARD_EMAIL_LIST.map((email) => (
+          <button key={email} type="button" className="int-chip" aria-pressed={value.toLowerCase() === email} onClick={() => setValue(email)}>{email}</button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button primary type="submit" busy={busy}>Save</Button>
+        {expected ? <Button onClick={() => { onSave(""); setEditing(false); }}>Use any account</Button> : null}
+        <Button onClick={() => setEditing(false)}>Cancel</Button>
+      </div>
+    </form>
   );
 }
 
-function when(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString();
+function AccountRow({ account, expected, several, busy, onTest, onDisconnect, onMakePrimary }: {
+  account: AccountView;
+  expected: string;
+  several: boolean;
+  busy: boolean;
+  onTest: () => void;
+  onDisconnect: () => void;
+  onMakePrimary: () => void;
+}) {
+  const [confirm, setConfirm] = useState(false);
+  const bad = account.status === "needs_reauth";
+  const off = Boolean(expected) && Boolean(account.email) && account.email.toLowerCase() !== expected.toLowerCase();
+  return (
+    <li className="rounded-lg border border-white/10 bg-black/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-white">{account.email || account.name || "Connected account"}</p>
+          <p className="text-xs text-white/50">
+            {bad ? "Needs reconnecting" : `Checked ${timeAgo(account.lastCheckedAt)}`}
+            {account.name && account.email ? ` · ${account.name}` : ""}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {several && account.primary ? <StatusPill tone="ok">Primary</StatusPill> : null}
+          <StatusPill tone={bad ? "error" : "ok"}>{bad ? "Needs attention" : "Working"}</StatusPill>
+        </div>
+      </div>
+      {off ? <p className="mt-2 text-xs text-amber-200">This is not the expected account ({expected}). It is saved, but other desks may prefer a different one.</p> : null}
+      {bad && account.lastError ? <p className="mt-2 text-xs text-rose-300">{account.lastError}</p> : null}
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button busy={busy} onClick={onTest} label={`Test ${account.email || "account"}`}>Test now</Button>
+        {several && !account.primary ? <Button busy={busy} onClick={onMakePrimary} label={`Make ${account.email || "account"} the primary account`}>Make primary</Button> : null}
+        {confirm ? (
+          <>
+            <Button danger busy={busy} onClick={onDisconnect}>Yes, disconnect</Button>
+            <Button onClick={() => setConfirm(false)}>Keep</Button>
+          </>
+        ) : (
+          <Button danger onClick={() => setConfirm(true)} label={`Disconnect ${account.email || "account"}`}>Disconnect</Button>
+        )}
+      </div>
+    </li>
+  );
 }
 
-export function ProviderCard({
-  entry,
-  connection,
-  provider,
-  oauthId,
-  savedKey,
-  mark,
-  checked,
-  busy,
-  pending,
-  onConnect,
-  onVerify,
-  onDisconnect,
-  onSaveKey,
-  onTestKey,
-  onAccount,
-  accountValue,
-}: {
-  entry: Integration;
-  connection?: Connection;
-  provider?: ProviderInfo;
-  oauthId?: string;
-  savedKey?: string;
-  mark?: Mark;
-  checked?: string;
-  busy: boolean;
-  pending: boolean;
-  accountValue?: string;
+export function ProviderCard({ meta, accounts, expected, configured, encryptionReady, busy, onConnect, onTest, onDisconnect, onMakePrimary, onSaveExpected }: {
+  meta: ProviderMeta;
+  accounts: AccountView[];
+  expected: string;
+  configured: boolean;
+  encryptionReady: boolean;
+  busy: Record<string, boolean>;
   onConnect: () => void;
-  onVerify: () => void;
-  onDisconnect: () => void;
-  onSaveKey: (value: string) => void;
-  onTestKey: (value?: string) => void;
-  onAccount: (values: { key?: string; secret?: string; site?: string }) => void;
+  onTest: (account: AccountView) => void;
+  onDisconnect: (account: AccountView) => void;
+  onMakePrimary: (account: AccountView) => void;
+  onSaveExpected: (email: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [secret, setSecret] = useState("");
-  const [site, setSite] = useState("");
-  const [copied, setCopied] = useState(false);
-
-  const supportsOauth = Boolean(oauthId);
-  const connected = connection?.status === "connected";
-  const failed = connection?.status === "error" || mark?.state === "error";
-  const unconfigured = supportsOauth && provider && !provider.configured;
-  const keyed = Boolean(savedKey);
-
-  const tone: "ok" | "bad" | "warn" | "idle" = connected
-    ? "ok"
-    : failed
-      ? "bad"
-      : unconfigured || (!connected && !keyed && supportsOauth)
-        ? "warn"
-        : "idle";
-  const statusLabel = connected
-    ? "Connected"
-    : failed
-      ? "Failed"
-      : unconfigured
-        ? "Needs setup"
-        : supportsOauth
-          ? "Not connected"
-          : keyed
-            ? mark?.state === "connected" ? "Tested" : "Key saved"
-            : entry.methods.includes("none")
-              ? "Unsupported"
-              : "Empty";
-
-  const statusText = connected
-    ? connection?.label || "Connected"
-    : failed
-      ? connection?.lastError || mark?.text || "The last check failed."
-      : unconfigured
-        ? `Server keys missing: ${provider?.missing.join(", ")}`
-        : checked || mark?.text || "";
-
-  function copyRedirect() {
-    const value = provider?.redirectUri || "";
-    if (!value) return;
-    void navigator.clipboard.writeText(value).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    }).catch(() => undefined);
-  }
-
+  const needs = accounts.filter((row) => row.status === "needs_reauth").length;
+  const ok = accounts.length - needs;
+  const tone = needs ? "error" : ok ? "ok" : "idle";
+  const label = needs ? "Needs attention" : ok ? (ok > 1 ? `${ok} connected` : "Connected") : "Not connected";
+  const key = meta.id.toUpperCase();
+  const blocked = !configured || !encryptionReady;
   return (
-    <article className="module-card flex flex-col gap-2 p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-base leading-tight">{entry.name}</p>
-          <p className="text-[11px] uppercase tracking-[0.12em] text-white/35">{CATEGORY_LABEL[entry.category]}</p>
+    <article className="module-card flex flex-col gap-3 p-4" aria-label={`${meta.name} connection`}>
+      <header className="flex items-start gap-3">
+        <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-xl text-base font-bold text-black" style={{ background: ACCENT[meta.id] || "#94a3b8" }}>
+          {meta.name.slice(0, 1)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-base font-semibold text-white">{meta.name}</h3>
+          <p className="text-xs text-white/50">{meta.category}</p>
         </div>
-        <Pill tone={tone} label={statusLabel} />
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {entry.methods.map((method) => (
-          <span key={method} className="rounded-full border border-line px-2 py-0.5 text-[11px] text-white/50">{METHOD_LABEL[method]}</span>
-        ))}
-      </div>
-
-      {statusText ? (
-        <p className={`text-sm leading-5 ${connected ? "text-[#34d399]" : failed ? "text-[#fb7185]" : "text-white/55"}`}>{statusText}</p>
-      ) : null}
-
-      {entry.summary && !statusText ? <p className="text-sm leading-5 text-white/50">{entry.summary}</p> : null}
-
+        <StatusPill tone={tone}>{label}</StatusPill>
+      </header>
+      <p className="text-sm text-white/65">{meta.blurb}</p>
+      <ExpectedRow expected={expected} busy={Boolean(busy[`expected:${meta.id}`])} onSave={onSaveExpected} label={meta.name} />
+      {!accounts.length ? (
+        <ul className="flex flex-wrap gap-1.5" aria-label="What it unlocks">
+          {meta.gives.map((item) => <li key={item} className="rounded-md bg-white/5 px-2 py-0.5 text-xs text-white/60">{item}</li>)}
+        </ul>
+      ) : (
+        <ul className="space-y-2">
+          {accounts.map((account) => (
+            <AccountRow
+              key={account.id}
+              account={account}
+              expected={expected}
+              several={accounts.length > 1}
+              busy={Boolean(busy[account.id])}
+              onTest={() => onTest(account)}
+              onDisconnect={() => onDisconnect(account)}
+              onMakePrimary={() => onMakePrimary(account)}
+            />
+          ))}
+        </ul>
+      )}
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
-        {supportsOauth ? (
-          connected ? (
-            <>
-              <button type="button" className="quiet check-btn" disabled={busy} onClick={onVerify}>{busy ? "Testing" : "Test"}</button>
-              <button type="button" className="quiet" disabled={busy} onClick={onConnect}>Reconnect</button>
-              <button type="button" className="quiet" disabled={busy} onClick={onDisconnect}>Disconnect</button>
-            </>
-          ) : (
-            <button type="button" className="quiet check-btn" disabled={busy || pending} onClick={onConnect}>
-              {pending ? "Finishing…" : unconfigured ? "Connect anyway" : failed ? "Reconnect" : "Connect"}
-            </button>
-          )
-        ) : null}
-
-        {entry.methods.includes("local") ? (
-          <button type="button" className="quiet check-btn" disabled={busy} onClick={() => onTestKey(savedKey)}>{busy ? "Testing" : "Test"}</button>
-        ) : null}
-
-        {!supportsOauth && entry.methods.includes("apikey") ? (
-          <button type="button" className="quiet check-btn" disabled={busy || !keyed} onClick={() => onTestKey()}>{busy ? "Testing" : "Test"}</button>
-        ) : null}
-
-        {supportsOauth && entry.methods.includes("apikey") ? (
-          <span className="text-[11px] text-white/35">API key fallback available</span>
-        ) : null}
-
-        {entry.methods.includes("none") ? <span className="text-[11px] text-white/35">Nothing to connect</span> : null}
-
-        <button type="button" className="quiet" onClick={() => setOpen((value) => !value)}>{open ? "Hide" : "Details"}</button>
+        <Button primary disabled={blocked} busy={Boolean(busy[`connect:${meta.id}`])} onClick={onConnect} label={`${needs ? "Reconnect" : accounts.length ? "Add another" : "Connect"} ${meta.name}`}>
+          {needs ? "Reconnect" : accounts.length ? "Add another account" : `Connect ${meta.name}`}
+        </Button>
       </div>
-
-      {open ? (
-        <div className="mt-1 grid gap-3 border-t border-line pt-3">
-          {entry.note ? <p className="text-sm leading-5 text-white/60">{entry.note}</p> : null}
-
-          {entry.dependents.length ? (
-            <p className="text-sm leading-5 text-white/50">
-              <span className="text-white/70">Used by: </span>
-              {entry.dependents.join(" · ")}
-            </p>
-          ) : null}
-
-          {supportsOauth && provider ? (
-            <div className="grid gap-2">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-white/35">Provider setup</p>
-              {provider.scopes ? <p className="font-mono text-[11px] leading-5 text-white/45">{provider.scopes}</p> : <p className="text-[11px] text-white/45">No scopes are requested for this provider.</p>}
-              <div className="flex flex-wrap items-center gap-2">
-                {/* `min-w-0` lets this shrink inside the flex row: a nowrap URL
-                    would otherwise force the whole panel wider than a phone. */}
-                <code className="min-w-0 max-w-full truncate rounded-full border border-line bg-black/40 px-3 py-1 text-[11px] text-white/60">{provider.redirectUri}</code>
-                <button type="button" className="quiet" onClick={copyRedirect}>{copied ? "Copied" : "Copy callback URL"}</button>
-                <a className="quiet" href={provider.docs} target="_blank" rel="noreferrer noopener">Provider console</a>
-              </div>
-              {unconfigured ? (
-                <p className="text-sm leading-5 text-[#fbbf24]">
-                  Add {provider.missing.join(" and ")} to this project's secrets, then connect. The callback URL above must be allowed in the provider app.
-                </p>
-              ) : (
-                <p className="text-sm leading-5 text-white/45">
-                  Server keys are present. {provider.name} must allow the callback URL above.
-                </p>
-              )}
-              {connected ? (
-                <p className="text-[11px] text-white/40">
-                  {connection?.verifiedAt ? `Verified ${when(connection.verifiedAt)}` : "Not verified yet"}
-                  {connection?.expiresAt ? ` · token expires ${when(connection.expiresAt)}` : ""}
-                </p>
-              ) : null}
-              {connection?.lastError ? <p className="text-sm leading-5 text-[#fb7185]">{connection.lastError}</p> : null}
-            </div>
-          ) : null}
-
-          {entry.account ? (
-            <div className="grid gap-2">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-white/35">
-                {entry.account === "google-analytics" ? "Property to read" : entry.account === "godaddy" ? "GoDaddy key and secret" : entry.account === "brilliant" ? "Directory key and site" : "Check"}
-              </p>
-              {entry.account === "google-analytics" ? (
-                <input className="h-9 min-w-0 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder="GA4 property ID" value={draft} onChange={(event) => setDraft(event.target.value)} />
-              ) : null}
-              {entry.account === "godaddy" || entry.account === "brilliant" ? (
-                <>
-                  <input className="h-9 min-w-0 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder={entry.account === "godaddy" ? "key:secret" : "API key"} value={draft} onChange={(event) => setDraft(event.target.value)} />
-                  {entry.account === "brilliant" ? (
-                    <input className="h-9 min-w-0 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder="https://ceogps.com" value={site} onChange={(event) => setSite(event.target.value)} />
-                  ) : null}
-                  <input className="h-9 min-w-0 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder="secret (GoDaddy only)" value={secret} onChange={(event) => setSecret(event.target.value)} />
-                </>
-              ) : null}
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" className="quiet check-btn" disabled={busy} onClick={() => onAccount({ key: draft, secret, site })}>{busy ? "Checking" : "Check"}</button>
-                {entry.account === "search-console" || entry.account === "google-analytics" ? (
-                  <span className="text-[11px] text-white/40">Runs as the connected Google login.</span>
-                ) : null}
-              </div>
-              {checked ? <p className="text-sm leading-5 text-white/55">{checked}</p> : null}
-              {accountValue ? <p className="text-[11px] text-white/40">Saved · {accountValue}</p> : null}
-            </div>
-          ) : null}
-
-          {entry.methods.includes("apikey") && !supportsOauth ? (
-            <div className="grid gap-2">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-white/35">API key</p>
-              <input
-                className="h-9 min-w-0 rounded-full border border-line bg-black/40 px-3 text-sm"
-                placeholder={entry.name === "Ollama (local)" ? "http://127.0.0.1:11434" : "Paste key"}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className="quiet is-on"
-                  disabled={!draft.trim()}
-                  onClick={() => {
-                    onSaveKey(draft.trim());
-                    setDraft("");
-                  }}
-                >
-                  Save and test
-                </button>
-                {keyed ? <span className="text-[11px] text-white/40">On file · {mask(savedKey || "")}</span> : null}
-              </div>
-              {checked || mark?.text ? <p className="text-sm leading-5 text-white/55">{checked || mark?.text}</p> : null}
-            </div>
-          ) : null}
-
-          {entry.methods.includes("apikey") && supportsOauth ? (
-            <div className="grid gap-2">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-white/35">API key fallback</p>
-              <input
-                className="h-9 min-w-0 rounded-full border border-line bg-black/40 px-3 text-sm"
-                placeholder="Paste a key instead of signing in"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className="quiet"
-                  disabled={!draft.trim() || !entry.probe}
-                  onClick={() => {
-                    onSaveKey(draft.trim());
-                    setDraft("");
-                  }}
-                >
-                  Use this key
-                </button>
-                {entry.probe ? <button type="button" className="quiet check-btn" disabled={busy || !keyed} onClick={() => onTestKey()}>{busy ? "Testing" : "Test key"}</button> : <span className="text-[11px] text-white/35">No public key check for this service</span>}
-                {keyed ? <span className="text-[11px] text-white/40">On file · {mask(savedKey || "")}</span> : null}
-              </div>
-            </div>
-          ) : null}
-        </div>
+      {!configured ? (
+        <p className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-2 text-xs text-amber-200">
+          Not set up on the server yet. Add <code>{key}_CLIENT_ID</code> and <code>{key}_CLIENT_SECRET</code> to the environment, then reload. Steps are in docs/INTEGRATIONS.md.
+        </p>
       ) : null}
     </article>
   );

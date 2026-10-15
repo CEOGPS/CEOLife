@@ -1,453 +1,256 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { newId, type Memory } from "./memory";
-import { CATALOG, CATEGORY_LABEL, oauthProviderId, type IntegrationCategory } from "@/lib/integrations/catalog";
-import { sheetKeys } from "@/lib/lifeos/sheet-keys";
-import { BOARD_EMAILS, confirmSignIn, pullWorkerLinks, requestSignIn, sessionAuthHeaders, sessionToken, signOutSession } from "@/lib/lifeos/oauth";
-import { ProviderCard, type Mark } from "./integrations/provider-card";
-import { readReturn, sameAttempt, useIntegrations, type Connection } from "./integrations/use-integrations";
+import { useMemo, useState } from "react";
+import type { Memory } from "./memory";
+import { PROVIDERS, type Category } from "@/lib/integrations/providers";
+import { CATEGORY_ORDER, EXTRA_FIELD } from "./integrations/catalog";
+import { AccountsInUse } from "./integrations/accounts-in-use";
+import { KeyRow } from "./integrations/key-row";
+import { MailboxSection } from "./integrations/mailbox-section";
+import { ProviderCard } from "./integrations/provider-card";
+import { useIntegrations, type KeyRowModel, type Update } from "./integrations/use-integrations";
+import { Button, Chip, StatusPill } from "./integrations/ui";
 
-/**
- * Integrations — the connection centre.
- *
- * Every card states what it can really do: authorize with the provider, take an
- * API key, or nothing at all. Status comes from the server (a stored connection
- * that passed a live provider check), never from an optimistic click.
- */
+type Account = { provider: string; name: string; email: string };
+type Filter = "all" | "working" | "attention" | "todo";
 
-const MARKS = "lifeos.integration.marks";
-type Filter = "all" | "connected" | "todo" | "keys" | "none";
-type Update = (recipe: (prev: Memory) => Memory) => void;
+const FILTERS: { id: Filter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "working", label: "Working" },
+  { id: "attention", label: "Needs attention" },
+  { id: "todo", label: "Not set up" },
+];
 
-const KEY_METHODS = new Set(["apikey", "local"]);
-
-function readMarks(): Record<string, Mark> {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(MARKS) || "{}") as Record<string, Mark>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+function keyMatches(row: KeyRowModel, filter: Filter) {
+  if (filter === "all") return true;
+  if (filter === "working") return row.state === "ok";
+  if (filter === "attention") return row.state === "error";
+  return row.state === "empty" || row.state === "untested" || row.state === "saved";
 }
 
-function mask(value: string) {
-  const clean = value.trim();
-  if (clean.length <= 8) return "saved";
-  return `${clean.slice(0, 3)}····${clean.slice(-4)}`;
-}
-
-export function IntegrationsDesk({ data, update }: { data: Memory; update: Update }) {
-  const { status, loading, message, setMessage, pending, refresh, connect, verify, disconnect } = useIntegrations();
+export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
+  data: Memory;
+  update: Update;
+  accounts: Account[];
+  setAccounts: (rows: Account[]) => void;
+  note: string;
+  setNote: (value: string) => void;
+}) {
+  const hub = useIntegrations({ data, update, setAccounts, setNote });
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<IntegrationCategory | "all">("all");
   const [filter, setFilter] = useState<Filter>("all");
-  const [busy, setBusy] = useState<Record<string, boolean>>({});
-  const [checked, setChecked] = useState<Record<string, string>>({});
-  const [marks, setMarks] = useState<Record<string, Mark>>({});
+  const [category, setCategory] = useState<Category | "All">("All");
   const [sheet, setSheet] = useState("");
   const [sheetNote, setSheetNote] = useState("");
-  const [sweeping, setSweeping] = useState(false);
-  const [signed, setSigned] = useState(() => Boolean(sessionToken()));
-  const [inbox, setInbox] = useState<(typeof BOARD_EMAILS)[number]>("chris@ceogps.com");
-  const [code, setCode] = useState("");
-  const [codeSent, setCodeSent] = useState(false);
-  const booted = useRef(false);
+  const needle = query.trim().toLowerCase();
 
-  const connections = useMemo(() => {
-    const map = new Map<string, Connection>();
-    for (const row of status?.connections || []) map.set(row.provider, row);
-    return map;
-  }, [status]);
+  const providers = useMemo(() => PROVIDERS.filter((meta) => {
+    const accounts = hub.byProvider.get(meta.id) || [];
+    if (needle && !`${meta.name} ${meta.blurb} ${meta.category}`.toLowerCase().includes(needle)) return false;
+    if (category !== "All" && meta.category !== category) return false;
+    if (filter === "working") return accounts.some((row) => row.status === "ok");
+    if (filter === "attention") return accounts.some((row) => row.status === "needs_reauth");
+    if (filter === "todo") return accounts.length === 0;
+    return true;
+  }), [hub.byProvider, needle, category, filter]);
 
-  useEffect(() => { setMarks(readMarks()); }, []);
-
-  useEffect(() => {
-    const back = readReturn();
-    if (back.error) setMessage(back.error);
-    else if (back.provider && sameAttempt(back.sid)) setMessage(`${back.provider} returned to the app.`);
-    void refresh();
-    void pullWorkerLinks().catch(() => undefined);
-  }, [refresh, setMessage]);
-
-  // Mirror the check results through the cloud copy the board already uses.
-  useEffect(() => {
-    void import("@/lib/lifeos/board-store").then(({ pullMarks }) => pullMarks()).then((saved) => {
-      if (!Object.keys(saved).length) return;
-      setMarks((prev) => ({ ...prev, ...saved }));
-    }).catch(() => undefined);
-  }, []);
-
-  function stamp(name: string, state: Mark["state"], text: string) {
-    setMarks((prev) => {
-      const next = { ...prev, [name]: { state, text } };
-      try { localStorage.setItem(MARKS, JSON.stringify(next)); } catch { /* the in-memory mark still shows */ }
-      void import("@/lib/lifeos/board-store").then(({ pushMarks }) => pushMarks(next)).catch(() => undefined);
-      return next;
-    });
-  }
-
-  function savedKey(name: string) {
-    return data.keys.find((row) => row.name === name)?.value || "";
-  }
-
-  function putKey(name: string, value: string) {
-    const names = name === "xAI" || name === "Grok (xAI)" ? ["xAI", "Grok (xAI)"] : [name];
-    update((prev) => ({
-      ...prev,
-      keys: [...names.map((item) => ({ id: newId(), name: item, value })), ...prev.keys.filter((item) => !names.includes(item.name))],
-    }));
-  }
-
-  async function testKey(name: string, value: string, email = "") {
-    const key = value.trim();
-    if (!key) {
-      stamp(name, "error", "No key is saved on this card.");
-      setMessage(`${name}: no key is saved.`);
-      return false;
+  const keysByCategory = useMemo(() => {
+    const groups = new Map<Category, KeyRowModel[]>();
+    for (const row of hub.keyRows) {
+      if (needle && !row.name.toLowerCase().includes(needle)) continue;
+      if (category !== "All" && row.category !== category) continue;
+      if (!keyMatches(row, filter)) continue;
+      groups.set(row.category, [...(groups.get(row.category) || []), row]);
     }
-    setBusy((prev) => ({ ...prev, [name]: true }));
-    try {
-      const response = await fetch("/api/keys/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", ...(await sessionAuthHeaders()) },
-        body: JSON.stringify({ name, key, email }),
-      });
-      const row = (await response.json().catch(() => ({}))) as { ok?: boolean; checked?: boolean; text?: string; reason?: string; error?: string; host?: string };
-      const text = String(row.text || row.reason || row.error || `The check returned HTTP ${response.status}.`);
-      if (row.checked === false) {
-        stamp(name, "saved", text);
-        setChecked((prev) => ({ ...prev, [name]: text }));
-        setMessage(`${name}: ${text}`);
-        return false;
-      }
-      if (row.ok) {
-        if (name === "Ollama (local)" && row.host && !savedKey(name)) putKey(name, row.host);
-        stamp(name, "connected", text);
-        setChecked((prev) => ({ ...prev, [name]: text }));
-        setMessage(`${name}: ${text}`);
-        return true;
-      }
-      stamp(name, "error", text);
-      setChecked((prev) => ({ ...prev, [name]: text }));
-      setMessage(`${name}: ${text}`);
-      return false;
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "The check failed.";
-      stamp(name, "error", text);
-      setChecked((prev) => ({ ...prev, [name]: text }));
-      setMessage(`${name}: ${text}`);
-      return false;
-    } finally {
-      setBusy((prev) => ({ ...prev, [name]: false }));
-    }
+    return CATEGORY_ORDER.filter((name) => groups.has(name)).map((name) => ({ name, rows: groups.get(name) as KeyRowModel[] }));
+  }, [hub.keyRows, needle, category, filter]);
+
+  const keyTotal = keysByCategory.reduce((sum, group) => sum + group.rows.length, 0);
+  const open = Boolean(needle) || filter !== "all" || category !== "All";
+  const signedOut = hub.loadError?.status === 401;
+  const categories: (Category | "All")[] = ["All", ...CATEGORY_ORDER.filter((name) => PROVIDERS.some((p) => p.category === name) || hub.keyRows.some((row) => row.category === name))];
+  const extraSaved = (name: string) => {
+    const field = EXTRA_FIELD[name];
+    return field ? data.keys.find((row) => row.name === field.keyName)?.value || "" : "";
+  };
+
+  function saveAndTest(name: string, value: string, extras: Record<string, string>) {
+    if (value) hub.saveKey(name, value);
+    for (const [keyName, extra] of Object.entries(extras)) if (extra) hub.saveKey(keyName, extra);
+    void hub.testKey(name, value || undefined, extras);
   }
-
-  async function accountCheck(service: NonNullable<(typeof CATALOG)[number]["account"]>, values: { key?: string; secret?: string; site?: string }) {
-    const label = service === "search-console" ? "Search Console" : service === "google-analytics" ? "Google Analytics" : service === "godaddy" ? "GoDaddy" : "Brilliant Directories";
-    setBusy((prev) => ({ ...prev, [label]: true }));
-    try {
-      const response = await fetch("/api/keys/account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", ...(await sessionAuthHeaders()) },
-        body: JSON.stringify({ service, key: values.key || "", secret: values.secret || "", site: values.site || "" }),
-      });
-      const row = (await response.json().catch(() => ({}))) as { ok?: boolean; text?: string; site?: string };
-      const text = String(row.text || `The check returned HTTP ${response.status}.`);
-      if (row.ok && row.site && service === "search-console" && row.site !== savedKey("Search Console")) putKey("Search Console", row.site);
-      if (row.ok && row.site && service === "google-analytics" && row.site !== savedKey("Google Analytics")) putKey("Google Analytics", row.site);
-      if (row.ok && service === "godaddy") {
-        if (values.key) putKey("GoDaddy", values.key);
-        if (values.secret) putKey("GoDaddy Secret", values.secret);
-      }
-      if (row.ok && service === "brilliant") {
-        if (values.key) putKey("Brilliant Directories", values.key);
-        if (values.site) putKey("Brilliant Site", values.site);
-      }
-      stamp(label, row.ok ? "connected" : "error", text);
-      setChecked((prev) => ({ ...prev, [label]: text }));
-      setMessage(`${label}: ${text}`);
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "The check failed.";
-      stamp(label, "error", text);
-      setMessage(`${label}: ${text}`);
-    } finally {
-      setBusy((prev) => ({ ...prev, [label]: false }));
-    }
-  }
-
-  async function testAllConnections() {
-    const rows = status?.connections || [];
-    if (!rows.length) {
-      setMessage("Nothing is connected yet.");
-      return;
-    }
-    setSweeping(true);
-    let ok = 0;
-    for (const row of rows) {
-      setMessage(`Testing ${row.provider}…`);
-      if (await verify(row.provider)) ok += 1;
-    }
-    setSweeping(false);
-    setMessage(`Tested ${rows.length} connections. ${ok} answered, ${rows.length - ok} failed.`);
-  }
-
-  async function testAllKeys() {
-    const names = [...new Set(data.keys.filter((row) => row.value.trim()).map((row) => row.name))]
-      .filter((name) => CATALOG.some((entry) => entry.name === name && entry.probe));
-    if (!names.length) {
-      setMessage("No saved keys are testable yet.");
-      return;
-    }
-    setSweeping(true);
-    let ok = 0;
-    for (const name of names) {
-      setMessage(`Testing ${name}…`);
-      if (await testKey(name, savedKey(name))) ok += 1;
-    }
-    setSweeping(false);
-    setMessage(`Tested ${names.length} saved keys. ${ok} answered, ${names.length - ok} failed.`);
-  }
-
-  function applySheet(text: string) {
-    try {
-      const names = CATALOG.filter((entry) => entry.methods.some((method) => KEY_METHODS.has(method))).map((entry) => entry.name);
-      const found = sheetKeys(text, names);
-      if (!found.length) {
-        setSheetNote("Nothing matched a card. Paste two columns, name and value, or lines like OPENAI_API_KEY=...");
-        return;
-      }
-      update((prev) => ({
-        ...prev,
-        keys: [
-          ...found.map((row) => ({ id: newId(), name: row.name, value: row.value })),
-          ...prev.keys.filter((row) => !found.some((item) => item.name === row.name)),
-        ],
-      }));
-      const message = `Filled ${found.length} keys: ${found.map((row) => row.name).slice(0, 14).join(", ")}${found.length > 14 ? "…" : ""}.`;
-      setSheetNote(message);
-      setMessage(message);
-      for (const row of found) stamp(row.name, "saved", mask(row.value));
-    } catch (error) {
-      setSheetNote(error instanceof Error ? error.message : "That paste could not be read.");
-    }
-  }
-
-  // The local daemon is the one service worth a first look when the panel opens.
-  useEffect(() => {
-    if (booted.current) return;
-    booted.current = true;
-    const value = savedKey("Ollama (local)") || "http://127.0.0.1:11434";
-    void testKey("Ollama (local)", value);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const keyedNames = new Set(data.keys.filter((row) => row.value.trim()).map((row) => row.name));
-
-  const rows = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const rank = (entry: (typeof CATALOG)[number]) => {
-      const provider = oauthProviderId(entry);
-      if (provider && connections.get(provider)?.status === "connected") return 0;
-      if (provider) return 1;
-      if (keyedNames.has(entry.name)) return 2;
-      return 3;
-    };
-    return CATALOG.filter((entry) => {
-      if (category !== "all" && entry.category !== category) return false;
-      const provider = oauthProviderId(entry);
-      const connected = provider ? connections.get(provider)?.status === "connected" || marks[entry.name]?.state === "connected" : marks[entry.name]?.state === "connected";
-      if (filter === "connected" && !connected) return false;
-      if (filter === "todo" && (connected || !provider)) return false;
-      if (filter === "keys" && !entry.methods.some((method) => KEY_METHODS.has(method))) return false;
-      if (filter === "none" && !entry.methods.includes("none")) return false;
-      if (!needle) return true;
-      return `${entry.name} ${entry.summary} ${CATEGORY_LABEL[entry.category]} ${entry.dependents.join(" ")}`.toLowerCase().includes(needle);
-    }).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, category, filter, connections, marks, data.keys]);
-
-  const counts = useMemo(() => {
-    const connected = CATALOG.filter((entry) => {
-      const provider = oauthProviderId(entry);
-      if (provider) return connections.get(provider)?.status === "connected";
-      return marks[entry.name]?.state === "connected";
-    }).length;
-    const todo = CATALOG.filter((entry) => oauthProviderId(entry) && connections.get(oauthProviderId(entry) as string)?.status !== "connected").length;
-    const keys = CATALOG.filter((entry) => entry.methods.some((method) => KEY_METHODS.has(method))).length;
-    const none = CATALOG.filter((entry) => entry.methods.includes("none")).length;
-    return { connected, todo, keys, none, saved: keyedNames.size };
-  }, [connections, marks, keyedNames]);
-
-  const filters: { id: Filter; label: string; count: number }[] = [
-    { id: "all", label: "All", count: CATALOG.length },
-    { id: "connected", label: "Connected", count: counts.connected },
-    { id: "todo", label: "Connect now", count: counts.todo },
-    { id: "keys", label: "API keys", count: counts.keys },
-    { id: "none", label: "No public API", count: counts.none },
-  ];
-
-  const categories = useMemo(() => {
-    const seen = new Map<IntegrationCategory, number>();
-    for (const entry of CATALOG) seen.set(entry.category, (seen.get(entry.category) || 0) + 1);
-    return [...seen.entries()];
-  }, []);
 
   return (
-    <div>
-      <div className="module-card mb-4 grid gap-3 p-4">
+    <section className="space-y-5" aria-label="Integrations">
+      <header className="module-card space-y-4 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl">Integrations</h1>
-            <p className="text-sm text-white/55">
-              {loading
-                ? "Reading connections…"
-                : `${counts.connected} connected · ${counts.todo} connectable with a provider login · ${counts.saved} keys on file`}
-              {status && !status.signedIn ? " · preview owner" : ""}
+            <h2 className="text-xl font-semibold text-white">Integrations</h2>
+            <p className="mt-1 max-w-2xl text-sm text-white/60">
+              Connect an account in one click, or paste an API key. Every card shows the result of a real test, never a guess.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="quiet is-on" disabled={sweeping} onClick={() => void testAllConnections()}>{sweeping ? "Testing" : "Test connections"}</button>
-            <button type="button" className="quiet" disabled={sweeping} onClick={() => void testAllKeys()}>Test saved keys</button>
-            <button type="button" className="quiet" onClick={() => void refresh()}>Refresh</button>
+            <Button primary busy={Boolean(hub.busy.all)} disabled={Boolean(hub.loadError)} onClick={() => void hub.testAll()}>Test everything</Button>
+            <Button onClick={() => void hub.refresh()} label="Reload from the server">Reload</Button>
           </div>
         </div>
+        <dl className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Working", value: hub.stats.working, tone: "text-emerald-300" },
+            { label: "Needs attention", value: hub.stats.attention, tone: hub.stats.attention ? "text-rose-300" : "text-white" },
+            { label: "Saved, not verified", value: hub.stats.untested, tone: "text-amber-200" },
+          ].map((tile) => (
+            <div key={tile.label} className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <dt className="text-xs text-white/55">{tile.label}</dt>
+              <dd className={`text-2xl font-semibold ${tile.tone}`}>{hub.loading ? "–" : tile.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </header>
 
-        <div className="flex flex-wrap items-center gap-2">
+      <div aria-live="polite" className="space-y-3">
+        {hub.notice ? (
+          <div role="status" className={`flex items-start justify-between gap-3 rounded-xl border p-3 text-sm ${hub.notice.tone === "error" ? "border-rose-400/40 bg-rose-400/10 text-rose-200" : hub.notice.tone === "ok" ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200" : "border-white/15 bg-white/5 text-white/80"}`}>
+            <span>{hub.notice.text}</span>
+            <button type="button" onClick={hub.dismiss} className="shrink-0 text-xs underline" aria-label="Dismiss message">Dismiss</button>
+          </div>
+        ) : null}
+        {signedOut ? (
+          <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">
+            Sign in to the app to manage integrations. Your connections are saved to your account, not to this browser.
+          </div>
+        ) : hub.loadError ? (
+          <div className="rounded-xl border border-rose-400/40 bg-rose-400/10 p-3 text-sm text-rose-200">
+            Integrations could not be loaded: {hub.loadError.text}{" "}
+            <button type="button" className="underline" onClick={() => void hub.refresh()}>Try again</button>
+          </div>
+        ) : null}
+        {hub.payload && !hub.payload.encryptionReady ? (
+          <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">
+            One-time setup: set <code>INTEGRATIONS_ENCRYPTION_KEY</code> on the server (any long random string). Connections are blocked until it exists so no token is ever stored unencrypted.
+          </div>
+        ) : null}
+      </div>
+
+      <div className="module-card space-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="sr-only" htmlFor="integration-search">Search integrations</label>
           <input
-            className="h-9 min-w-64 flex-1 rounded-full border border-line bg-black/40 px-4 text-sm"
-            placeholder="Search services, capabilities or dependents"
+            id="integration-search"
+            type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search Gmail, OpenAI, Stripe…"
+            className="min-w-52 flex-1 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300"
           />
-          <select className="h-9 rounded-full border border-line bg-black/40 px-3 text-sm" value={category} onChange={(event) => setCategory(event.target.value as IntegrationCategory | "all")}>
-            <option value="all">Every category</option>
-            {categories.map(([id, count]) => (
-              <option key={id} value={id}>{CATEGORY_LABEL[id]} ({count})</option>
+          <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-1.5">
+            {FILTERS.map((item) => (
+              <Chip key={item.id} active={filter === item.id} onClick={() => setFilter(item.id)}>{item.label}</Chip>
             ))}
-          </select>
+          </div>
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          {filters.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`quiet ${filter === item.id ? "is-on" : ""}`}
-              onClick={() => setFilter(item.id)}
-            >
-              {item.label} · {item.count}
-            </button>
+        <div role="group" aria-label="Filter by category" className="flex flex-wrap gap-1.5">
+          {categories.map((name) => (
+            <Chip key={name} active={category === name} onClick={() => setCategory(name)}>{name}</Chip>
           ))}
         </div>
-
-        {message ? <p className="text-sm leading-5 text-white/70">{message}</p> : null}
       </div>
 
-      <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
-        {rows.map((entry) => {
-          const providerId = oauthProviderId(entry);
-          const provider = providerId ? status?.providers[providerId] : undefined;
+      {!needle && filter === "all" && category === "All" && !hub.loadError ? (
+        <AccountsInUse rows={hub.inUse.rows} misses={hub.inUse.misses} busy={Boolean(hub.busy.plan)} onApplyPlan={() => void hub.applyPlan()} />
+      ) : null}
+
+      {providers.length ? (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-white/60">One-click connections</h3>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {providers.map((meta) => (
+              <ProviderCard
+                key={meta.id}
+                meta={meta}
+                accounts={hub.byProvider.get(meta.id) || []}
+                expected={hub.expected[meta.id] || ""}
+                configured={Boolean(hub.payload?.configured[meta.id])}
+                encryptionReady={Boolean(hub.payload?.encryptionReady)}
+                busy={hub.busy}
+                onConnect={() => void hub.connect(meta.id)}
+                onTest={(account) => void hub.testAccount(account)}
+                onDisconnect={(account) => void hub.disconnect(account)}
+                onMakePrimary={(account) => void hub.makePrimary(account)}
+                onSaveExpected={(email) => void hub.setExpected(meta.id, email)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {!needle && filter === "all" && (category === "All" || category === "Mail & Calendar") && !hub.loadError ? (
+        <MailboxSection
+          mailboxes={hub.mailboxes}
+          note={hub.payload?.mailboxNote || ""}
+          configured={Boolean(hub.payload?.configured.nylas)}
+          expected={hub.expected.nylas || ""}
+          busy={hub.busy}
+          onConnect={(email) => void hub.connect("nylas", email)}
+          onTest={(box) => void hub.testMailbox(box)}
+          onDisconnect={(box) => void hub.disconnectMailbox(box)}
+        />
+      ) : null}
+
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-white/60">API keys · {keyTotal}</h3>
+          <StatusPill tone="idle">Keys stay in your account memory</StatusPill>
+        </div>
+        {keysByCategory.map((group) => {
+          const failing = group.rows.filter((row) => row.state === "error").length;
+          const saved = group.rows.filter((row) => row.value).length;
           return (
-            <ProviderCard
-              key={entry.id}
-              entry={entry}
-              oauthId={providerId}
-              provider={provider}
-              connection={providerId ? connections.get(providerId) : undefined}
-              savedKey={savedKey(entry.name)}
-              mark={marks[entry.name]}
-              checked={checked[entry.name]}
-              accountValue={entry.account ? savedKey(entry.name) : undefined}
-              busy={Boolean(busy[entry.name]) || sweeping}
-              pending={Boolean(providerId && pending === providerId)}
-              onConnect={() => {
-                if (!providerId) return;
-                setMessage("");
-                connect(providerId, window.location.pathname, providerId === "google" || providerId === "microsoft" ? inbox : "");
-              }}
-              onVerify={() => {
-                if (!providerId) return;
-                setBusy((prev) => ({ ...prev, [entry.name]: true }));
-                void verify(providerId).finally(() => setBusy((prev) => ({ ...prev, [entry.name]: false })));
-              }}
-              onDisconnect={() => {
-                if (!providerId) return;
-                setBusy((prev) => ({ ...prev, [entry.name]: true }));
-                void disconnect(providerId).finally(() => setBusy((prev) => ({ ...prev, [entry.name]: false })));
-              }}
-              onSaveKey={(value) => {
-                putKey(entry.name, value);
-                void testKey(entry.name, value, /^(Google|Gmail|YouTube|Search Console|Firebase)/.test(entry.name) ? "chrisgr33ninc@gmail.com" : "");
-              }}
-              onTestKey={(value) => void testKey(entry.name, value ?? savedKey(entry.name), /^(Google|Gmail|YouTube|Search Console|Firebase)/.test(entry.name) ? "chrisgr33ninc@gmail.com" : "")}
-              onAccount={(values) => {
-                if (entry.account) void accountCheck(entry.account, values.key ? values : { ...values, key: savedKey(entry.name) });
-              }}
-            />
+            <details key={`${group.name}-${open}-${failing > 0}`} open={open || failing > 0} className="module-card group p-4">
+              <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-sm font-medium text-white">
+                <span>{group.name} <span className="font-normal text-white/50">· {group.rows.length}</span></span>
+                <span className="text-xs font-normal text-white/50">
+                  {saved ? `${saved} saved` : "none saved"}{failing ? ` · ${failing} failing` : ""}
+                </span>
+              </summary>
+              <ul className="mt-3 grid gap-2 md:grid-cols-2">
+                {group.rows.map((row) => (
+                  <KeyRow
+                    key={row.name}
+                    row={row}
+                    busy={Boolean(hub.busy[`key:${row.name}`])}
+                    extraSaved={extraSaved(row.name)}
+                    onSave={saveAndTest}
+                    onTest={(name) => void hub.testKey(name)}
+                    onRemove={(name) => void hub.removeKey(name)}
+                  />
+                ))}
+              </ul>
+            </details>
           );
         })}
+        {!providers.length && !keysByCategory.length && !hub.loading ? (
+          <p className="module-card p-4 text-sm text-white/60">Nothing matches that search. Clear the filters to see everything.</p>
+        ) : null}
       </div>
 
-      {!rows.length ? <p className="mt-4 text-sm text-white/55">Nothing matches that search yet.</p> : null}
-
-      <div className="module-card mt-6 grid gap-2 p-4">
-        <h2 className="text-lg">Key sheet</h2>
-        <p className="text-sm text-white/55">Paste or upload a sheet of keys to fill {counts.keys} cards at once. Names are matched to the cards above.</p>
-        <textarea className="min-h-24 rounded-2xl border border-line bg-black/40 px-3 py-2 font-mono text-sm" placeholder={"name\tvalue\nOpenAI\tsk-...\nElevenLabs\tsk_..."} value={sheet} onChange={(event) => setSheet(event.target.value)} />
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className="quiet is-on" disabled={!sheet.trim()} onClick={() => applySheet(sheet)}>Import pasted keys</button>
-          <label className="quiet">Upload key sheet
-            <input className="hidden" type="file" accept=".env,.txt,.csv,.json,.toml,.vars,text/plain" onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (!file) return;
-              void file.text().then((text) => applySheet(text));
-            }} />
-          </label>
-          <button type="button" className="quiet" onClick={() => {
-            const names = CATALOG.filter((entry) => entry.methods.some((method) => KEY_METHODS.has(method))).map((entry) => entry.name);
-            const csv = `name,value\n${names.map((name) => `${name},`).join("\n")}\n`;
-            const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = "lifeos-api-keys.csv";
-            link.click();
-            URL.revokeObjectURL(url);
-          }}>Download sheet template</button>
-          {sheetNote ? <p className="text-sm text-white/70">{sheetNote}</p> : null}
-        </div>
-      </div>
-
-      <details className="module-card mt-4 p-4">
-        <summary className="cursor-pointer text-sm text-white/70">Cloud sync (optional)</summary>
-        <p className="mt-2 text-sm text-white/55">
-          Connections above are stored on this app's own server and need no sign-in. This cloud sign-in is only for the board's shared Supabase copy.
-        </p>
-        {signed ? (
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <p className="text-sm text-white/70">Signed in to the cloud copy.</p>
-            <button type="button" className="quiet" onClick={() => { signOutSession(); setSigned(false); setMessage("Signed out of the cloud copy."); }}>Sign out</button>
+      <details className="module-card p-4">
+        <summary className="cursor-pointer text-sm font-medium text-white">Paste a whole key sheet</summary>
+        <div className="mt-3 space-y-2">
+          <p className="text-xs text-white/55">Two columns (name, value) or lines like <code>OPENAI_API_KEY=…</code>. Names are matched to cards automatically.</p>
+          <textarea
+            aria-label="Key sheet"
+            value={sheet}
+            onChange={(event) => setSheet(event.target.value)}
+            rows={5}
+            spellCheck={false}
+            className="w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 font-mono text-xs text-white outline-none focus:border-sky-300"
+          />
+          <div className="flex items-center gap-3">
+            <Button primary disabled={!sheet.trim()} onClick={() => { setSheetNote(hub.importSheet(sheet)); setSheet(""); }}>Fill the cards</Button>
+            {sheetNote ? <p className="text-xs text-white/60">{sheetNote}</p> : null}
           </div>
-        ) : (
-          <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={(event) => {
-            event.preventDefault();
-            if (!codeSent) {
-              void requestSignIn(inbox)
-                .then(() => { setCodeSent(true); setMessage(`Code sent to ${inbox}.`); })
-                .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Supabase did not send a code."));
-              return;
-            }
-            void confirmSignIn(inbox, code)
-              .then(() => { setSigned(true); setCode(""); setMessage("Signed in to the cloud copy."); })
-              .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "That code was refused."));
-          }}>
-            <select className="h-9 rounded-full border border-line bg-black/40 px-3 text-sm" value={inbox} onChange={(event) => setInbox(event.target.value as (typeof BOARD_EMAILS)[number])}>
-              {BOARD_EMAILS.map((email) => <option key={email} value={email}>{email}</option>)}
-            </select>
-            {codeSent ? <input className="h-9 rounded-full border border-line bg-black/40 px-3 text-sm" inputMode="numeric" autoComplete="one-time-code" placeholder="Email code" value={code} onChange={(event) => setCode(event.target.value)} /> : null}
-            <button type="submit" className="quiet is-on">{codeSent ? "Sign in" : "Email me a code"}</button>
-          </form>
-        )}
+        </div>
       </details>
-    </div>
+    </section>
   );
 }

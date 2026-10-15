@@ -128,12 +128,8 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
     try {
       const { pullInbox } = await import("@/lib/lifeos/env-keys");
       const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
-      const googles = readOauth().filter((row) => row.provider === "google");
-      const tokens = (await Promise.all(googles.map((row) => row.token ? Promise.resolve(row.token) : freshToken("google", row.email)))).filter(Boolean);
-      if (!tokens.length) {
-        const one = await freshToken("google");
-        if (one) tokens.push(one);
-      }
+      const linked = readOauth().filter((row) => row.provider === "google");
+      const tokens = (await Promise.all(linked.map((row) => freshToken("google", row.email)))).filter(Boolean);
       const key = data.keys.find((row) => row.name === "Nylas" && row.value)?.value || "";
       const result = await pullInbox({ data: { nylasKey: key, googleToken: tokens[0] || "", googleTokens: tokens } });
       const incoming = Array.isArray(result.messages) ? result.messages : [];

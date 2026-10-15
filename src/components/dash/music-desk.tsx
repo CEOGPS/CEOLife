@@ -65,7 +65,7 @@ export function MusicDesk({ data, update }: { data: Memory; update: Update }) {
   async function ask(action: "home" | "search", query = "") {
     setNote(action === "search" ? "Searching Spotify…" : "");
     const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
-    const token = readOauth().find((row) => row.provider === "spotify")?.token || await freshToken("spotify");
+    const token = readOauth().some((row) => row.provider === "spotify") ? await freshToken("spotify") : "";
     const { spotifyHub } = await import("@/lib/lifeos/env-keys");
     const result = await spotifyHub({ data: { token, action, query } });
     setHits(result.tracks);

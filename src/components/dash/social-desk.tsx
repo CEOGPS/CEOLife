@@ -101,7 +101,7 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
   async function sync() {
     setNote("Syncing accounts…");
     const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
-    const facebook = readOauth().find((row) => row.provider === "facebook")?.token || await freshToken("facebook");
+    const facebook = readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "";
     const youtube = data.keys.find((row) => row.name === "YouTube")?.value || "";
     const youtubeHandle = accounts.find((row) => row.id === "youtube")?.handle || "";
     const reddit = accounts.find((row) => row.id === "reddit")?.handle || "";
@@ -158,11 +158,12 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
     }
     setNote("Posting…");
     const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
+    const facebookToken = readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "";
     const { publishSocial } = await import("@/lib/lifeos/sync");
     const result = await publishSocial({ data: {
       text: text.trim(),
       platforms: chosen,
-      facebook: readOauth().find((row) => row.provider === "facebook")?.token || await freshToken("facebook"),
+      facebook: facebookToken,
       image,
       x: data.keys.find((row) => row.name === "X")?.value || "",
       linkedin: data.keys.find((row) => row.name === "LinkedIn")?.value || "",

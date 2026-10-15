@@ -95,7 +95,7 @@ function supabaseUrl(env) {
   return env["SUPABASE_URL"] || env["SUPABASE_PROJECT_URL"] || env["NEXT_PUBLIC_SUPABASE_URL"] || "https://mhvcdstgkyplhzjptgfr.supabase.co";
 }
 function supabaseKey(env) {
-  return env["SUPABASE_SERVICE_ROLE_KEY"] || env["SUPABASE_SECRET_KEY"] || env["VITE_SUPABASE_SECRET_KEY"] || env["NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY"] || "";
+  return env["SUPABASE_SERVICE_ROLE_KEY"] || env["SUPABASE_SECRET_KEY"] || env["NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY"] || "";
 }
 function issueState(origin) {
   return `${crypto.randomUUID()}|${encodeURIComponent(safeOrigin(origin))}`;
@@ -1618,7 +1618,7 @@ var router30 = t();
 router30.get("/", async (request, env) => {
   return Response.json({
     supabaseUrl: supabaseUrl(env) || "https://mhvcdstgkyplhzjptgfr.supabase.co",
-    supabaseAnonKey: env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_SUPABASE_PUBLISHABLE_KEY || ""
+    supabaseAnonKey: env.SUPABASE_ANON_KEY || env.SUPABASE_PUBLISHABLE_KEY || ""
   }, { headers: corsHeaders() });
 });
 var router31 = t();

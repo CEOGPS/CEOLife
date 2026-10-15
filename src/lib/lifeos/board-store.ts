@@ -1,4 +1,4 @@
-import { ANON, SUPABASE } from "./oauth";
+import { ANON, SUPABASE } from "./supabase-public";
 
 const headers = { apikey: ANON, Authorization: `Bearer ${ANON}` };
 

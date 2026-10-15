@@ -1092,7 +1092,7 @@ export function WiredPanel({ slug, data, update }: { slug: string; data: Memory;
 
   if (slug === "ai-hub") return <HubDesk data={data} update={update} />;
 
-  if (slug === "integrations") return <IntegrationsDesk data={data} update={update} />;
+  if (slug === "integrations") return <IntegrationsDesk data={data} update={update} accounts={[]} note="" setAccounts={() => undefined} setNote={() => undefined} />;
 
   if (slug === "settings") return <SettingsDesk data={data} update={update} />;
 

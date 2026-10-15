@@ -27,17 +27,11 @@ export default {
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext) {
     const url = new URL(request.url);
     const allowed = allowedOrigins(env);
-    let inbound = request;
-    if (url.pathname === "/oauth/callback") {
-      const rewritten = new URL(request.url);
-      rewritten.pathname = "/api/oauth/callback";
-      inbound = new Request(rewritten, request);
-    }
-    const response = await (worker as WorkerExport).fetch(inbound, env, ctx);
+    const response = await (worker as WorkerExport).fetch(request, env, ctx);
     if (request.method === "OPTIONS" && url.pathname.startsWith("/api/")) {
       return cors(new Response(null, { status: 204 }), request, allowed);
     }
-    if (url.pathname.startsWith("/api/oauth/callback") || url.pathname === "/oauth/callback") {
+    if (url.pathname.startsWith("/api/oauth/callback")) {
       if (response.status < 300 || response.status >= 400) return response;
       const location = response.headers.get("Location") || "";
       let next: URL;

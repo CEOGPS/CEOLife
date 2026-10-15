@@ -1,4 +1,4 @@
-/** AES-256-GCM for tokens at rest. WebCrypto only, so it runs on Node and Workers. */
+/** AES-256-GCM for tokens at rest. WebCrypto only, so it runs on Node, Vercel and Workers. */
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -7,7 +7,6 @@ function toB64(bytes: Uint8Array) {
   bytes.forEach((b) => { text += String.fromCharCode(b); });
   return btoa(text);
 }
-
 function fromB64(text: string) {
   const raw = atob(text);
   const out = new Uint8Array(raw.length);
@@ -16,6 +15,7 @@ function fromB64(text: string) {
 }
 
 async function keyFor(secret: string) {
+  if (!secret) throw new Error("Set INTEGRATIONS_ENCRYPTION_KEY (any long random string) to store connections.");
   const digest = await crypto.subtle.digest("SHA-256", enc.encode(secret));
   return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
@@ -33,7 +33,7 @@ export async function decryptText(blob: string, secret: string): Promise<string>
   return dec.decode(plain);
 }
 
-/** Dedicated key first, the auth secret as a fallback. Empty means tokens stay as they are. */
-export function encryptionSecret(): string {
-  return (process.env.INTEGRATIONS_ENCRYPTION_KEY || process.env.BETTER_AUTH_SECRET || "").trim();
+/** The encryption secret: dedicated key first, auth secret as a fallback. */
+export function encryptionSecret(read: (name: string) => string | undefined): string {
+  return read("INTEGRATIONS_ENCRYPTION_KEY") || read("BETTER_AUTH_SECRET") || "";
 }

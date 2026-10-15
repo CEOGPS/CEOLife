@@ -1,86 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { authorizeUrl, credentials, missingCredentials, oauthProvider, redirectUriFor } from "@/lib/integrations/oauth-providers.server";
-import { resolveOwner } from "@/lib/integrations/owner.server";
-import { publicOrigin } from "@/lib/integrations/public-origin.server";
-import { encryptionSecret } from "@/lib/integrations/crypto.server";
-import { saveState } from "@/lib/integrations/store.server";
-
-/**
- * Begins an authorization: creates a single-use attempt and hands the browser to
- * the provider's own consent screen.
- *
- * `sid` is a random value the panel keeps; it comes back on the connection so
- * the panel only claims the attempt it started. Nothing here trusts a
- * client-supplied user id — the owner is resolved server-side.
- */
-
-function base64url(bytes: Uint8Array) {
-  return Buffer.from(bytes).toString("base64url");
-}
-
-function randomBytes(size: number) {
-  return crypto.getRandomValues(new Uint8Array(size));
-}
-
-async function codeChallenge(verifier: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-  return base64url(new Uint8Array(digest));
-}
-
-function safeReturn(value: string | null) {
-  const path = (value || "/panel/integrations").trim();
-  return path.startsWith("/") && !path.startsWith("//") ? path.slice(0, 200) : "/panel/integrations";
-}
-
-function problem(origin: string, returnTo: string, provider: string, message: string, asJson: boolean) {
-  if (asJson) {
-    return Response.json({ ok: false, error: message, provider }, { status: 400, headers: { "Cache-Control": "no-store" } });
-  }
-  const url = new URL(returnTo, origin);
-  url.searchParams.set("oauth_error", message);
-  if (provider) url.searchParams.set("oauth_provider", provider);
-  return Response.redirect(url.toString(), 302);
-}
+import { appOrigin, guarded, json, makeCtx, readBody, requireUser } from "@/lib/integrations/http.server";
+import { isProviderId } from "@/lib/integrations/providers";
+import { IntegrationError, startFlow } from "@/lib/integrations/service.server";
 
 export const Route = createFileRoute("/api/integrations/start")({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const requestUrl = new URL(request.url);
-        // The public origin, not the inbound one — the callback must match the
-        // URL registered with the provider (see public-origin.server.ts).
-        const origin = publicOrigin(request);
-        const asJson = (request.headers.get("accept") || "").includes("application/json");
-        const returnTo = safeReturn(requestUrl.searchParams.get("return"));
-        const providerId = (requestUrl.searchParams.get("provider") || "").trim().toLowerCase();
-        const sid = (requestUrl.searchParams.get("sid") || "").slice(0, 80);
-        const spec = oauthProvider(providerId);
-        if (!spec) return problem(origin, returnTo, providerId, "That service has no authorization flow here.", asJson);
-        const owner = await resolveOwner();
-        if (!owner) return problem(origin, returnTo, providerId, "Sign in before connecting an integration.", asJson);
-        if (!encryptionSecret()) {
-          return problem(origin, returnTo, providerId, "Set INTEGRATIONS_ENCRYPTION_KEY on the server before connecting. BETTER_AUTH_SECRET works as a fallback. A login is not stored without it.", asJson);
-        }
-        const creds = await credentials(spec);
-        const missing = missingCredentials(spec, creds);
-        if (missing.length) {
-          return problem(origin, returnTo, providerId, `${spec.name} needs ${missing.join(" and ")} on the server. Add them in Secrets, then reconnect.`, asJson);
-        }
-        const state = base64url(randomBytes(24));
-        const verifier = spec.pkce ? base64url(randomBytes(32)) : "";
-        const redirectUri = redirectUriFor(origin, spec.id);
-        await saveState({ state, ownerId: owner, provider: spec.id, verifier, redirectUri, returnTo, sid, createdAt: new Date().toISOString() });
-        const challenge = verifier ? await codeChallenge(verifier) : undefined;
-        const hint = (requestUrl.searchParams.get("hint") || "").trim().toLowerCase().slice(0, 200);
-        let url = authorizeUrl(spec, { redirectUri, state, codeChallenge: challenge, clientId: creds.clientId });
-        if (hint && (spec.id === "google" || spec.id === "microsoft") && hint.includes("@")) {
-          const next = new URL(url);
-          next.searchParams.set("login_hint", hint);
-          url = next.toString();
-        }
-        if (asJson) return Response.json({ ok: true, url }, { headers: { "Cache-Control": "no-store" } });
-        return Response.redirect(url, 302);
-      },
+      POST: ({ request }) => guarded(async () => {
+        const userId = await requireUser(request);
+        const body = await readBody<{ provider: string; hint_email: string; choose: boolean }>(request);
+        if (!isProviderId(body.provider)) throw new IntegrationError(400, "Unknown service.");
+        const result = await startFlow(await makeCtx(), {
+          userId,
+          provider: body.provider,
+          origin: appOrigin(request),
+          hintEmail: String(body.hint_email || ""),
+          choose: body.choose === true,
+        });
+        return json(result);
+      }),
     },
   },
 });

@@ -231,7 +231,7 @@ export function Dashboard() {
 
   useEffect(() => {
     void import("@/lib/lifeos/oauth").then(async ({ readOauth, freshToken }) => {
-      const token = readOauth().find((row) => row.provider === "spotify")?.token || await freshToken("spotify");
+      const token = readOauth().some((row) => row.provider === "spotify") ? await freshToken("spotify") : "";
       return import("@/lib/lifeos/env-keys").then(({ spotifyHub }) => spotifyHub({ data: { token, action: "home", query: "" } }));
     }).then((result) => setSpotLists(result.playlists || [])).catch(() => setSpotLists([]));
   }, []);

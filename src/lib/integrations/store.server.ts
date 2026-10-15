@@ -1,211 +1,182 @@
-/**
- * Server-side storage for integration connections and the short-lived OAuth
- * attempts that create them.
- *
- * Access tokens are read here and handed straight to a provider call — they are
- * never returned to the browser. `listConnections` deliberately selects the
- * shape the panel needs, not the secrets.
- */
+import type { Sql } from "../db.ts";
+import type { AccountView, CheckView, ProviderId } from "./providers.ts";
+import { isProviderId } from "./providers.ts";
+import { decryptText, encryptText } from "./crypto.server.ts";
 
-import { getSql } from "@/lib/db";
-import { decryptText, encryptionSecret, encryptText } from "@/lib/integrations/crypto.server";
+type Row = Record<string, unknown>;
 
-export type ConnectionSummary = {
-  provider: string;
-  label: string;
-  status: string;
-  scopes: string;
-  connectedAt: string;
-  verifiedAt: string | null;
-  expiresAt: string | null;
-  lastError: string;
-};
+const iso = (value: unknown) => (value ? new Date(value as string | number | Date).toISOString() : null);
+const text = (value: unknown) => (value == null ? "" : String(value));
 
-export type ConnectionRecord = ConnectionSummary & {
-  accessToken: string;
-  refreshToken: string;
-};
-
-export type NewConnection = {
-  provider: string;
-  label: string;
-  status: "connected" | "error";
-  scopes: string;
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: string | null;
-  lastError: string;
-  verifiedAt: string | null;
-};
-
-export type OAuthState = {
-  state: string;
-  ownerId: string;
-  provider: string;
-  verifier: string;
-  redirectUri: string;
-  returnTo: string;
-  sid: string;
-  createdAt: string;
-};
-
-function iso(value: unknown): string {
-  if (!value) return "";
-  const date = value instanceof Date ? value : new Date(String(value));
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-
-function maybeIso(value: unknown): string | null {
-  const stamp = iso(value);
-  return stamp || null;
-}
-
-type Row = {
-  provider: string;
-  account_label: string;
-  status: string;
-  scopes: string;
-  connected_at: unknown;
-  verified_at: unknown;
-  expires_at: unknown;
-  last_error: string;
-  access_token?: string;
-  refresh_token?: string;
-};
-
-async function seal(value: string) {
-  if (!value) return "";
-  const secret = encryptionSecret();
-  if (!secret || value.startsWith("v1.")) return value;
-  return encryptText(value, secret);
-}
-
-async function open(value: string) {
-  if (!value || !value.startsWith("v1.")) return value;
-  const secret = encryptionSecret();
-  if (!secret) return "";
-  try {
-    return await decryptText(value, secret);
-  } catch {
-    return "";
-  }
-}
-
-function summary(row: Row): ConnectionSummary {
+export function toAccountView(row: Row): AccountView | null {
+  const provider = text(row.provider);
+  if (!isProviderId(provider)) return null;
   return {
-    provider: row.provider,
-    label: row.account_label || "",
-    status: row.status,
-    scopes: row.scopes || "",
-    connectedAt: iso(row.connected_at),
-    verifiedAt: maybeIso(row.verified_at),
-    expiresAt: maybeIso(row.expires_at),
-    lastError: row.last_error || "",
+    id: text(row.id),
+    provider,
+    email: text(row.email),
+    name: text(row.display_name),
+    primary: row.is_primary === true,
+    status: row.status === "needs_reauth" ? "needs_reauth" : "ok",
+    scopes: text(row.scopes).split(/[ ,]+/).filter(Boolean),
+    expiresAt: iso(row.expires_at),
+    lastCheckedAt: iso(row.last_checked_at),
+    lastError: text(row.last_error),
   };
 }
 
-export async function listConnections(ownerId: string): Promise<ConnectionSummary[]> {
-  const sql = await getSql();
-  const rows = await sql<Row>`
-    select provider, account_label, status, scopes, connected_at, verified_at, expires_at, last_error
-    from integration_connections
-    where owner_id = ${ownerId}
-    order by provider
-  `;
-  return rows.map(summary);
+export async function saveState(sql: Sql, row: { state: string; userId: string; provider: ProviderId; verifier: string | null; hintEmail: string }) {
+  await sql`delete from integration_oauth_states where expires_at < now()`;
+  await sql`insert into integration_oauth_states (state, user_id, provider, verifier, hint_email, expires_at)
+    values (${row.state}, ${row.userId}, ${row.provider}, ${row.verifier}, ${row.hintEmail}, now() + interval '10 minutes')`;
 }
 
-export async function getConnection(ownerId: string, provider: string): Promise<ConnectionRecord | null> {
-  const sql = await getSql();
-  const rows = await sql<Row>`
-    select provider, account_label, status, scopes, connected_at, verified_at, expires_at, last_error, access_token, refresh_token
-    from integration_connections
-    where owner_id = ${ownerId} and provider = ${provider}
-    limit 1
-  `;
+/** One-shot: reading a state deletes it, so a callback URL can never be replayed. */
+export async function takeState(sql: Sql, state: string) {
+  const rows = await sql<Row>`delete from integration_oauth_states where state = ${state} returning user_id, provider, verifier, hint_email, expires_at`;
   const row = rows[0];
   if (!row) return null;
-  return { ...summary(row), accessToken: await open(row.access_token || ""), refreshToken: await open(row.refresh_token || "") };
+  if (new Date(row.expires_at as string).getTime() < Date.now()) return null;
+  const provider = text(row.provider);
+  if (!isProviderId(provider)) return null;
+  return { userId: text(row.user_id), provider, verifier: row.verifier ? text(row.verifier) : null, hintEmail: text(row.hint_email) };
 }
 
-/** Insert or replace this owner's connection for the provider. */
-export async function saveConnection(ownerId: string, row: NewConnection): Promise<void> {
-  const sql = await getSql();
-  await sql`
-    insert into integration_connections
-      (id, owner_id, provider, account_label, status, scopes, access_token, refresh_token, expires_at, connected_at, verified_at, last_error)
-    values
-      (${`${ownerId}:${row.provider}`}, ${ownerId}, ${row.provider}, ${row.label}, ${row.status}, ${row.scopes},
-       ${await seal(row.accessToken)}, ${await seal(row.refreshToken)}, ${row.expiresAt}, now(), ${row.verifiedAt}, ${row.lastError})
-    on conflict (owner_id, provider) do update set
-      account_label = excluded.account_label,
-      status = excluded.status,
+export async function upsertAccount(sql: Sql, secret: string, args: {
+  userId: string; provider: ProviderId; externalId: string; email: string; name: string; scopes: string;
+  accessToken: string; refreshToken: string | null; expiresAt: Date | null; expectedEmail?: string;
+}) {
+  const accessEnc = await encryptText(args.accessToken, secret);
+  const refreshEnc = args.refreshToken ? await encryptText(args.refreshToken, secret) : null;
+  const id = `acc_${crypto.randomUUID()}`;
+  const rows = await sql<Row>`insert into integration_accounts
+      (id, user_id, provider, external_id, email, display_name, scopes, access_token_enc, refresh_token_enc, expires_at, status, last_checked_at, last_error)
+    values (${id}, ${args.userId}, ${args.provider}, ${args.externalId}, ${args.email}, ${args.name}, ${args.scopes}, ${accessEnc}, ${refreshEnc}, ${args.expiresAt}, 'ok', now(), '')
+    on conflict (user_id, provider, external_id) do update set
+      email = excluded.email,
+      display_name = excluded.display_name,
       scopes = excluded.scopes,
-      access_token = excluded.access_token,
-      refresh_token = excluded.refresh_token,
+      access_token_enc = excluded.access_token_enc,
+      refresh_token_enc = coalesce(excluded.refresh_token_enc, integration_accounts.refresh_token_enc),
       expires_at = excluded.expires_at,
-      verified_at = excluded.verified_at,
-      last_error = excluded.last_error
-  `;
+      status = 'ok',
+      last_checked_at = now(),
+      last_error = '',
+      updated_at = now()
+    returning *`;
+  const saved = rows[0] as Row;
+  await settlePrimary(sql, args.userId, args.provider, text(saved.id), args.email, args.expectedEmail || "");
+  const fresh = await sql<Row>`select * from integration_accounts where id = ${text(saved.id)}`;
+  return toAccountView(fresh[0] as Row) as AccountView;
 }
 
-/** Refresh the stored tokens/label after a successful re-check. */
-export async function touchConnection(
-  ownerId: string,
-  provider: string,
-  patch: { accessToken?: string; refreshToken?: string; expiresAt?: string | null; label?: string; status?: string; lastError?: string; verifiedAt?: string | null },
-): Promise<void> {
-  const sql = await getSql();
-  const current = await getConnection(ownerId, provider);
-  if (!current) return;
-  await sql`
-    update integration_connections set
-      access_token = ${await seal(patch.accessToken ?? current.accessToken)},
-      refresh_token = ${await seal(patch.refreshToken ?? current.refreshToken)},
-      expires_at = ${patch.expiresAt !== undefined ? patch.expiresAt : current.expiresAt},
-      account_label = ${patch.label ?? current.label},
-      status = ${patch.status ?? current.status},
-      last_error = ${patch.lastError ?? current.lastError},
-      verified_at = ${patch.verifiedAt !== undefined ? patch.verifiedAt : current.verifiedAt}
-    where owner_id = ${ownerId} and provider = ${provider}
-  `;
+/**
+ * Picks the primary account after a connect: the one matching the expected email wins,
+ * otherwise the first account linked for that service becomes primary.
+ */
+async function settlePrimary(sql: Sql, userId: string, provider: ProviderId, accountId: string, email: string, expected: string) {
+  const current = await sql<Row>`select id from integration_accounts where user_id = ${userId} and provider = ${provider} and is_primary`;
+  const matches = Boolean(expected) && email.toLowerCase() === expected.toLowerCase();
+  if (current.length && !matches) return;
+  if (current.length && text(current[0].id) === accountId) return;
+  await sql`update integration_accounts set is_primary = false where user_id = ${userId} and provider = ${provider} and id <> ${accountId}`;
+  await sql`update integration_accounts set is_primary = true where id = ${accountId}`;
 }
 
-export async function deleteConnection(ownerId: string, provider: string): Promise<void> {
-  const sql = await getSql();
-  await sql`delete from integration_connections where owner_id = ${ownerId} and provider = ${provider}`;
+export async function makePrimary(sql: Sql, userId: string, accountId: string) {
+  const row = await getAccountRow(sql, userId, accountId);
+  if (!row) return false;
+  const provider = text(row.provider);
+  await sql`update integration_accounts set is_primary = false where user_id = ${userId} and provider = ${provider} and id <> ${accountId}`;
+  await sql`update integration_accounts set is_primary = true where id = ${accountId}`;
+  return true;
 }
 
-export async function saveState(state: OAuthState): Promise<void> {
-  const sql = await getSql();
-  await sql`delete from integration_oauth_states where created_at < now() - interval '30 minutes'`;
-  await sql`
-    insert into integration_oauth_states (state, owner_id, provider, verifier, redirect_uri, return_to, sid)
-    values (${state.state}, ${state.ownerId}, ${state.provider}, ${state.verifier}, ${state.redirectUri}, ${state.returnTo}, ${state.sid})
-  `;
+export async function listAccounts(sql: Sql, userId: string) {
+  const rows = await sql<Row>`select * from integration_accounts where user_id = ${userId} order by provider, is_primary desc, email`;
+  return rows.map(toAccountView).filter((row): row is AccountView => Boolean(row));
 }
 
-/** Consume an attempt: it exists exactly once, and only for ten minutes. */
-export async function takeState(state: string): Promise<OAuthState | null> {
-  const value = state.trim();
-  if (!value) return null;
-  const sql = await getSql();
-  const rows = await sql<{ state: string; owner_id: string; provider: string; verifier: string; redirect_uri: string; return_to: string; sid: string; created_at: unknown; fresh: boolean }>`
-    delete from integration_oauth_states
-    where state = ${value}
-    returning state, owner_id, provider, verifier, redirect_uri, return_to, sid, created_at,
-      (created_at > now() - interval '10 minutes') as fresh
-  `;
-  const row = rows[0];
-  if (!row || !row.fresh) return null;
+export async function getAccountRow(sql: Sql, userId: string, id: string) {
+  const rows = await sql<Row>`select * from integration_accounts where user_id = ${userId} and id = ${id}`;
+  return rows[0] || null;
+}
+
+export async function findAccountRow(sql: Sql, userId: string, provider: ProviderId, email: string) {
+  const rows = email
+    ? await sql<Row>`select * from integration_accounts where user_id = ${userId} and provider = ${provider} and lower(email) = ${email.toLowerCase()} order by updated_at desc limit 1`
+    : await sql<Row>`select * from integration_accounts where user_id = ${userId} and provider = ${provider} and status = 'ok' order by is_primary desc, updated_at desc limit 1`;
+  return rows[0] || null;
+}
+
+export async function readTokens(row: Row, secret: string) {
   return {
-    state: row.state,
-    ownerId: row.owner_id,
-    provider: row.provider,
-    verifier: row.verifier || "",
-    redirectUri: row.redirect_uri,
-    returnTo: row.return_to || "/panel/integrations",
-    sid: row.sid || "",
-    createdAt: iso(row.created_at),
+    accessToken: await decryptText(text(row.access_token_enc), secret),
+    refreshToken: row.refresh_token_enc ? await decryptText(text(row.refresh_token_enc), secret) : null,
+    expiresAt: row.expires_at ? new Date(row.expires_at as string) : null,
   };
+}
+
+export async function updateTokens(sql: Sql, secret: string, id: string, args: { accessToken: string; refreshToken: string | null; expiresAt: Date | null }) {
+  const accessEnc = await encryptText(args.accessToken, secret);
+  const refreshEnc = args.refreshToken ? await encryptText(args.refreshToken, secret) : null;
+  await sql`update integration_accounts set access_token_enc = ${accessEnc}, refresh_token_enc = coalesce(${refreshEnc}, refresh_token_enc),
+    expires_at = ${args.expiresAt}, status = 'ok', last_error = '', updated_at = now() where id = ${id}`;
+}
+
+export async function markAccount(sql: Sql, id: string, ok: boolean, detail: string) {
+  await sql`update integration_accounts set status = ${ok ? "ok" : "needs_reauth"}, last_checked_at = now(), last_error = ${ok ? "" : detail}, updated_at = now() where id = ${id}`;
+}
+
+export async function deleteAccount(sql: Sql, userId: string, id: string) {
+  const rows = await sql<Row>`delete from integration_accounts where user_id = ${userId} and id = ${id} returning id, provider, is_primary`;
+  if (!rows.length) return false;
+  if (rows[0].is_primary === true) {
+    // Hand the primary role to the healthiest remaining account for that service.
+    await sql`update integration_accounts set is_primary = true where id = (
+      select id from integration_accounts where user_id = ${userId} and provider = ${text(rows[0].provider)}
+      order by (status = 'ok') desc, updated_at desc limit 1)`;
+  }
+  return true;
+}
+
+export async function listExpected(sql: Sql, userId: string): Promise<Partial<Record<ProviderId, string>>> {
+  const rows = await sql<Row>`select provider, expected_email from integration_prefs where user_id = ${userId}`;
+  const out: Partial<Record<ProviderId, string>> = {};
+  for (const row of rows) {
+    const provider = text(row.provider);
+    if (isProviderId(provider) && text(row.expected_email)) out[provider] = text(row.expected_email);
+  }
+  return out;
+}
+
+export async function saveExpected(sql: Sql, userId: string, provider: ProviderId, email: string) {
+  if (!email) {
+    await sql`delete from integration_prefs where user_id = ${userId} and provider = ${provider}`;
+    return;
+  }
+  await sql`insert into integration_prefs (user_id, provider, expected_email) values (${userId}, ${provider}, ${email})
+    on conflict (user_id, provider) do update set expected_email = excluded.expected_email, updated_at = now()`;
+  // If the expected mailbox is already linked, make it the primary one right away.
+  const match = await sql<Row>`select id from integration_accounts where user_id = ${userId} and provider = ${provider} and lower(email) = ${email} limit 1`;
+  if (match.length) await makePrimary(sql, userId, text(match[0].id));
+}
+
+export async function recordCheck(sql: Sql, userId: string, subject: string, state: CheckView["state"], detail: string) {
+  await sql`insert into integration_checks (user_id, subject, state, detail, checked_at) values (${userId}, ${subject}, ${state}, ${detail.slice(0, 400)}, now())
+    on conflict (user_id, subject) do update set state = excluded.state, detail = excluded.detail, checked_at = now()`;
+}
+
+export async function listChecks(sql: Sql, userId: string): Promise<Record<string, CheckView>> {
+  const rows = await sql<Row>`select subject, state, detail, checked_at from integration_checks where user_id = ${userId}`;
+  const out: Record<string, CheckView> = {};
+  for (const row of rows) {
+    const state = text(row.state);
+    out[text(row.subject)] = { state: state === "ok" || state === "error" ? state : "saved", text: text(row.detail), checkedAt: iso(row.checked_at) as string };
+  }
+  return out;
+}
+
+export async function clearCheck(sql: Sql, userId: string, subject: string) {
+  await sql`delete from integration_checks where user_id = ${userId} and subject = ${subject}`;
 }
