@@ -4,6 +4,7 @@ import { newId, type Memory } from "./memory";
 import { defaultVoice, readClones, voiceId, VOICES } from "./voices";
 import { VoiceClone } from "./dock";
 import { AGENT_SKILLS, matchedSkill, runAgentTool, skillBrief } from "./agent-tools";
+import { applyActs, askWithAbilities } from "./erebus-abilities";
 import { pingCli } from "./local-agents";
 import { boardFacts } from "./facts";
 
@@ -273,11 +274,13 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
     if (tool?.noteTitle) update((prev) => ({ ...prev, notes: [{ id: newId(), title: tool.noteTitle || "Note", body: tool.noteBody || "" }, ...prev.notes] }));
     const { askNyx } = await import("@/lib/lifeos/sync");
     const row = CATALOG.find((item) => item.id === model);
-    const result = await askNyx({ data: { question, facts: [boardFacts(data, question), history, skillBrief(), matchedSkill(question), tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n"), name, prompt, model, key: keyFor(data, model), mind: mindOf(row?.key || ""), endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "" } });
-    const reply = [tool?.text, result.text].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
+    const preface = [boardFacts(data, question), history, skillBrief(), matchedSkill(question), prompt, tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
+    const turned = await askWithAbilities(data, question, preface, (nextQuestion, sheet) => askNyx({ data: { question: nextQuestion, facts: sheet, name, prompt, model, key: keyFor(data, model), mind: mindOf(row?.key || ""), endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "" } }));
+    applyActs(update, turned.acts);
+    const reply = [tool?.text, turned.text].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
     const done = [...next, { role: "ai" as const, text: reply }];
     setLines(done);
-    setNote(result.ok ? result.mind : "Offline");
+    setNote(turned.ok ? turned.mind : "Offline");
     saveChat(update, name, done);
   }
   async function hear(line: string) {

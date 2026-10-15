@@ -1,5 +1,8 @@
 import { integrationsApi } from "@/lib/integrations/client";
 import { isProviderId, providerMeta, type ProviderId } from "@/lib/integrations/providers";
+import { ANON, SUPABASE } from "./supabase-public";
+
+export { ANON, SUPABASE };
 
 /**
  * Thin compatibility layer so the desks that already import from here keep working.
@@ -7,6 +10,7 @@ import { isProviderId, providerMeta, type ProviderId } from "@/lib/integrations/
  * and hands out short-lived access tokens on request.
  */
 const STORE = "lifeos.oauth";
+const SESSION = "sb-mhvcdstgkyplhzjptgfr-auth-token";
 
 export const GMAIL_ACCOUNT = "chrisgr33ninc@gmail.com";
 export const BOARD_EMAILS = ["chris@ceogps.com", "chrisgr33ninc@gmail.com", "cagednreality@icloud.com"] as const;
@@ -40,6 +44,48 @@ export function readOauth(): OauthSession[] {
   } catch {
     return [];
   }
+}
+
+type StoredSession = { access_token?: string; refresh_token?: string; expires_at?: number; user?: unknown; currentSession?: { access_token?: string } };
+
+/** A Supabase access token, refreshed when it is about to expire. Empty when signed out. */
+export async function getSessionToken(): Promise<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SESSION) || "{}") as StoredSession;
+    const access = raw.access_token || raw.currentSession?.access_token || "";
+    if (!access) return "";
+    const expiresAt = raw.expires_at || 0;
+    if (!expiresAt || expiresAt * 1000 - Date.now() > 60_000) return access;
+    if (!raw.refresh_token) return "";
+    const response = await fetch(`${SUPABASE}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: { apikey: ANON, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: raw.refresh_token }),
+    });
+    const body = await response.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; expires_at?: number; expires_in?: number; user?: unknown };
+    if (!response.ok || !body.access_token) {
+      if (response.status === 400 || response.status === 401) localStorage.removeItem(SESSION);
+      return "";
+    }
+    localStorage.setItem(SESSION, JSON.stringify({
+      access_token: body.access_token,
+      refresh_token: body.refresh_token || raw.refresh_token,
+      expires_at: body.expires_at || Math.floor(Date.now() / 1000) + (body.expires_in || 3600),
+      user: body.user || raw.user || null,
+    }));
+    return body.access_token;
+  } catch {
+    return "";
+  }
+}
+
+export function sessionToken() {
+  return getSessionToken();
+}
+
+export async function sessionAuthHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const token = await getSessionToken();
+  return { ...(extra || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 }
 
 /** Asks the server who is linked and refreshes the local cache. Falls back to the cache when offline or signed out. */

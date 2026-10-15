@@ -5,6 +5,7 @@ import { soundPrefs } from "./sound";
 import { defaultVoice, readClones, VOICES } from "./voices";
 import { boardFacts } from "./facts";
 import { matchedSkill, runAgentTool, skillBrief } from "./agent-tools";
+import { applyActs, askWithAbilities, coldLeadNotice } from "./erebus-abilities";
 import { YoutubeBox } from "./media-desk";
 
 type Update = (recipe: (prev: Memory) => Memory) => void;
@@ -140,6 +141,16 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
     window.speechSynthesis?.cancel();
   }, []);
 
+  useEffect(() => {
+    const note = coldLeadNotice(data.leads);
+    if (!note) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const key = `lifeos.cold-leads.${day}`;
+    if (window.localStorage.getItem(key)) return;
+    window.localStorage.setItem(key, "1");
+    update((prev) => ({ ...prev, notifs: [{ id: newId(), text: note, source: "Erebus", seen: false }, ...prev.notifs] }));
+  }, [data.leads, update]);
+
   function paint(next: number[]) {
     setLevels(next);
   }
@@ -215,7 +226,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
     const mine = { id: newId(), who: "You", text, mine: true, platform: tag };
     update((prev) => ({ ...prev, thread: [...prev.thread, mine] }));
     setStatus("Checking tools");
-    void runAgentTool(data, text).then((tool) => {
+    void runAgentTool(data, text).then(async (tool) => {
       if (tool?.task) update((prev) => ({ ...prev, tasks: [{ id: newId(), title: tool.task || "", done: false }, ...prev.tasks] }));
       if (tool?.noteTitle) update((prev) => ({ ...prev, notes: [{ id: newId(), title: tool.noteTitle || "Note", body: tool.noteBody || "" }, ...prev.notes] }));
       if (tool?.play) {
@@ -225,19 +236,21 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
         update((prev) => ({ ...prev, thread: [...prev.thread, { id: newId(), who: agent, text: tool.text, mine: false, platform: tag }] }));
         say(tool.spoken || "Playing it on YouTube.");
         setStatus("Playing");
-        return null;
+        return;
       }
       const packed = [facts(data, text), skillBrief(), matchedSkill(text), tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
-      return import("@/lib/lifeos/sync").then(({ askNyx }) => askNyx({ data: { question: text, facts: packed, name: agent, ...mindCall(data, mind) } })).then((result) => ({ result, tool }));
-    }).then((payload) => {
-      if (!payload) return;
-      const { result, tool } = payload;
-      const reply = [tool ? tool.text : "", result.text || ""].filter(Boolean).join("\n\n") || "None of the models answered. Switch intelligence and try again.";
-      const via = MINDS.find((row) => row.id === result.mind)?.label || used;
+      const { askNyx } = await import("@/lib/lifeos/sync");
+      const turned = await askWithAbilities(data, text, packed, async (question, sheet) => {
+        const result = await askNyx({ data: { question, facts: sheet, name: agent, ...mindCall(data, mind) } });
+        return result;
+      });
+      applyActs(update, turned.acts);
+      const reply = [tool ? tool.text : "", turned.text].filter(Boolean).join("\n\n") || "None of the models answered. Switch intelligence and try again.";
+      const via = MINDS.find((row) => row.id === turned.mind)?.label || used;
       setUsed(via);
       update((prev) => ({ ...prev, thread: [...prev.thread, { id: newId(), who: `${agent} · ${via}`, text: reply, mine: false, platform: tag }] }));
-      say(tool?.spoken || result.text || tool?.text || reply);
-      setStatus(result.ok ? `Speaking · ${via}` : tool ? "Tool only" : "No model answered");
+      say(tool?.spoken || turned.text || tool?.text || reply);
+      setStatus(turned.ok ? `Speaking · ${via}` : tool ? "Tool only" : "No model answered");
     }).catch(() => {
       const reply = "I only answer from what is saved on the board.";
       update((prev) => ({ ...prev, thread: [...prev.thread, { id: newId(), who: agent, text: reply, mine: false, platform: tag }] }));

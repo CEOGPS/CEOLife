@@ -19,7 +19,7 @@ export const AGENT_SKILLS: Skill[] = [
   { id: "csv", group: "Data", name: "CSV read", live: true, note: "Summarizes a pasted table. It does not write Excel on disk." },
   { id: "task", group: "Data", name: "Add task", live: true, note: "Saves a task on the board." },
   { id: "note", group: "Content", name: "Save note", live: true, note: "Saves a note on the board." },
-  { id: "reason", group: "Reasoning", name: "Board reasoning", live: true, note: "Answers only from the saved sheet and the tool result." },
+  { id: "planner", group: "Reasoning", name: "Board tools", live: true, note: "Search, page read, leads, tasks, facts, email drafts, and a notice. The model emits one tool line, then answers." },
   { id: "code-review", group: "Code", name: "Code review", live: true, note: "Reads code you paste. It does not run it." },
   { id: "stack", group: "Code", name: "React, Node, TypeScript, Cloudflare", live: true, note: "Advises on this stack. It does not edit the repo from the dock." },
   { id: "playwright", group: "Browser", name: "Playwright / Puppeteer", live: false, note: "No browser driver is connected." },
@@ -168,9 +168,10 @@ export async function runAgentTool(data: Memory, text: string): Promise<ToolHit 
     if (!named.length) return { text: "No saved keys. Nothing was marked connected." };
     const lines: string[] = [];
     for (const row of named) {
+      const bearer = (await import("@/lib/auth/client")).getBearerToken();
       const response = await fetch("/api/keys/check", {
         method: "POST",
-        headers: await (await import("@/lib/lifeos/oauth")).sessionAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json", ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
         body: JSON.stringify({
           name: row.name,
           key: row.value,
