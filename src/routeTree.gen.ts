@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PanelSlugRouteImport } from './routes/panel/$slug'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiIntegrationsCallbackRouteImport } from './routes/api/integrations/callback'
+import { Route as ApiIntegrationsCallbackProviderRouteImport } from './routes/api/integrations/callback/$provider'
 import { Route as ApiIntegrationsDisconnectRouteImport } from './routes/api/integrations/disconnect'
 import { Route as ApiIntegrationsStartRouteImport } from './routes/api/integrations/start'
 import { Route as ApiIntegrationsStatusRouteImport } from './routes/api/integrations/status'
@@ -48,6 +49,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 const ApiIntegrationsCallbackRoute = ApiIntegrationsCallbackRouteImport.update({
   id: '/api/integrations/callback',
   path: '/api/integrations/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiIntegrationsCallbackProviderRoute = ApiIntegrationsCallbackProviderRouteImport.update({
+  id: '/api/integrations/callback/$provider',
+  path: '/api/integrations/callback/$provider',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiIntegrationsDisconnectRoute =
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/panel/$slug': typeof PanelSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/integrations/callback': typeof ApiIntegrationsCallbackRoute
+  '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
   '/api/integrations/status': typeof ApiIntegrationsStatusRoute
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/panel/$slug': typeof PanelSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/integrations/callback': typeof ApiIntegrationsCallbackRoute
+  '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
   '/api/integrations/status': typeof ApiIntegrationsStatusRoute
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/panel/$slug': typeof PanelSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/integrations/callback': typeof ApiIntegrationsCallbackRoute
+  '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
   '/api/integrations/status': typeof ApiIntegrationsStatusRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/panel/$slug'
     | '/api/auth/$'
     | '/api/integrations/callback'
+    | '/api/integrations/callback/$provider'
     | '/api/integrations/disconnect'
     | '/api/integrations/start'
     | '/api/integrations/status'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/panel/$slug'
     | '/api/auth/$'
     | '/api/integrations/callback'
+    | '/api/integrations/callback/$provider'
     | '/api/integrations/disconnect'
     | '/api/integrations/start'
     | '/api/integrations/status'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/panel/$slug'
     | '/api/auth/$'
     | '/api/integrations/callback'
+    | '/api/integrations/callback/$provider'
     | '/api/integrations/disconnect'
     | '/api/integrations/start'
     | '/api/integrations/status'
@@ -214,6 +226,7 @@ export interface RootRouteChildren {
   PanelSlugRoute: typeof PanelSlugRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiIntegrationsCallbackRoute: typeof ApiIntegrationsCallbackRoute
+  ApiIntegrationsCallbackProviderRoute: typeof ApiIntegrationsCallbackProviderRoute
   ApiIntegrationsDisconnectRoute: typeof ApiIntegrationsDisconnectRoute
   ApiIntegrationsStartRoute: typeof ApiIntegrationsStartRoute
   ApiIntegrationsStatusRoute: typeof ApiIntegrationsStatusRoute
@@ -261,6 +274,13 @@ declare module '@tanstack/react-router' {
       path: '/api/integrations/callback'
       fullPath: '/api/integrations/callback'
       preLoaderRoute: typeof ApiIntegrationsCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/callback/$provider': {
+      id: '/api/integrations/callback/$provider'
+      path: '/api/integrations/callback/$provider'
+      fullPath: '/api/integrations/callback/$provider'
+      preLoaderRoute: typeof ApiIntegrationsCallbackProviderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/integrations/disconnect': {
@@ -342,6 +362,7 @@ const rootRouteChildren: RootRouteChildren = {
   PanelSlugRoute: PanelSlugRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiIntegrationsCallbackRoute: ApiIntegrationsCallbackRoute,
+  ApiIntegrationsCallbackProviderRoute: ApiIntegrationsCallbackProviderRoute,
   ApiIntegrationsDisconnectRoute: ApiIntegrationsDisconnectRoute,
   ApiIntegrationsStartRoute: ApiIntegrationsStartRoute,
   ApiIntegrationsStatusRoute: ApiIntegrationsStatusRoute,

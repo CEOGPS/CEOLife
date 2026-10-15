@@ -35,6 +35,8 @@ function sandboxOrigin(): string | null {
 }
 
 export function publicOrigin(request: Request): string {
+  const configured = (process.env.PUBLIC_APP_URL || "").trim().replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(configured)) return configured;
   const origin = forwardedOrigin(request) || sandboxOrigin() || new URL(request.url).origin;
   return origin.replace(/\/+$/, "");
 }

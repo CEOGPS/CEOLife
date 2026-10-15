@@ -14,7 +14,7 @@ export const Route = createFileRoute("/api/integrations/status")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const redirectUri = redirectUriFor(publicOrigin(request));
+        const origin = publicOrigin(request);
         const signedIn = Boolean(await sessionOwner());
         const owner = await resolveOwner();
         if (!owner) {
@@ -31,11 +31,11 @@ export const Route = createFileRoute("/api/integrations/status")({
             scopes: spec.scopes,
             configured: missing.length === 0,
             missing,
-            redirectUri,
+            redirectUri: redirectUriFor(origin, spec.id),
           };
         }
         return Response.json(
-          { ok: true, signedIn, owner, redirectUri, connections, providers },
+          { ok: true, signedIn, owner, redirectUri: redirectUriFor(origin), connections, providers },
           { headers: { "Cache-Control": "no-store" } },
         );
       },

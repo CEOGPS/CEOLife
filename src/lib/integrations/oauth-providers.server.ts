@@ -356,8 +356,10 @@ export function oauthProviders(): OAuthProvider[] {
   return OAUTH_PROVIDERS;
 }
 
-export function redirectUriFor(origin: string) {
-  return `${origin.replace(/\/$/, "")}/api/integrations/callback`;
+export function redirectUriFor(origin: string, provider = "") {
+  const base = `${origin.replace(/\/$/, "")}/api/integrations/callback`;
+  const id = provider.trim().toLowerCase();
+  return id ? `${base}/${id}` : base;
 }
 
 /** Read this provider's client id/secret from the environment. Never logged. */

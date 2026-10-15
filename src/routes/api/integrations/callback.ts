@@ -52,10 +52,7 @@ function html(body: string) {
   return new Response(body, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 }
 
-export const Route = createFileRoute("/api/integrations/callback")({
-  server: {
-    handlers: {
-      GET: async ({ request }) => {
+export async function completeOAuthCallback(request: Request): Promise<Response> {
         const requestUrl = new URL(request.url);
         // Where the browser really is, so the window it is redirected back to is
         // the public one (see public-origin.server.ts).
@@ -80,7 +77,7 @@ export const Route = createFileRoute("/api/integrations/callback")({
           return html(page({ provider: spec.id, ok: false, message: `${spec.name} returned no authorization code.`, sid: attempt.sid, returnTo, origin }));
         }
         const creds = await credentials(spec);
-        const exchanged = await exchangeCode(spec, creds, { code, redirectUri: attempt.redirectUri || redirectUriFor(origin), verifier: attempt.verifier });
+        const exchanged = await exchangeCode(spec, creds, { code, redirectUri: attempt.redirectUri || redirectUriFor(origin, spec.id), verifier: attempt.verifier });
         if (!exchanged.ok) {
           await saveConnection(attempt.ownerId, {
             provider: spec.id,
@@ -137,7 +134,12 @@ export const Route = createFileRoute("/api/integrations/callback")({
             origin,
           }),
         );
-      },
+}
+
+export const Route = createFileRoute("/api/integrations/callback")({
+  server: {
+    handlers: {
+      GET: async ({ request }) => completeOAuthCallback(request),
     },
   },
 });

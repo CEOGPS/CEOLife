@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { authorizeUrl, credentials, missingCredentials, oauthProvider, redirectUriFor } from "@/lib/integrations/oauth-providers.server";
 import { resolveOwner } from "@/lib/integrations/owner.server";
 import { publicOrigin } from "@/lib/integrations/public-origin.server";
+import { encryptionSecret } from "@/lib/integrations/crypto.server";
 import { saveState } from "@/lib/integrations/store.server";
 
 /**
@@ -57,6 +58,9 @@ export const Route = createFileRoute("/api/integrations/start")({
         if (!spec) return problem(origin, returnTo, providerId, "That service has no authorization flow here.", asJson);
         const owner = await resolveOwner();
         if (!owner) return problem(origin, returnTo, providerId, "Sign in before connecting an integration.", asJson);
+        if (!encryptionSecret()) {
+          return problem(origin, returnTo, providerId, "Set INTEGRATIONS_ENCRYPTION_KEY on the server before connecting. BETTER_AUTH_SECRET works as a fallback. A login is not stored without it.", asJson);
+        }
         const creds = await credentials(spec);
         const missing = missingCredentials(spec, creds);
         if (missing.length) {
@@ -64,7 +68,7 @@ export const Route = createFileRoute("/api/integrations/start")({
         }
         const state = base64url(randomBytes(24));
         const verifier = spec.pkce ? base64url(randomBytes(32)) : "";
-        const redirectUri = redirectUriFor(origin);
+        const redirectUri = redirectUriFor(origin, spec.id);
         await saveState({ state, ownerId: owner, provider: spec.id, verifier, redirectUri, returnTo, sid, createdAt: new Date().toISOString() });
         const challenge = verifier ? await codeChallenge(verifier) : undefined;
         const hint = (requestUrl.searchParams.get("hint") || "").trim().toLowerCase().slice(0, 200);
