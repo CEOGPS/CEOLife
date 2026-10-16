@@ -58,10 +58,10 @@ function withCors(response, origin) {
 }
 __name(withCors, "withCors");
 __name2(withCors, "withCors");
-var OAUTH_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/api/oauth/callback";
-var DISCORD_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/oauth/callback";
+var OAUTH_CALLBACK = "https://lifeos1.ceogps.workers.dev/api/oauth/callback";
+var DISCORD_CALLBACK = "https://lifeos1.ceogps.workers.dev/oauth/callback";
 var DISCORD_SCOPES = "identify email guilds connections";
-var NYLAS_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/api/nylas/callback";
+var NYLAS_CALLBACK = "https://lifeos1.ceogps.workers.dev/api/nylas/callback";
 var OAUTH_ORIGINS = /* @__PURE__ */ new Set(["https://lifeos.ceogps.com", "https://lifeos1.ceogps.com"]);
 var OAUTH_PROVIDERS = /* @__PURE__ */ new Set(["google", "microsoft", "github", "slack", "facebook", "instagram", "twitter", "linkedin", "spotify", "discord", "notion"]);
 function oauthCallback(env) {
@@ -470,7 +470,7 @@ async function providerEmail(provider, accessToken) {
   };
   const endpoint = endpoints[provider];
   if (!endpoint) return "";
-  const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "lifeos1-api" } });
+  const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "lifeos1" } });
   if (!response.ok) return "";
   const body = await response.json().catch(() => ({}));
   return String(body.email || body.mail || body.userPrincipalName || "").trim().toLowerCase();
@@ -1669,7 +1669,7 @@ function mount(prefix, sub) {
 }
 __name(mount, "mount");
 __name2(mount, "mount");
-router31.get("/health", () => withCors(new Response(JSON.stringify({ status: "ok", service: "lifeos1-api" }), {
+router31.get("/health", () => withCors(new Response(JSON.stringify({ status: "ok", service: "lifeos1" }), {
   headers: { "Content-Type": "application/json" }
 })));
 router31.get("/test", () => withCors(new Response(JSON.stringify({ message: "test works" }), {

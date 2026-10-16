@@ -132,7 +132,7 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
     try {
       const form = new FormData();
       form.append("file", file);
-      const response = await fetch("https://lifeos1-api.ceogps.workers.dev/api/upload?type=media", { method: "POST", body: form });
+      const response = await fetch("https://lifeos1.ceogps.workers.dev/api/upload?type=media", { method: "POST", body: form });
       const body = await response.json() as { url?: string; file_url?: string };
       const url = body.url || body.file_url || "";
       if (!response.ok || !/^https?:\/\//i.test(url)) { setNote("Upload did not return a link."); return; }
