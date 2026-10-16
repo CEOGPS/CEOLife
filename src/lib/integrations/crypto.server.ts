@@ -33,7 +33,7 @@ export async function decryptText(blob: string, secret: string): Promise<string>
   return dec.decode(plain);
 }
 
-/** The encryption secret: dedicated key first, auth secret as a fallback. */
+/** The encryption secret: dedicated key first, auth secret next, then a board fallback so cards can store an app secret without a Pages variable. */
 export function encryptionSecret(read: (name: string) => string | undefined): string {
-  return read("INTEGRATIONS_ENCRYPTION_KEY") || read("BETTER_AUTH_SECRET") || "";
+  return read("INTEGRATIONS_ENCRYPTION_KEY") || read("BETTER_AUTH_SECRET") || "lifeos-integrations-board-key-v1";
 }

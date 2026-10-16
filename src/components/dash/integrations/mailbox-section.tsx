@@ -3,6 +3,7 @@ import type { MailboxView } from "@/lib/integrations/providers";
 import { BOARD_EMAIL_LIST } from "./catalog";
 import { timeAgo } from "./format";
 import { Button, StatusPill } from "./ui";
+import { AppFields } from "./provider-card";
 
 const LABEL: Record<string, string> = { icloud: "iCloud", google: "Google", microsoft: "Microsoft", imap: "IMAP" };
 
@@ -40,15 +41,17 @@ function BoxRow({ box, busy, onTest, onDisconnect, onReconnect }: {
 }
 
 /** Mailboxes the Email desk reads and sends from. Live from Nylas, so it matches what the Email desk will really use. */
-export function MailboxSection({ mailboxes, note, configured, expected, busy, onConnect, onTest, onDisconnect }: {
+export function MailboxSection({ mailboxes, note, configured, expected, app, busy, onConnect, onTest, onDisconnect, onSaveApp }: {
   mailboxes: MailboxView[];
   note: string;
   configured: boolean;
   expected: string;
+  app?: { clientId: string; hasSecret: boolean };
   busy: Record<string, boolean>;
   onConnect: (email: string) => void;
   onTest: (box: MailboxView) => void;
   onDisconnect: (box: MailboxView) => void;
+  onSaveApp: (clientId: string, clientSecret: string) => void;
 }) {
   const [email, setEmail] = useState(expected);
   const have = new Set(mailboxes.map((row) => row.email));
@@ -88,7 +91,7 @@ export function MailboxSection({ mailboxes, note, configured, expected, busy, on
           </div>
         ) : null}
         {!configured ? (
-          <p className="text-xs text-amber-200">Not set up on the server yet. Add <code>NYLAS_CLIENT_ID</code> (your Nylas application id) and <code>NYLAS_API_KEY</code>. Steps are in docs/INTEGRATIONS.md.</p>
+          <AppFields idLabel="Nylas application id" secretLabel="Nylas API key" clientId={app?.clientId || ""} hasSecret={Boolean(app?.hasSecret)} busy={Boolean(busy["app:nylas"])} onSave={onSaveApp} />
         ) : (
           <p className="text-xs text-white/45">iCloud asks for an app-specific password from appleid.apple.com. Nylas shows where to create it.</p>
         )}

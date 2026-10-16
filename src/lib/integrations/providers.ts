@@ -86,6 +86,8 @@ export type IntegrationsPayload = {
   mailboxNote: string;
   /** The email each service is meant to use, as the owner set it. Empty means "any". */
   expected: Partial<Record<ProviderId, string>>;
+  /** App id typed on the card. The secret is never sent back. */
+  apps: Partial<Record<ProviderId, { clientId: string; hasSecret: boolean }>>;
   /** False until INTEGRATIONS_ENCRYPTION_KEY (or BETTER_AUTH_SECRET) is set. Connecting is blocked until then. */
   encryptionReady: boolean;
 };

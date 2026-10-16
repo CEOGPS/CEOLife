@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { guarded, json, makeCtx, readBody, requireUser } from "@/lib/integrations/http.server";
 import { isProviderId, type ProviderId } from "@/lib/integrations/providers";
-import { IntegrationError, saveExpectedEmails, setPrimary } from "@/lib/integrations/service.server";
+import { IntegrationError, saveApp, saveExpectedEmails, setPrimary } from "@/lib/integrations/service.server";
 
-type Body = { expected: Record<string, string>; provider: string; expected_email: string; account_id: string; primary: boolean };
+type Body = { expected: Record<string, string>; provider: string; expected_email: string; account_id: string; primary: boolean; client_id: string; client_secret: string };
 
 /**
  * Which account each service should use.
@@ -20,6 +20,10 @@ export const Route = createFileRoute("/api/integrations/settings")({
         const body = await readBody<Body>(request);
         if (body.account_id && body.primary) {
           await setPrimary(ctx, userId, String(body.account_id));
+          return json({ ok: true });
+        }
+        if (isProviderId(body.provider) && (body.client_id !== undefined || body.client_secret !== undefined)) {
+          await saveApp(ctx, userId, body.provider, String(body.client_id || ""), String(body.client_secret || ""));
           return json({ ok: true });
         }
         const map: Partial<Record<ProviderId, string>> = {};

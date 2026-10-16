@@ -44,6 +44,7 @@ export const integrationsApi = {
   disconnectAccount: (accountId: string) => call<{ ok: true }>("/disconnect", { account_id: accountId }),
   disconnectMailbox: (mailboxId: string) => call<{ ok: true }>("/disconnect", { mailbox_id: mailboxId }),
   setExpected: (provider: ProviderId, email: string) => call<{ ok: true }>("/settings", { provider, expected_email: email }),
+  saveApp: (provider: ProviderId, clientId: string, clientSecret: string) => call<{ ok: true }>("/settings", { provider, client_id: clientId, client_secret: clientSecret }),
   setExpectedMany: (expected: Partial<Record<ProviderId, string>>) => call<{ ok: true }>("/settings", { expected }),
   makePrimary: (accountId: string) => call<{ ok: true }>("/settings", { account_id: accountId, primary: true }),
   forgetKey: (service: string) => call<{ ok: true }>("/disconnect", { service }),

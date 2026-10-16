@@ -6,8 +6,8 @@ import {
   newState, PROVIDER_CONFIG, pkcePair, refreshAccess, type EnvReader, type Fetch,
 } from "./oauth.server.ts";
 import {
-  deleteAccount, findAccountRow, getAccountRow, listAccounts, listChecks, listExpected, makePrimary, markAccount,
-  readTokens, saveExpected, saveState, takeState, updateTokens, upsertAccount,
+  deleteAccount, findAccountRow, getAccountRow, listAccounts, listAppCreds, listChecks, listExpected, makePrimary, markAccount,
+  readTokens, saveAppCred, saveExpected, saveState, takeState, updateTokens, upsertAccount,
 } from "./store.server.ts";
 import { checkMailbox, listMailboxes, revokeMailbox } from "./nylas.server.ts";
 
@@ -27,19 +27,35 @@ function needSecret(ctx: Ctx) {
 }
 
 export async function loadPayload(ctx: Ctx, userId: string): Promise<IntegrationsPayload> {
-  const [accounts, checks, expected, boxes] = await Promise.all([
+  const [accounts, checks, expected, boxes, saved] = await Promise.all([
     listAccounts(ctx.sql, userId),
     listChecks(ctx.sql, userId),
     listExpected(ctx.sql, userId),
     listMailboxes(ctx.read, ctx.f),
+    listAppCreds(ctx.sql, userId, ctx.secret).catch(() => []),
   ]);
   const configured = Object.fromEntries(PROVIDER_IDS.map((id) => [id, isConfigured(id, ctx.read)])) as Record<ProviderId, boolean>;
-  return { accounts, checks, configured, expected, mailboxes: boxes.mailboxes, mailboxNote: boxes.note, encryptionReady: Boolean(ctx.secret) };
+  const apps: IntegrationsPayload["apps"] = {};
+  for (const app of saved) if (app.clientId || app.clientSecret) apps[app.provider] = { clientId: app.clientId, hasSecret: Boolean(app.clientSecret) };
+  return { accounts, checks, configured, expected, apps, mailboxes: boxes.mailboxes, mailboxNote: boxes.note, encryptionReady: Boolean(ctx.secret) };
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Saves which email each service should use. An empty value clears it. */
+export async function saveApp(ctx: Ctx, userId: string, provider: ProviderId, clientId: string, clientSecret: string) {
+  const id = clientId.trim().slice(0, 200);
+  const secret = clientSecret.trim().slice(0, 500);
+  if (!id && !secret) {
+    await saveAppCred(ctx.sql, userId, provider, "", "", ctx.secret);
+    return;
+  }
+  if (!id) throw new IntegrationError(400, "Type the client id.");
+  try {
+    await saveAppCred(ctx.sql, userId, provider, id, secret, ctx.secret);
+  } catch (error) {
+    throw new IntegrationError(400, error instanceof Error ? error.message : "Could not save the app.");
+  }
+}
 export async function saveExpectedEmails(ctx: Ctx, userId: string, map: Partial<Record<ProviderId, string>>) {
   for (const [provider, raw] of Object.entries(map)) {
     if (!(PROVIDER_IDS as string[]).includes(provider)) throw new IntegrationError(400, `Unknown service: ${provider}.`);

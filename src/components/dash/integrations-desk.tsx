@@ -171,12 +171,14 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
                 expected={hub.expected[meta.id] || ""}
                 configured={Boolean(hub.payload?.configured[meta.id])}
                 encryptionReady={Boolean(hub.payload?.encryptionReady)}
+                app={hub.payload?.apps?.[meta.id]}
                 busy={hub.busy}
                 onConnect={() => void hub.connect(meta.id)}
                 onTest={(account) => void hub.testAccount(account)}
                 onDisconnect={(account) => void hub.disconnect(account)}
                 onMakePrimary={(account) => void hub.makePrimary(account)}
                 onSaveExpected={(email) => void hub.setExpected(meta.id, email)}
+                onSaveApp={(clientId, clientSecret) => void hub.saveApp(meta.id, clientId, clientSecret)}
               />
             ))}
           </div>
@@ -189,10 +191,12 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
           note={hub.payload?.mailboxNote || ""}
           configured={Boolean(hub.payload?.configured.nylas)}
           expected={hub.expected.nylas || ""}
+          app={hub.payload?.apps?.nylas}
           busy={hub.busy}
           onConnect={(email) => void hub.connect("nylas", email)}
           onTest={(box) => void hub.testMailbox(box)}
           onDisconnect={(box) => void hub.disconnectMailbox(box)}
+          onSaveApp={(clientId, clientSecret) => void hub.saveApp("nylas", clientId, clientSecret)}
         />
       ) : null}
 

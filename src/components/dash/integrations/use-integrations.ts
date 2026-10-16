@@ -319,10 +319,23 @@ export function useIntegrations(args: {
     return done;
   }, [say, update]);
 
+  const saveApp = useCallback(async (provider: ProviderId, clientId: string, clientSecret: string) => {
+    flag(`app:${provider}`, true);
+    try {
+      await integrationsApi.saveApp(provider, clientId, clientSecret);
+      say("ok", `${providerMeta(provider).name} app saved. Press Connect and pick the account on the next page.`);
+    } catch (error) {
+      say("error", message(error, "The app id and secret could not be saved."));
+    } finally {
+      await refresh();
+      flag(`app:${provider}`, false);
+    }
+  }, [refresh, say]);
+
   return {
     payload, loading, loadError, busy, notice, dismiss: () => setNotice(null),
     byProvider, keyRows, stats, googleEmail,
     mailboxes, expected, inUse, setExpected, applyPlan, makePrimary, testMailbox, disconnectMailbox,
-    refresh, connect, testAccount, disconnect, saveKey, removeKey, testKey, testAll, importSheet,
+    refresh, connect, testAccount, disconnect, saveKey, removeKey, testKey, testAll, importSheet, saveApp,
   };
 }

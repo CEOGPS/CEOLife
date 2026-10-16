@@ -276,6 +276,27 @@ const CRED_ALIASES: Partial<Record<ProviderId, { id: string[]; secret: string[] 
   facebook: { id: ["FACEBOOK_CLIENT_ID", "META_CLIENT_ID", "FACEBOOK_APP_ID", "META_APP_ID"], secret: ["FACEBOOK_CLIENT_SECRET", "META_CLIENT_SECRET", "FACEBOOK_APP_SECRET", "META_APP_SECRET"] },
 };
 
+export function credNames(id: ProviderId): { id: string[]; secret: string[] } {
+  if (id === "nylas") return { id: ["NYLAS_CLIENT_ID"], secret: ["NYLAS_API_KEY", "NYLAS_CLIENT_SECRET"] };
+  const alias = CRED_ALIASES[id];
+  const key = id.toUpperCase();
+  return { id: alias?.id || [`${key}_CLIENT_ID`], secret: alias?.secret || [`${key}_CLIENT_SECRET`] };
+}
+
+/** Saved card values fill any name the server env does not already have. */
+export function overlayApps(read: EnvReader, apps: { provider: ProviderId; clientId: string; clientSecret: string }[]): EnvReader {
+  return (name) => {
+    const fromEnv = read(name);
+    if (fromEnv) return fromEnv;
+    for (const app of apps) {
+      const names = credNames(app.provider);
+      if (app.clientId && names.id.includes(name)) return app.clientId;
+      if (app.clientSecret && names.secret.includes(name)) return app.clientSecret;
+    }
+    return undefined;
+  };
+}
+
 function firstSet(read: EnvReader, names: string[]) {
   for (const name of names) {
     const value = read(name);

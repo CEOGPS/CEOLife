@@ -96,24 +96,48 @@ function AccountRow({ account, expected, several, busy, onTest, onDisconnect, on
   );
 }
 
-export function ProviderCard({ meta, accounts, expected, configured, encryptionReady, busy, onConnect, onTest, onDisconnect, onMakePrimary, onSaveExpected }: {
+export function AppFields({ idLabel, secretLabel, clientId, hasSecret, busy, onSave }: {
+  idLabel: string;
+  secretLabel: string;
+  clientId: string;
+  hasSecret: boolean;
+  busy: boolean;
+  onSave: (clientId: string, clientSecret: string) => void;
+}) {
+  const [id, setId] = useState(clientId);
+  const [secret, setSecret] = useState("");
+  return (
+    <form className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3" onSubmit={(event) => { event.preventDefault(); onSave(id.trim(), secret.trim()); setSecret(""); }}>
+      <label className="block text-xs text-white/60">{idLabel}
+        <input className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300" value={id} autoComplete="off" onChange={(event) => setId(event.target.value)} />
+      </label>
+      <label className="block text-xs text-white/60">{secretLabel}{hasSecret ? " (leave blank to keep the saved one)" : ""}
+        <input className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300" type="password" value={secret} autoComplete="off" onChange={(event) => setSecret(event.target.value)} />
+      </label>
+      <Button primary type="submit" busy={busy}>Save app</Button>
+    </form>
+  );
+}
+
+export function ProviderCard({ meta, accounts, expected, configured, encryptionReady, app, busy, onConnect, onTest, onDisconnect, onMakePrimary, onSaveExpected, onSaveApp }: {
   meta: ProviderMeta;
   accounts: AccountView[];
   expected: string;
   configured: boolean;
   encryptionReady: boolean;
+  app?: { clientId: string; hasSecret: boolean };
   busy: Record<string, boolean>;
   onConnect: () => void;
   onTest: (account: AccountView) => void;
   onDisconnect: (account: AccountView) => void;
   onMakePrimary: (account: AccountView) => void;
   onSaveExpected: (email: string) => void;
+  onSaveApp: (clientId: string, clientSecret: string) => void;
 }) {
   const needs = accounts.filter((row) => row.status === "needs_reauth").length;
   const ok = accounts.length - needs;
   const tone = needs ? "error" : ok ? "ok" : "idle";
   const label = needs ? "Needs attention" : ok ? (ok > 1 ? `${ok} connected` : "Connected") : "Not connected";
-  const key = meta.id.toUpperCase();
   const blocked = !configured || !encryptionReady;
   return (
     <article className="module-card flex flex-col gap-3 p-4" aria-label={`${meta.name} connection`}>
@@ -155,9 +179,14 @@ export function ProviderCard({ meta, accounts, expected, configured, encryptionR
         </Button>
       </div>
       {!configured ? (
-        <p className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-2 text-xs text-amber-200">
-          Not set up on the lifeos1 Pages project. Add <code>{key}_CLIENT_ID</code> and <code>{key}_CLIENT_SECRET</code> there (they are already on the lifeos1-api worker), then deploy again.
-        </p>
+        <AppFields
+          idLabel="Client ID"
+          secretLabel="Client secret"
+          clientId={app?.clientId || ""}
+          hasSecret={Boolean(app?.hasSecret)}
+          busy={Boolean(busy[`app:${meta.id}`])}
+          onSave={onSaveApp}
+        />
       ) : null}
     </article>
   );

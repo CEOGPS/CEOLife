@@ -3,6 +3,8 @@ import { UnauthorizedError } from "@/lib/auth/verify.server";
 import { env } from "@/lib/env.server";
 import { ensureDbReady, getSql } from "@/lib/db";
 import { encryptionSecret } from "./crypto.server.ts";
+import { overlayApps } from "./oauth.server.ts";
+import { listAppCreds } from "./store.server.ts";
 import { IntegrationError, type Ctx } from "./service.server.ts";
 
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -22,7 +24,15 @@ export async function requireUser(request: Request): Promise<string> {
 
 export async function makeCtx(): Promise<Ctx> {
   await ensureDbReady();
-  return { sql: await getSql(), read: env, secret: encryptionSecret(env) };
+  const sql = await getSql();
+  const secret = encryptionSecret(env);
+  const userId = env("AI_OWNER_ID") || BOARD_OWNER;
+  let read = env;
+  try {
+    const apps = await listAppCreds(sql, userId, secret);
+    if (apps.length) read = overlayApps(env, apps);
+  } catch { /* the apps table is created on the next migrate */ }
+  return { sql, read, secret };
 }
 
 /** The public origin of this app. Start and callback must agree, so both call this. */

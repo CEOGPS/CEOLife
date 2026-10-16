@@ -180,3 +180,33 @@ export async function listChecks(sql: Sql, userId: string): Promise<Record<strin
 export async function clearCheck(sql: Sql, userId: string, subject: string) {
   await sql`delete from integration_checks where user_id = ${userId} and subject = ${subject}`;
 }
+
+export type AppCred = { provider: ProviderId; clientId: string; clientSecret: string };
+
+export async function listAppCreds(sql: Sql, userId: string, secret: string): Promise<AppCred[]> {
+  const rows = await sql<Row>`select provider, client_id, client_secret_enc from integration_apps where user_id = ${userId}`;
+  const out: AppCred[] = [];
+  for (const row of rows) {
+    const provider = text(row.provider);
+    if (!isProviderId(provider)) continue;
+    const enc = text(row.client_secret_enc);
+    let clientSecret = "";
+    if (enc && secret) {
+      try { clientSecret = await decryptText(enc, secret); } catch { clientSecret = ""; }
+    }
+    out.push({ provider, clientId: text(row.client_id), clientSecret });
+  }
+  return out;
+}
+
+export async function saveAppCred(sql: Sql, userId: string, provider: ProviderId, clientId: string, clientSecret: string, secret: string) {
+  if (!clientId && !clientSecret) {
+    await sql`delete from integration_apps where user_id = ${userId} and provider = ${provider}`;
+    return;
+  }
+  const existing = await sql<Row>`select client_secret_enc from integration_apps where user_id = ${userId} and provider = ${provider}`;
+  const enc = clientSecret ? await encryptText(clientSecret, secret) : text(existing[0]?.client_secret_enc);
+  if (!enc) throw new Error("Type the client secret too. Both are required the first time.");
+  await sql`insert into integration_apps (user_id, provider, client_id, client_secret_enc) values (${userId}, ${provider}, ${clientId}, ${enc})
+    on conflict (user_id, provider) do update set client_id = excluded.client_id, client_secret_enc = excluded.client_secret_enc, updated_at = now()`;
+}
