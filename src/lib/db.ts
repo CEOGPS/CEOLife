@@ -3,12 +3,22 @@ import { pendingMigrations } from "../../scripts/migration-plan.mjs";
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
 
-// An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
-// "unset" — otherwise production would silently run on the PGLite fallback.
-const rawDatabaseUrl =
-  typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
-const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+// An empty or non-URL DATABASE_URL must mean "unset". A bad value makes `pg`
+// throw "Invalid URL string" and takes down every card, including key tests.
+function usableDatabaseUrl(raw: string | undefined): string | undefined {
+  const value = raw?.trim();
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return undefined;
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+const databaseUrl = usableDatabaseUrl(
+  typeof process !== "undefined" ? process.env.DATABASE_URL : undefined,
+);
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured

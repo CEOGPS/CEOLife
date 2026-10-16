@@ -30,13 +30,20 @@ export const Route = createFileRoute("/api/integrations/test")({
     handlers: {
       POST: ({ request }) => guarded(async () => {
         const userId = await requireUser(request);
-        const ctx = await makeCtx();
+        let ctx: Awaited<ReturnType<typeof makeCtx>> | null = null;
+        try {
+          ctx = await makeCtx();
+        } catch (error) {
+          console.error("[integrations/test] database", error instanceof Error ? error.message : error);
+        }
         const body = await readBody<Body>(request);
 
         if (body.account_id) {
+          if (!ctx) return json({ ok: false, text: "The connection list is unavailable right now." });
           return json(await testAccount(ctx, userId, String(body.account_id)));
         }
         if (body.mailbox_id) {
+          if (!ctx) return json({ ok: false, text: "Mailboxes are unavailable right now." });
           const { ok, text } = await testMailbox(ctx, String(body.mailbox_id));
           return json({ ok, text });
         }
@@ -49,14 +56,14 @@ export const Route = createFileRoute("/api/integrations/test")({
           if (!ACCOUNT_KINDS.has(kind)) throw new IntegrationError(400, "Unknown check.");
           let token = "";
           if (kind === "search-console" || kind === "google-analytics") {
+            if (!ctx) return json({ ok: false, text: "Connect Google first, then test again.", site: "" });
             try {
-              // The Google token is read on the server and never sent to the browser for this check.
               token = (await freshAccessToken(ctx, userId, "google", String(body.email || "").trim().toLowerCase())).accessToken;
             } catch (error) {
               const text = error instanceof Error && error.message.includes("expired")
                 ? error.message
                 : "Connect Google first, then test again.";
-              await recordCheck(ctx.sql, userId, `key:${service}`, "error", text);
+              if (ctx) await recordCheck(ctx.sql, userId, `key:${service}`, "error", text).catch(() => undefined);
               return json({ ok: false, text, site: "" });
             }
           }
@@ -67,7 +74,7 @@ export const Route = createFileRoute("/api/integrations/test")({
             secret: String(body.secret || "").trim().slice(0, 400),
             site: String(body.site || "").trim().slice(0, 200),
           });
-          await recordCheck(ctx.sql, userId, `key:${service}`, result.ok ? "ok" : "error", result.text);
+          if (ctx) await recordCheck(ctx.sql, userId, `key:${service}`, result.ok ? "ok" : "error", result.text).catch(() => undefined);
           return json(result);
         }
 
@@ -80,7 +87,7 @@ export const Route = createFileRoute("/api/integrations/test")({
         const text = result.checked
           ? (/^fetch failed$/i.test(result.text) ? `Could not reach ${service} from the server. Try again in a moment.` : result.text)
           : "Saved. This service has no public test, so it cannot be verified from here.";
-        await recordCheck(ctx.sql, userId, `key:${service}`, state, text);
+        if (ctx) await recordCheck(ctx.sql, userId, `key:${service}`, state, text).catch(() => undefined);
         return json({ ok: result.ok, checked: result.checked, text });
       }),
     },
