@@ -156,7 +156,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
       </div>
 
       {!needle && filter === "all" && category === "All" && !hub.loadError ? (
-        <AccountsInUse rows={hub.inUse.rows} misses={hub.inUse.misses} busy={Boolean(hub.busy.plan)} onApplyPlan={() => void hub.applyPlan()} />
+        <AccountsInUse rows={hub.inUse.rows} misses={hub.inUse.misses} busy={Boolean(hub.busy.plan)} onApplyPlan={() => void hub.applyPlan()} onConnect={(email) => void hub.connect(email.toLowerCase().endsWith("@icloud.com") ? "nylas" : "google", email)} />
       ) : null}
 
       {providers.length ? (
@@ -173,7 +173,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
                 encryptionReady={Boolean(hub.payload?.encryptionReady)}
                 app={hub.payload?.apps?.[meta.id]}
                 busy={hub.busy}
-                onConnect={(clientId, clientSecret) => void hub.connect(meta.id, undefined, { clientId, clientSecret })}
+                onConnect={() => void hub.connect(meta.id, meta.id === "google" ? "chrisgr33ninc@gmail.com" : hub.expected[meta.id])}
                 onTest={(account) => void hub.testAccount(account)}
                 onDisconnect={(account) => void hub.disconnect(account)}
                 onMakePrimary={(account) => void hub.makePrimary(account)}

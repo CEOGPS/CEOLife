@@ -3,11 +3,12 @@ import { Button, StatusPill } from "./ui";
 type Row = { email: string; board: boolean; items: { label: string; ok: boolean; primary: boolean }[] };
 
 /** Every email the dashboard uses, and which services are connected under it. */
-export function AccountsInUse({ rows, misses, busy, onApplyPlan }: {
+export function AccountsInUse({ rows, misses, busy, onApplyPlan, onConnect }: {
   rows: Row[];
   misses: string[];
   busy: boolean;
   onApplyPlan: () => void;
+  onConnect: (email: string) => void;
 }) {
   return (
     <section className="module-card space-y-3 p-4" aria-label="Accounts in use">
@@ -24,6 +25,7 @@ export function AccountsInUse({ rows, misses, busy, onApplyPlan }: {
         {rows.map((row) => (
           <li key={row.email} className="rounded-xl border border-white/10 bg-black/20 p-3">
             <p className="truncate text-sm font-medium text-white" title={row.email}>{row.email}</p>
+            <button type="button" className="mt-2 text-xs text-sky-300 underline" onClick={() => onConnect(row.email)}>Connect this address</button>
             {row.items.length ? (
               <ul className="mt-2 flex flex-wrap gap-1.5">
                 {row.items.map((item, index) => (
