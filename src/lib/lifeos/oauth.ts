@@ -107,9 +107,34 @@ export function disconnectOauth(provider: OauthProvider, email?: string) {
   write(readOauth().filter((row) => row.provider !== provider || (email ? row.email !== email : false)));
 }
 
+const WORKER = "https://lifeos1-api.ceogps.workers.dev";
+
+/** The API worker already has every app id and secret. Connect goes there. */
+export function workerConnectUrl(provider: string, origin: string, email?: string) {
+  const url = new URL(`${WORKER}/api/oauth/start`);
+  url.searchParams.set("provider", provider);
+  url.searchParams.set("board", "1");
+  url.searchParams.set("origin", origin);
+  if (email) url.searchParams.set("account_email", email);
+  return url.toString();
+}
+
+export async function workerLinked(): Promise<{ provider: OauthProvider; email: string }[]> {
+  const response = await fetch(`${WORKER}/api/oauth/linked?board=1`, { headers: { "X-Lifeos-Board": "1" } });
+  const body = await response.json().catch(() => ({ accounts: [] })) as { accounts?: { provider?: string; email?: string }[] };
+  if (!response.ok || !Array.isArray(body.accounts)) return [];
+  return body.accounts
+    .filter((row) => isProviderId(row.provider))
+    .map((row) => ({ provider: row.provider as OauthProvider, email: row.email || "" }));
+}
+
 export async function startOAuth(provider: OauthProvider, email?: string) {
-  const { url } = await integrationsApi.start(provider, email, !email);
-  window.location.assign(url);
+  if (provider === "nylas") {
+    const { url } = await integrationsApi.start(provider, email, !email);
+    window.location.assign(url);
+    return;
+  }
+  window.location.assign(workerConnectUrl(provider, window.location.origin, email));
 }
 
 type Back = { provider: OauthProvider | ""; error: string; account: string };
@@ -119,13 +144,15 @@ let returned: Back | null = null;
 export function catchReturn(): Back {
   if (returned) return returned;
   const url = new URL(window.location.href);
-  const connected = url.searchParams.get("connected") || "";
-  const error = url.searchParams.get("integration_error") || "";
+  const connected = url.searchParams.get("connected") || url.searchParams.get("oauth_success") || "";
+  const error = url.searchParams.get("integration_error") || url.searchParams.get("oauth_error") || "";
   returned = { provider: isProviderId(connected) ? connected : "", error, account: url.searchParams.get("account") || "" };
   if (connected || error) {
     url.searchParams.delete("connected");
+    url.searchParams.delete("oauth_success");
     url.searchParams.delete("account");
     url.searchParams.delete("integration_error");
+    url.searchParams.delete("oauth_error");
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }
   return returned;
@@ -138,7 +165,17 @@ export async function finishOAuth(): Promise<OauthSession | null> {
 /** A live access token for a connected account. The server renews it first when it is about to expire. Empty when not connected. */
 export async function freshToken(provider: OauthProvider, email?: string): Promise<string> {
   try {
-    return (await integrationsApi.token(provider, email || "")).access_token;
+    const token = (await integrationsApi.token(provider, email || "")).access_token;
+    if (token) return token;
+  } catch { /* the board login stores tokens on the API worker */ }
+  try {
+    const response = await fetch(`${WORKER}/api/oauth/token/fresh?board=1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Lifeos-Board": "1" },
+      body: JSON.stringify({ provider, email: email || "" }),
+    });
+    const body = await response.json().catch(() => ({})) as { access_token?: string };
+    return body.access_token || "";
   } catch {
     return "";
   }

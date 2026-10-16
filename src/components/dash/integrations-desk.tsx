@@ -116,7 +116,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
         ) : null}
         {signedOut ? (
           <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">
-            Each card signs in on its own. Connect opens that service and you pick the account there. It does not use the dashboard login.
+            Connect opens that service's own login. The app id is already on the API. Pick the account there. It is saved on that card only.
           </div>
         ) : hub.loadError ? (
           <div className="rounded-xl border border-rose-400/40 bg-rose-400/10 p-3 text-sm text-rose-200">

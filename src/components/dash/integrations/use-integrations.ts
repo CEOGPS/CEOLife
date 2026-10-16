@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi, IntegrationsApiError } from "@/lib/integrations/client";
 import { PROVIDERS, providerMeta, type AccountView, type CheckView, type IntegrationsPayload, type MailboxView, type ProviderId } from "@/lib/integrations/providers";
-import { catchReturn, GMAIL_ACCOUNT, rememberAccounts } from "@/lib/lifeos/oauth";
+import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, workerConnectUrl, workerLinked } from "@/lib/lifeos/oauth";
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
 import { newId, type Memory } from "../memory";
 import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
@@ -35,15 +35,46 @@ export function useIntegrations(args: {
   }, [setNote]);
 
   const refresh = useCallback(async () => {
+    const linked = await workerLinked().catch(() => []);
     try {
       const next = await integrationsApi.list();
       setPayload(next);
       setLoadError(null);
-      const live = next.accounts.filter((row) => row.status === "ok");
-      rememberAccounts(live.map((row) => ({ provider: row.provider, email: row.email, primary: row.primary })));
+      const live = [
+        ...next.accounts.filter((row) => row.status === "ok").map((row) => ({ provider: row.provider, email: row.email, primary: row.primary })),
+        ...linked.filter((row) => !next.accounts.some((item) => item.provider === row.provider && item.email === row.email)).map((row) => ({ provider: row.provider, email: row.email, primary: true })),
+      ];
+      rememberAccounts(live);
       setAccounts(live.map((row) => ({ provider: row.provider, name: providerMeta(row.provider).name, email: row.email })));
+      if (linked.length) {
+        setPayload({
+          ...next,
+          configured: { ...next.configured, ...Object.fromEntries(linked.map((row) => [row.provider, true])) },
+          accounts: [
+            ...next.accounts,
+            ...linked.filter((row) => !next.accounts.some((item) => item.provider === row.provider && item.email === row.email)).map((row) => ({
+              id: `worker:${row.provider}:${row.email}`,
+              provider: row.provider,
+              email: row.email,
+              name: "",
+              primary: true,
+              status: "ok" as const,
+              scopes: [],
+              expiresAt: null,
+              lastCheckedAt: null,
+              lastError: "",
+            })),
+          ],
+        });
+      }
     } catch (error) {
-      setLoadError({ status: error instanceof IntegrationsApiError ? error.status : 0, text: message(error, "Integrations could not be loaded.") });
+      if (linked.length) {
+        setLoadError(null);
+        setAccounts(linked.map((row) => ({ provider: row.provider, name: providerMeta(row.provider).name, email: row.email })));
+        rememberAccounts(linked.map((row) => ({ ...row, primary: true })));
+      } else {
+        setLoadError({ status: error instanceof IntegrationsApiError ? error.status : 0, text: message(error, "Integrations could not be loaded.") });
+      }
     } finally {
       setLoading(false);
     }
@@ -118,14 +149,18 @@ export function useIntegrations(args: {
   }, [accounts, mailboxes, expected]);
 
   const connect = useCallback(async (provider: ProviderId, hint?: string) => {
-    flag(`connect:${provider}`, true);
-    try {
-      const { url } = await integrationsApi.start(provider, hint, !hint);
-      window.location.assign(url);
-    } catch (error) {
-      say("error", message(error, `${providerMeta(provider).name} could not start.`));
-      flag(`connect:${provider}`, false);
+    if (provider === "nylas") {
+      flag(`connect:${provider}`, true);
+      try {
+        const { url } = await integrationsApi.start(provider, hint, !hint);
+        window.location.assign(url);
+      } catch (error) {
+        say("error", message(error, `${providerMeta(provider).name} could not start.`));
+        flag(`connect:${provider}`, false);
+      }
+      return;
     }
+    window.location.assign(workerConnectUrl(provider, window.location.origin, hint));
   }, [say]);
 
   const testAccount = useCallback(async (account: AccountView) => {

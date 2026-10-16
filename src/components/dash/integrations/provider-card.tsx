@@ -138,7 +138,7 @@ export function ProviderCard({ meta, accounts, expected, configured, encryptionR
   const ok = accounts.length - needs;
   const tone = needs ? "error" : ok ? "ok" : "idle";
   const label = needs ? "Needs attention" : ok ? (ok > 1 ? `${ok} connected` : "Connected") : "Not connected";
-  const blocked = !configured || !encryptionReady;
+  const blocked = false;
   return (
     <article className="module-card flex flex-col gap-3 p-4" aria-label={`${meta.name} connection`}>
       <header className="flex items-start gap-3">
@@ -178,16 +178,6 @@ export function ProviderCard({ meta, accounts, expected, configured, encryptionR
           {needs ? "Reconnect" : accounts.length ? "Add another account" : `Connect ${meta.name}`}
         </Button>
       </div>
-      {!configured ? (
-        <AppFields
-          idLabel="Client ID"
-          secretLabel="Client secret"
-          clientId={app?.clientId || ""}
-          hasSecret={Boolean(app?.hasSecret)}
-          busy={Boolean(busy[`app:${meta.id}`])}
-          onSave={onSaveApp}
-        />
-      ) : null}
     </article>
   );
 }

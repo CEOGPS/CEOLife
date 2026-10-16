@@ -40,7 +40,7 @@ function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin || "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Id",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Id, X-Lifeos-Board",
     "Access-Control-Allow-Credentials": "true"
   };
 }
@@ -183,6 +183,20 @@ async function sessionUserId(request, env) {
   const id = user && typeof user.id === "string" ? user.id : "";
   if (id) request.userId = id;
   return id;
+}
+function isBoardRequest(request) {
+  const url = new URL(request.url);
+  if (url.searchParams.get("board") === "1") return true;
+  if (request.headers.get("x-lifeos-board") === "1") return true;
+  return false;
+}
+function isBoardOauth(request) {
+  if (!isBoardRequest(request)) return false;
+  const path = new URL(request.url).pathname;
+  return path === "/api/oauth/start" || path === "/api/oauth/linked" || path === "/api/oauth/status" || path === "/api/oauth/token/fresh" || path === "/api/oauth/disconnect";
+}
+async function actorId(request, env) {
+  return await sessionUserId(request, env) || (isBoardRequest(request) ? "lifeos-owner" : "");
 }
 function isPublicApi(request) {
   if (request.method === "OPTIONS") return true;
@@ -342,7 +356,7 @@ router.get("/status", async (request, env) => {
   }
 });
 router.get("/linked", async (request, env) => {
-  const userId = await sessionUserId(request, env);
+  const userId = await actorId(request, env);
   if (!userId) return Response.json({ error: "Sign in required", accounts: [] }, { status: 401, headers: corsHeaders() });
   if (!supabaseUrl(env) || !supabaseKey(env)) {
     return Response.json({ accounts: [] }, { headers: corsHeaders() });
@@ -360,7 +374,7 @@ async function startOauth(request, env) {
   const url = new URL(request.url);
   const provider = String(posted ? posted.provider : url.searchParams.get("provider") || "");
   const accountEmail = String((posted ? posted.account_email : url.searchParams.get("account_email")) || "").trim().toLowerCase();
-  const userId = await sessionUserId(request, env);
+  const userId = await actorId(request, env);
   if (!userId) {
     return Response.json({ error: "Sign in required. Start OAuth with POST and a Bearer token." }, { status: 401, headers: corsHeaders() });
   }
@@ -534,7 +548,7 @@ router.get("/disconnect", async (request, env) => {
 router.post("/disconnect", async (request, env) => {
   const body = await request.json().catch(() => ({}));
   const { provider, account_email } = body;
-  const userId = await sessionUserId(request, env);
+  const userId = await actorId(request, env);
   if (!userId) return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders() });
   if (!provider) {
     return Response.json({ error: "Missing provider" }, {
@@ -606,7 +620,7 @@ router.get("/token/fresh", async (request, env) => {
 });
 
 router.post("/token/fresh", async (request, env) => {
-  const userId = await sessionUserId(request, env);
+  const userId = await actorId(request, env);
   if (!userId) return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders() });
   const body = await request.json().catch(() => ({}));
   const provider = String(body.provider || "google");
@@ -1702,7 +1716,7 @@ var working_worker_default = {
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin") || void 0;
     try {
-      if (!isPublicApi(request)) {
+      if (!isPublicApi(request) && !isBoardOauth(request)) {
         const denied = await requireUser(request, env);
         if (denied) return withCors(denied, origin);
       }
