@@ -152,6 +152,7 @@ function pagesWranglerPlugin(): Plugin {
       const file = join(process.cwd(), "dist/_worker.js/wrangler.json");
       if (!existsSync(file)) return;
       const config = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+      config.name = "lifeos1";
       delete config.pages_build_output_dir;
       delete config.assets;
       writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
