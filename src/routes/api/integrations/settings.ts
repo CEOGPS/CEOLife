@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { guarded, json, makeCtx, readBody, requireUser } from "@/lib/integrations/http.server";
+import { guarded, json, makeCtx, readBody, requireUser, throttle } from "@/lib/integrations/http.server";
 import { isProviderId, type ProviderId } from "@/lib/integrations/providers";
 import { IntegrationError, saveApp, saveExpectedEmails, setPrimary } from "@/lib/integrations/service.server";
 
@@ -16,6 +16,7 @@ export const Route = createFileRoute("/api/integrations/settings")({
     handlers: {
       POST: ({ request }) => guarded(async () => {
         const userId = await requireUser(request);
+        throttle(userId, "write");
         const ctx = await makeCtx();
         const body = await readBody<Body>(request);
         if (body.account_id && body.primary) {

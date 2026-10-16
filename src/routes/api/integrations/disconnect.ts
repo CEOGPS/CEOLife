@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { guarded, json, makeCtx, readBody, requireUser } from "@/lib/integrations/http.server";
+import { guarded, json, makeCtx, readBody, requireUser, throttle } from "@/lib/integrations/http.server";
 import { IntegrationError, removeAccount, removeMailbox } from "@/lib/integrations/service.server";
 import { clearCheck } from "@/lib/integrations/store.server";
 
@@ -8,6 +8,7 @@ export const Route = createFileRoute("/api/integrations/disconnect")({
     handlers: {
       POST: ({ request }) => guarded(async () => {
         const userId = await requireUser(request);
+        throttle(userId, "write");
         const ctx = await makeCtx();
         const body = await readBody<{ account_id: string; mailbox_id: string; service: string }>(request);
         if (body.account_id) {

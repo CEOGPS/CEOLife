@@ -6,7 +6,8 @@ import type { Sql } from "../db.ts";
 import { decryptText, encryptText } from "./crypto.server.ts";
 import { buildAuthUrl, checkToken, exchangeCode, isConfigured, pkcePair, redirectUri } from "./oauth.server.ts";
 import { completeCallback, freshAccessToken, loadPayload, removeAccount, removeMailbox, saveExpectedEmails, setPrimary, startFlow, testAccount, testMailbox, type CallbackResult, type Ctx } from "./service.server.ts";
-import { listMailboxes, nylasProviderFor } from "./nylas.server.ts";
+import { bustMailboxes, listMailboxes, listMailboxesCached, nylasProviderFor } from "./nylas.server.ts";
+import { createLimiter } from "./limit.server.ts";
 
 const ENV: Record<string, string> = {
   GOOGLE_CLIENT_ID: "g-id", GOOGLE_CLIENT_SECRET: "g-secret",
@@ -638,3 +639,184 @@ describe("choosing the account during sign-in", () => {
     assert.equal(params.has("provider"), false, "Nylas shows its own provider list");
   });
 });
+
+describe("rate limiting", () => {
+  it("allows up to the limit inside the window, then says how long to wait", () => {
+    let clock = 0;
+    const limiter = createLimiter(() => clock);
+    for (let i = 0; i < 3; i += 1) assert.equal(limiter.take("u", 3, 60_000).ok, true);
+    const blocked = limiter.take("u", 3, 60_000);
+    assert.equal(blocked.ok, false);
+    assert.equal(blocked.retryAfterSeconds, 60);
+    clock = 30_000;
+    assert.equal(limiter.take("u", 3, 60_000).retryAfterSeconds, 30);
+  });
+
+  it("recovers once the window passes, and keeps users and buckets separate", () => {
+    let clock = 0;
+    const limiter = createLimiter(() => clock);
+    limiter.take("a", 1, 1000);
+    assert.equal(limiter.take("a", 1, 1000).ok, false);
+    assert.equal(limiter.take("b", 1, 1000).ok, true);
+    clock = 1001;
+    assert.equal(limiter.take("a", 1, 1000).ok, true);
+  });
+});
+
+describe("faster, safer token handling", () => {
+  const MAIL = "chrisgr33ninc@gmail.com";
+  async function linked(opts: { expiresIn: number; rotate?: boolean }) {
+    const { sql, db } = await freshDb();
+    const refreshCalls: string[] = [];
+    let validRefresh = "r-0";
+    let counter = 0;
+    const { f } = mockFetch({
+      "https://oauth2.googleapis.com/token": (call: Call) => {
+        const body = new URLSearchParams(String(call.init?.body));
+        if (body.get("grant_type") === "refresh_token") {
+          refreshCalls.push(body.get("refresh_token") as string);
+          if (opts.rotate && body.get("refresh_token") !== validRefresh) {
+            return new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 });
+          }
+          counter += 1;
+          if (opts.rotate) validRefresh = `r-${counter}`;
+          return { access_token: `a-${counter}`, refresh_token: opts.rotate ? validRefresh : undefined, expires_in: 3600 };
+        }
+        return { access_token: "a-first", refresh_token: "r-0", expires_in: opts.expiresIn };
+      },
+      "https://www.googleapis.com/oauth2/v3/userinfo": () => ({ sub: "g-1", email: MAIL, name: "Chris" }),
+    });
+    const ctx: Ctx = { sql, read, secret: "s", f };
+    const { url } = await startFlow(ctx, { userId: "u", provider: "google", origin: ORIGIN });
+    await completeCallback(ctx, { state: new URL(url).searchParams.get("state") as string, code: "c", origin: ORIGIN });
+    return { ctx, db, refreshCalls };
+  }
+
+  it("renews a token that is about to expire, before it actually does", async () => {
+    const { ctx, refreshCalls } = await linked({ expiresIn: 180 });
+    const live = await freshAccessToken(ctx, "u", "google", "");
+    assert.equal(live.accessToken, "a-1");
+    assert.equal(refreshCalls.length, 1);
+  });
+
+  it("leaves a token with plenty of time alone", async () => {
+    const { ctx, refreshCalls } = await linked({ expiresIn: 3600 });
+    assert.equal((await freshAccessToken(ctx, "u", "google", "")).accessToken, "a-first");
+    assert.equal(refreshCalls.length, 0);
+  });
+
+  it("many desks asking at once share one renewal", async () => {
+    const { ctx, refreshCalls } = await linked({ expiresIn: 120 });
+    const results = await Promise.all(Array.from({ length: 6 }, () => freshAccessToken(ctx, "u", "google", "")));
+    assert.equal(refreshCalls.length, 1);
+    assert.ok(results.every((row) => row.accessToken === "a-1"));
+  });
+
+  it("does not break a provider that rotates refresh tokens when callers overlap", async () => {
+    const { ctx, refreshCalls } = await linked({ expiresIn: 120, rotate: true });
+    const results = await Promise.all([freshAccessToken(ctx, "u", "google", ""), freshAccessToken(ctx, "u", "google", ""), freshAccessToken(ctx, "u", "google", "")]);
+    assert.equal(refreshCalls.length, 1);
+    assert.ok(results.every((row) => row.accessToken === "a-1"));
+    assert.equal((await loadPayload(ctx, "u", { mailboxes: false })).accounts[0].status, "ok");
+  });
+
+  it("keeps working across two renewals in a row with a rotating provider", async () => {
+    const { ctx, db, refreshCalls } = await linked({ expiresIn: 120, rotate: true });
+    await freshAccessToken(ctx, "u", "google", "");
+    await db.query("update integration_accounts set expires_at = now() + interval '90 seconds'");
+    const second = await freshAccessToken(ctx, "u", "google", "");
+    assert.equal(second.accessToken, "a-2");
+    assert.deepEqual(refreshCalls, ["r-0", "r-1"]);
+  });
+
+  it("serves the still-valid token when a renewal fails early, and only flags the account once it really expired", async () => {
+    const { sql, db } = await freshDb();
+    const { f } = mockFetch({
+      "https://oauth2.googleapis.com/token": (call: Call) => {
+        const body = new URLSearchParams(String(call.init?.body));
+        if (body.get("grant_type") === "refresh_token") return new Response(JSON.stringify({ error: "server_error" }), { status: 503 });
+        return { access_token: "a-first", refresh_token: "r-0", expires_in: 120 };
+      },
+      "https://www.googleapis.com/oauth2/v3/userinfo": () => ({ sub: "g-1", email: MAIL }),
+    });
+    const ctx: Ctx = { sql, read, secret: "s", f };
+    const { url } = await startFlow(ctx, { userId: "u", provider: "google", origin: ORIGIN });
+    await completeCallback(ctx, { state: new URL(url).searchParams.get("state") as string, code: "c", origin: ORIGIN });
+    const early = await freshAccessToken(ctx, "u", "google", "");
+    assert.equal(early.accessToken, "a-first");
+    assert.equal((await loadPayload(ctx, "u", { mailboxes: false })).accounts[0].status, "ok");
+    await db.query("update integration_accounts set expires_at = now() - interval '1 minute'");
+    await assert.rejects(freshAccessToken(ctx, "u", "google", ""), /Reconnect/);
+    assert.equal((await loadPayload(ctx, "u", { mailboxes: false })).accounts[0].status, "needs_reauth");
+  });
+});
+
+describe("a faster panel", () => {
+  const grants = (rows: unknown[]) => ({ "https://api.us.nylas.com/v3/grants?": () => ({ data: rows }) });
+
+  it("the main list does not wait for Nylas, and says so", async () => {
+    const { sql } = await freshDb();
+    const { f, calls } = mockFetch(grants([{ id: "g1", provider: "icloud", email: "cagednreality@icloud.com", grant_status: "valid" }]));
+    const payload = await loadPayload({ sql, read, secret: "s", f }, "u", { mailboxes: false });
+    assert.equal(calls.length, 0);
+    assert.equal(payload.mailboxesLoaded, false);
+    assert.deepEqual(payload.mailboxes, []);
+  });
+
+  it("repeat mailbox lookups reuse one Nylas call until something changes", async () => {
+    bustMailboxes();
+    const { f, calls } = mockFetch(grants([{ id: "g1", provider: "icloud", email: "cagednreality@icloud.com", grant_status: "valid" }]));
+    await listMailboxesCached(read, f);
+    await listMailboxesCached(read, f);
+    await listMailboxesCached(read, f);
+    assert.equal(calls.length, 1);
+    bustMailboxes();
+    await listMailboxesCached(read, f);
+    assert.equal(calls.length, 2);
+  });
+
+  it("expires the cached list after 30 seconds", async () => {
+    bustMailboxes();
+    const { f, calls } = mockFetch(grants([]));
+    let clock = 1_000_000;
+    await listMailboxesCached(read, f, () => clock);
+    clock += 29_000;
+    await listMailboxesCached(read, f, () => clock);
+    assert.equal(calls.length, 1);
+    clock += 2_000;
+    await listMailboxesCached(read, f, () => clock);
+    assert.equal(calls.length, 2);
+  });
+
+  it("never caches a failure, so recovery is immediate", async () => {
+    bustMailboxes();
+    let up = false;
+    const { f, calls } = mockFetch({
+      "https://api.us.nylas.com/v3/grants?": () => (up
+        ? { data: [{ id: "g1", provider: "icloud", email: "a@icloud.com", grant_status: "valid" }] }
+        : new Response("{}", { status: 503 })),
+    });
+    assert.notEqual((await listMailboxesCached(read, f)).note, "");
+    up = true;
+    const again = await listMailboxesCached(read, f);
+    assert.equal(again.note, "");
+    assert.equal(again.mailboxes.length, 1);
+    assert.equal(calls.length, 2);
+  });
+
+  it("disconnecting a mailbox forgets the cached list", async () => {
+    bustMailboxes();
+    const { sql } = await freshDb();
+    const { f, calls } = mockFetch({
+      "https://api.us.nylas.com/v3/grants/g1": () => ({ request_id: "r" }),
+      "https://api.us.nylas.com/v3/grants?": () => ({ data: [{ id: "g1", provider: "icloud", email: "a@icloud.com", grant_status: "valid" }] }),
+    });
+    const ctx: Ctx = { sql, read, secret: "s", f };
+    await loadPayload(ctx, "u");
+    await removeMailbox(ctx, "g1");
+    const before = calls.length;
+    await loadPayload(ctx, "u");
+    assert.equal(calls.length, before + 1);
+  });
+});
+

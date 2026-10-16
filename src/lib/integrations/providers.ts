@@ -84,6 +84,8 @@ export type IntegrationsPayload = {
   /** Mailboxes Nylas holds for this app. Empty with a `mailboxNote` when Nylas is not set up or could not be reached. */
   mailboxes: MailboxView[];
   mailboxNote: string;
+  /** False when the list was sent without waiting for Nylas. */
+  mailboxesLoaded: boolean;
   /** The email each service is meant to use, as the owner set it. Empty means "any". */
   expected: Partial<Record<ProviderId, string>>;
   /** App id typed on the card. The secret is never sent back. */

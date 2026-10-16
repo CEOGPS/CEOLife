@@ -1,5 +1,5 @@
 import { getBearerToken } from "@/lib/auth/client";
-import type { IntegrationsPayload, ProviderId } from "./providers";
+import type { IntegrationsPayload, MailboxView, ProviderId } from "./providers";
 
 /** Browser-side calls to /api/integrations. Every call carries the session cookie (and the preview bearer token when there is one). */
 export class IntegrationsApiError extends Error {
@@ -32,8 +32,38 @@ async function call<T>(path: string, body?: unknown, timeoutMs = 20000): Promise
 
 export type TestResult = { ok: boolean; text: string; checked?: boolean };
 
+const CACHE_KEY = "lifeos.integrations.payload";
+let listFlight: Promise<IntegrationsPayload> | null = null;
+
+/** Last list from this tab. Read after mount so the server and the browser render the same first paint. */
+export function peekIntegrationsCache(): IntegrationsPayload | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as IntegrationsPayload;
+    if (!parsed || !Array.isArray(parsed.accounts)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function rememberList(data: IntegrationsPayload) {
+  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch { /* private mode */ }
+}
+
 export const integrationsApi = {
-  list: () => call<IntegrationsPayload>(""),
+  /** Cards only. Mailboxes load separately so Nylas cannot hold the panel. Repeated calls share one request. */
+  list: () => {
+    if (!listFlight) {
+      listFlight = call<IntegrationsPayload>("?fast=1").then((data) => {
+        rememberList(data);
+        return data;
+      }).finally(() => { listFlight = null; });
+    }
+    return listFlight;
+  },
+  mailboxes: () => call<{ mailboxes: MailboxView[]; mailboxNote: string }>("?mailboxes=1"),
   /** `choose: true` lets the person pick the account on the provider's own page (nothing is refused). */
   start: (provider: ProviderId, hintEmail?: string, choose = false, app?: { clientId?: string; clientSecret?: string }) =>
     call<{ url: string }>("/start", { provider, hint_email: hintEmail || "", choose, client_id: app?.clientId || "", client_secret: app?.clientSecret || "" }),

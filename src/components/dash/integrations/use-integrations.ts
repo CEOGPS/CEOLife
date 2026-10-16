@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { integrationsApi, IntegrationsApiError } from "@/lib/integrations/client";
+import { integrationsApi, IntegrationsApiError, peekIntegrationsCache } from "@/lib/integrations/client";
 import { PROVIDERS, providerMeta, type AccountView, type CheckView, type IntegrationsPayload, type MailboxView, type ProviderId } from "@/lib/integrations/providers";
 import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, workerConnectUrl, workerLinked } from "@/lib/lifeos/oauth";
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
@@ -35,37 +35,41 @@ export function useIntegrations(args: {
   }, [setNote]);
 
   const refresh = useCallback(async () => {
-    const linked = await workerLinked().catch(() => []);
+    let linked: { provider: ProviderId; email: string }[] = [];
     try {
-      const next = await integrationsApi.list();
-      setPayload(next);
+      const [workerRows, next] = await Promise.all([
+        workerLinked().catch(() => [] as { provider: ProviderId; email: string }[]),
+        integrationsApi.list(),
+      ]);
+      linked = workerRows;
       setLoadError(null);
-      const live = [
-        ...next.accounts.filter((row) => row.status === "ok").map((row) => ({ provider: row.provider, email: row.email, primary: row.primary })),
-        ...linked.filter((row) => !next.accounts.some((item) => item.provider === row.provider && item.email === row.email)).map((row) => ({ provider: row.provider, email: row.email, primary: true })),
-      ];
+      const merged = linked.length ? {
+        ...next,
+        configured: { ...next.configured, ...Object.fromEntries(linked.map((row) => [row.provider, true])) },
+        accounts: [
+          ...next.accounts,
+          ...linked.filter((row) => !next.accounts.some((item) => item.provider === row.provider && item.email === row.email)).map((row) => ({
+            id: `worker:${row.provider}:${row.email}`,
+            provider: row.provider,
+            email: row.email,
+            name: "",
+            primary: true,
+            status: "ok" as const,
+            scopes: [],
+            expiresAt: null,
+            lastCheckedAt: null,
+            lastError: "",
+          })),
+        ],
+      } : next;
+      setPayload(merged);
+      const live = merged.accounts.filter((row) => row.status === "ok").map((row) => ({ provider: row.provider, email: row.email, primary: row.primary }));
       rememberAccounts(live);
       setAccounts(live.map((row) => ({ provider: row.provider, name: providerMeta(row.provider).name, email: row.email })));
-      if (linked.length) {
-        setPayload({
-          ...next,
-          configured: { ...next.configured, ...Object.fromEntries(linked.map((row) => [row.provider, true])) },
-          accounts: [
-            ...next.accounts,
-            ...linked.filter((row) => !next.accounts.some((item) => item.provider === row.provider && item.email === row.email)).map((row) => ({
-              id: `worker:${row.provider}:${row.email}`,
-              provider: row.provider,
-              email: row.email,
-              name: "",
-              primary: true,
-              status: "ok" as const,
-              scopes: [],
-              expiresAt: null,
-              lastCheckedAt: null,
-              lastError: "",
-            })),
-          ],
-        });
+      if (next.mailboxesLoaded === false) {
+        void integrationsApi.mailboxes().then((boxes) => {
+          setPayload((prev) => prev ? { ...prev, mailboxes: boxes.mailboxes, mailboxNote: boxes.mailboxNote, mailboxesLoaded: true } : prev);
+        }).catch(() => undefined);
       }
     } catch (error) {
       if (linked.length) {
@@ -81,6 +85,11 @@ export function useIntegrations(args: {
   }, [setAccounts]);
 
   useEffect(() => {
+    const cached = peekIntegrationsCache();
+    if (cached) {
+      setPayload(cached);
+      setLoading(false);
+    }
     const back = catchReturn();
     if (back.provider) say("ok", `${providerMeta(back.provider).name} is connected${back.account ? ` as ${back.account}` : ""}.`);
     else if (back.error) say("error", back.error);

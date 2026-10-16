@@ -37,7 +37,26 @@ function toMailbox(row: Record<string, unknown>): MailboxView {
   };
 }
 
-export async function listMailboxes(read: EnvReader, f: Fetch = fetch): Promise<{ mailboxes: MailboxView[]; note: string }> {
+type Listing = { mailboxes: MailboxView[]; note: string };
+const LISTING_TTL_MS = 30_000;
+const listings = new Map<string, { at: number; value: Listing }>();
+
+/** Forget the cached list. Call after anything that adds or removes a mailbox. */
+export function bustMailboxes() {
+  listings.clear();
+}
+
+/** Reuses a successful answer for 30 seconds. Failures are never cached. */
+export async function listMailboxesCached(read: EnvReader, f: Fetch = fetch, now: () => number = () => Date.now()): Promise<Listing> {
+  const key = `${nylasBase(read)}|${(read("NYLAS_API_KEY") || "").slice(-8)}`;
+  const hit = listings.get(key);
+  if (hit && now() - hit.at < LISTING_TTL_MS) return hit.value;
+  const value = await listMailboxes(read, f);
+  if (!value.note) listings.set(key, { at: now(), value });
+  return value;
+}
+
+export async function listMailboxes(read: EnvReader, f: Fetch = fetch): Promise<Listing> {
   const key = read("NYLAS_API_KEY");
   if (!key) return { mailboxes: [], note: "NYLAS_API_KEY is not set on the server, so mailboxes cannot be listed." };
   try {

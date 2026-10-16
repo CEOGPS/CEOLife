@@ -64,6 +64,19 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
   }, [hub.keyRows, needle, category, filter]);
 
   const keyTotal = keysByCategory.reduce((sum, group) => sum + group.rows.length, 0);
+  const nextStep = useMemo(() => {
+    const payload = hub.payload;
+    if (!payload) return "";
+    if (!payload.encryptionReady) return "Next: set INTEGRATIONS_ENCRYPTION_KEY on the server, then reload. Tokens stay locked until it exists.";
+    const broken = payload.accounts.filter((row) => row.status === "needs_reauth").map((row) => row.email || row.provider);
+    if (broken.length) return `Reconnect: ${broken.join(", ")}.`;
+    const stale = Object.values(payload.checks).filter((row) => Date.now() - Date.parse(row.checkedAt) > 7 * 24 * 60 * 60 * 1000).length;
+    const missing = PROVIDERS.filter((row) => !payload.configured[row.id]).map((row) => row.name);
+    const parts = [];
+    if (stale) parts.push(`${stale} check${stale === 1 ? "" : "s"} are more than a week old. Press Test everything.`);
+    if (missing.length) parts.push(`Not set up on the server: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? "…" : ""}.`);
+    return parts.join(" ");
+  }, [hub.payload]);
   const open = Boolean(needle) || filter !== "all" || category !== "All";
   const signedOut = hub.loadError?.status === 401;
   const categories: (Category | "All")[] = ["All", ...CATEGORY_ORDER.filter((name) => PROVIDERS.some((p) => p.category === name) || hub.keyRows.some((row) => row.category === name))];
@@ -105,6 +118,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
             </div>
           ))}
         </dl>
+        {nextStep ? <p className="text-sm text-white/70">{nextStep}</p> : null}
       </header>
 
       <div aria-live="polite" className="space-y-3">

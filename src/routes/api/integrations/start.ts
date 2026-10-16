@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { appOrigin, guarded, json, makeCtx, readBody, requireUser } from "@/lib/integrations/http.server";
+import { appOrigin, guarded, json, makeCtx, readBody, requireUser, throttle } from "@/lib/integrations/http.server";
 import { isProviderId } from "@/lib/integrations/providers";
 import { IntegrationError, startFlow } from "@/lib/integrations/service.server";
 
@@ -8,6 +8,7 @@ export const Route = createFileRoute("/api/integrations/start")({
     handlers: {
       POST: ({ request }) => guarded(async () => {
         const userId = await requireUser(request);
+        throttle(userId, "start");
         const body = await readBody<{ provider: string; hint_email: string; choose: boolean; client_id?: string; client_secret?: string }>(request);
         if (!isProviderId(body.provider)) throw new IntegrationError(400, "Unknown service.");
         const result = await startFlow(await makeCtx(), {

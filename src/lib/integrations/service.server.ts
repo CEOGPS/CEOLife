@@ -9,7 +9,7 @@ import {
   deleteAccount, findAccountRow, getAccountRow, listAccounts, listAppCreds, listChecks, listExpected, makePrimary, markAccount,
   readTokens, saveAppCred, saveExpected, saveState, takeState, updateTokens, upsertAccount,
 } from "./store.server.ts";
-import { checkMailbox, listMailboxes, revokeMailbox } from "./nylas.server.ts";
+import { bustMailboxes, checkMailbox, listMailboxesCached, revokeMailbox } from "./nylas.server.ts";
 
 export class IntegrationError extends Error {
   status: number;
@@ -26,18 +26,27 @@ function needSecret(ctx: Ctx) {
   if (!ctx.secret) throw new IntegrationError(503, "Set INTEGRATIONS_ENCRYPTION_KEY (any long random string) on the server before connecting accounts.");
 }
 
-export async function loadPayload(ctx: Ctx, userId: string): Promise<IntegrationsPayload> {
+/** Database rows for the panel. Mailboxes are optional so a slow Nylas never blocks the cards. */
+export async function loadPayload(ctx: Ctx, userId: string, opts: { mailboxes?: boolean } = { mailboxes: true }): Promise<IntegrationsPayload> {
   const [accounts, checks, expected, boxes, saved] = await Promise.all([
     listAccounts(ctx.sql, userId),
     listChecks(ctx.sql, userId),
     listExpected(ctx.sql, userId),
-    listMailboxes(ctx.read, ctx.f),
+    opts.mailboxes === false ? Promise.resolve({ mailboxes: [], note: "" }) : listMailboxesCached(ctx.read, ctx.f),
     listAppCreds(ctx.sql, userId, ctx.secret).catch(() => []),
   ]);
   const configured = Object.fromEntries(PROVIDER_IDS.map((id) => [id, isConfigured(id, ctx.read)])) as Record<ProviderId, boolean>;
   const apps: IntegrationsPayload["apps"] = {};
   for (const app of saved) if (app.clientId || app.clientSecret) apps[app.provider] = { clientId: app.clientId, hasSecret: Boolean(app.clientSecret) };
-  return { accounts, checks, configured, expected, apps, mailboxes: boxes.mailboxes, mailboxNote: boxes.note, encryptionReady: Boolean(ctx.secret) };
+  return {
+    accounts, checks, configured, expected, apps,
+    mailboxes: boxes.mailboxes, mailboxNote: boxes.note, mailboxesLoaded: opts.mailboxes !== false,
+    encryptionReady: Boolean(ctx.secret),
+  };
+}
+
+export async function loadMailboxes(ctx: Ctx) {
+  return listMailboxesCached(ctx.read, ctx.f);
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -74,6 +83,7 @@ export async function testMailbox(ctx: Ctx, mailboxId: string) {
 }
 
 export async function removeMailbox(ctx: Ctx, mailboxId: string) {
+  bustMailboxes();
   const out = await revokeMailbox(ctx.read, mailboxId, ctx.f);
   if (!out.ok) throw new IntegrationError(502, out.text);
 }
@@ -128,8 +138,10 @@ export async function completeCallback(ctx: Ctx, args: { state: string; code: st
       if (st.hintEmail && who.email && who.email !== st.hintEmail) {
         // Nylas already created the mailbox. Undo it so the wrong address is not left connected.
         await revokeMailbox(ctx.read, who.id, ctx.f);
+        bustMailboxes();
         return { ok: false, provider, error: `You picked ${st.hintEmail}, but signed in as ${who.email}. Nothing was connected. Try again with ${st.hintEmail}.` };
       }
+      bustMailboxes();
       return { ok: true, provider, account: null };
     }
     if (!accountAllowed(st.provider, who.email, ctx.read)) {
@@ -149,14 +161,44 @@ export async function completeCallback(ctx: Ctx, args: { state: string; code: st
   }
 }
 
-/** Returns a token that is valid right now, refreshing it first when it is about to expire. */
-async function liveToken(ctx: Ctx, row: Record<string, unknown>) {
+/** Renew tokens this long before they expire, so a request never starts with one that dies mid-flight. */
+const REFRESH_AHEAD_MS = 5 * 60_000;
+/** Concurrent callers for the same account share one renewal. Rotating refresh tokens would otherwise reject the second. */
+const renewals = new Map<string, Promise<{ accessToken: string; expiresAt: Date | null }>>();
+
+type Live = { accessToken: string; expiresAt: Date | null };
+
+/** Drop an in-flight renewal after the account is removed. */
+export function forgetLive(accountId?: string) {
+  if (!accountId) renewals.clear();
+  else renewals.delete(accountId);
+}
+
+/** Returns a token that is valid right now, renewing it first when it is close to expiring. */
+async function liveToken(ctx: Ctx, row: Record<string, unknown>): Promise<Live> {
+  const stored = await readTokens(row, ctx.secret);
+  const left = stored.expiresAt ? stored.expiresAt.getTime() - Date.now() : Infinity;
+  if (left > REFRESH_AHEAD_MS) return { accessToken: stored.accessToken, expiresAt: stored.expiresAt };
+  const id = String(row.id);
+  const running = renewals.get(id);
+  if (running) return running;
+  const job = renew(ctx, row, stored, left).finally(() => renewals.delete(id));
+  renewals.set(id, job);
+  return job;
+}
+
+async function renew(ctx: Ctx, row: Record<string, unknown>, stored: Awaited<ReturnType<typeof readTokens>>, left: number): Promise<Live> {
   const id = String(row.id);
   const provider = String(row.provider) as ProviderId;
-  const stored = await readTokens(row, ctx.secret);
-  const expiring = stored.expiresAt && stored.expiresAt.getTime() - Date.now() < 60_000;
-  if (!expiring) return { accessToken: stored.accessToken, expiresAt: stored.expiresAt };
+  const latest = await getAccountRow(ctx.sql, String(row.user_id), id);
+  if (latest) {
+    const again = await readTokens(latest, ctx.secret);
+    if (again.expiresAt && again.expiresAt.getTime() - Date.now() > REFRESH_AHEAD_MS) return { accessToken: again.accessToken, expiresAt: again.expiresAt };
+    stored = again;
+  }
+  const stillValid = left > 10_000;
   if (!stored.refreshToken) {
+    if (stillValid) return { accessToken: stored.accessToken, expiresAt: stored.expiresAt };
     await markAccount(ctx.sql, id, false, "The login expired and this service gave no way to renew it. Reconnect.");
     throw new IntegrationError(401, "This login expired. Reconnect the account.");
   }
@@ -165,6 +207,7 @@ async function liveToken(ctx: Ctx, row: Record<string, unknown>) {
     await updateTokens(ctx.sql, ctx.secret, id, next);
     return { accessToken: next.accessToken, expiresAt: next.expiresAt };
   } catch (error) {
+    if (stillValid) return { accessToken: stored.accessToken, expiresAt: stored.expiresAt };
     const detail = error instanceof Error ? error.message : "Renewal failed.";
     await markAccount(ctx.sql, id, false, detail);
     throw new IntegrationError(401, `Renewing the login failed (${detail}). Reconnect the account.`);
@@ -195,6 +238,7 @@ export async function freshAccessToken(ctx: Ctx, userId: string, provider: Provi
 }
 
 export async function removeAccount(ctx: Ctx, userId: string, accountId: string) {
+  forgetLive(accountId);
   const removed = await deleteAccount(ctx.sql, userId, accountId);
   if (!removed) throw new IntegrationError(404, "That account is not connected.");
 }

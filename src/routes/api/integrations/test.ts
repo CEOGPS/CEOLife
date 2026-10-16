@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { runAccount, runProbe } from "@/lib/lifeos/env-keys";
-import { guarded, json, makeCtx, readBody, requireUser } from "@/lib/integrations/http.server";
+import { guarded, json, makeCtx, readBody, requireUser, throttle } from "@/lib/integrations/http.server";
 import { freshAccessToken, IntegrationError, testAccount, testMailbox } from "@/lib/integrations/service.server";
 import { recordCheck } from "@/lib/integrations/store.server";
 
@@ -30,6 +30,7 @@ export const Route = createFileRoute("/api/integrations/test")({
     handlers: {
       POST: ({ request }) => guarded(async () => {
         const userId = await requireUser(request);
+        throttle(userId, "test");
         let ctx: Awaited<ReturnType<typeof makeCtx>> | null = null;
         try {
           ctx = await makeCtx();
