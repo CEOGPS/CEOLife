@@ -208,7 +208,13 @@ export function catchReturn(): { provider: OauthProvider | ""; error: string } {
   return { provider: connected && isProvider(connected) ? connected : "", error };
 }
 
-export async function startOAuth(provider: OauthProvider, email?: string) {
+/**
+ * Asks the worker to begin an authorization and returns the consent URL it built.
+ *
+ * The worker owns the callback URL registered with each provider, so its flow is
+ * the one that works wherever this app's own callback is not registered.
+ */
+export async function workerAuthorizeUrl(provider: OauthProvider, email?: string) {
   const origin = window.location.origin || APP_ORIGIN;
   const picked = (email || "").trim().toLowerCase();
   if (picked.endsWith("@icloud.com")) throw new Error("iCloud connects through Nylas, not OAuth.");
@@ -222,7 +228,11 @@ export async function startOAuth(provider: OauthProvider, email?: string) {
   });
   const body = await response.json().catch(() => ({})) as { url?: string; error?: string };
   if (!response.ok || !body.url) throw new Error(body.error || `${CARD[provider]} did not start.`);
-  window.location.assign(body.url);
+  return body.url;
+}
+
+export async function startOAuth(provider: OauthProvider, email?: string) {
+  window.location.assign(await workerAuthorizeUrl(provider, email));
 }
 
 export async function startNylas(email?: string) {

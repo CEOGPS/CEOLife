@@ -86,6 +86,16 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
     void refresh();
   }, [refresh, setMessage]);
 
+  // Google authorizes through the worker relay, so that connection lives in the
+  // cloud copy rather than this app's own store — mirror it onto the card.
+  useEffect(() => {
+    if (!signed) return;
+    void import("@/lib/lifeos/oauth").then(({ pullWorkerLinks }) => pullWorkerLinks()).then((rows) => {
+      const google = rows.find((row) => row.provider === "google");
+      if (google) stamp("Google", "connected", `Connected as ${google.email || "your Google account"} through the relay.`);
+    }).catch(() => undefined);
+  }, [signed]);
+
   // Mirror the check results through the cloud copy the board already uses.
   useEffect(() => {
     void import("@/lib/lifeos/board-store").then(({ pullMarks }) => pullMarks()).then((saved) => {

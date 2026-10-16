@@ -134,7 +134,28 @@ export function useIntegrations() {
   }, []);
 
   const connect = useCallback(
-    (provider: string, returnTo = "/panel/integrations") => {
+    async (provider: string, returnTo = "/panel/integrations") => {
+      // Google authorizes through the worker relay, which owns the callback URL
+      // registered with Google (see `workerAuthorizeUrl`). This app's own
+      // callback is not registered there, so Google refuses it.
+      if (provider === "google") {
+        setMessage("");
+        try {
+          const { GMAIL_ACCOUNT, workerAuthorizeUrl } = await import("@/lib/lifeos/oauth");
+          const url = await workerAuthorizeUrl("google", GMAIL_ACCOUNT);
+          if (window.self !== window.top) {
+            const popup = window.open(url, "lifeos-oauth", "width=540,height=740,noopener=no");
+            if (popup) {
+              watch(provider);
+              return;
+            }
+          }
+          window.location.assign(url);
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "Google did not start.");
+        }
+        return;
+      }
       const sid = tabId();
       const url = `/api/integrations/start?provider=${encodeURIComponent(provider)}&sid=${encodeURIComponent(sid)}&return=${encodeURIComponent(returnTo)}`;
       const framed = window.self !== window.top;
@@ -185,15 +206,19 @@ export function useIntegrations() {
   return { status, loading, message, setMessage, pending, refresh, connect, verify, disconnect };
 }
 
-/** Reads the `?connected=` / `?oauth_error=` a returning authorization leaves behind. */
+/**
+ * Reads the `?connected=` / `?oauth_error=` a returning authorization leaves
+ * behind. `oauth_success` is the worker relay's spelling of `connected`.
+ */
 export function readReturn() {
   if (typeof window === "undefined") return { provider: "", error: "", sid: "" };
   const params = new URLSearchParams(window.location.search);
-  const provider = params.get("connected") || params.get("oauth_provider") || "";
+  const provider = params.get("connected") || params.get("oauth_success") || params.get("oauth_provider") || "";
   const error = params.get("oauth_error") || "";
   const sid = params.get("sid") || "";
   if (provider || error) {
     params.delete("connected");
+    params.delete("oauth_success");
     params.delete("oauth_error");
     params.delete("oauth_provider");
     params.delete("sid");
