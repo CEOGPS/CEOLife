@@ -123,10 +123,6 @@ export function useIntegrations(args: {
       const { url } = await integrationsApi.start(provider, hint, !hint);
       window.location.assign(url);
     } catch (error) {
-      if (error instanceof IntegrationsApiError && error.status === 401) {
-        window.location.assign("/login");
-        return;
-      }
       say("error", message(error, `${providerMeta(provider).name} could not start.`));
       flag(`connect:${provider}`, false);
     }

@@ -116,8 +116,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
         ) : null}
         {signedOut ? (
           <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">
-            Sign in with Google or X first. After that, Connect opens the service and finishes the login there.
-            <a href="/login" className="ml-2 underline">Sign in</a>
+            Each card signs in on its own. Connect opens that service and you pick the account there. It does not use the dashboard login.
           </div>
         ) : hub.loadError ? (
           <div className="rounded-xl border border-rose-400/40 bg-rose-400/10 p-3 text-sm text-rose-200">

@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { getSessionUser } from "@/lib/auth/verify.server";
 import { appOrigin, makeCtx } from "@/lib/integrations/http.server";
 import { isProviderId } from "@/lib/integrations/providers";
 import { completeCallback } from "@/lib/integrations/service.server";
@@ -23,10 +22,9 @@ export const Route = createFileRoute("/api/integrations/callback/$provider")({
         const state = url.searchParams.get("state") || "";
         if (!code || !state) return back({ integration_error: "The sign-in came back without a code. Press Connect again." });
         try {
-          // The state row already binds this callback to the user who pressed Connect.
-          // When a session cookie rides along as well, it must be the same person.
-          const session = await getSessionUser().catch(() => null);
-          const result = await completeCallback(await makeCtx(), { state, code, origin: appOrigin(request), sessionUserId: session?.id ?? null });
+          // The state row is the person who pressed Connect. Do not compare it to a
+          // dashboard login — each card picks its own account on the provider's page.
+          const result = await completeCallback(await makeCtx(), { state, code, origin: appOrigin(request), sessionUserId: null });
           return result.ok
             ? back({ connected: result.provider, ...(result.account?.email ? { account: result.account.email } : {}) })
             : back({ integration_error: result.error });

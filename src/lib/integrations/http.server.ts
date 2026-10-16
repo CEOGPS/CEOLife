@@ -1,5 +1,5 @@
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
-import { requireUserId, UnauthorizedError } from "@/lib/auth/verify.server";
+import { UnauthorizedError } from "@/lib/auth/verify.server";
 import { env } from "@/lib/env.server";
 import { ensureDbReady, getSql } from "@/lib/db";
 import { encryptionSecret } from "./crypto.server.ts";
@@ -11,11 +11,13 @@ export function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: NO_STORE });
 }
 
-/** The signed-in user, from the session cookie (or the preview's bearer token). Throws 401/403 otherwise. */
+/** This board is one person's. Each card signs into its own service, so the dashboard login is not the account. */
+const BOARD_OWNER = "lifeos-owner";
+
+/** The board owner. A dashboard session is ignored so one app login cannot become every card's email. */
 export async function requireUser(request: Request): Promise<string> {
   assertSameSiteRequest();
-  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || undefined;
-  return requireUserId(bearer);
+  return env("AI_OWNER_ID") || BOARD_OWNER;
 }
 
 export async function makeCtx(): Promise<Ctx> {
