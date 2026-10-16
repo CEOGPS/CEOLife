@@ -109,7 +109,7 @@ export function disconnectOauth(provider: OauthProvider, email?: string) {
 
 const WORKER = "https://lifeos1-api.ceogps.workers.dev";
 
-/** The API worker already has every app id and secret. Connect goes there. */
+/** Older connections still live on the API worker. New Connect runs on this app. */
 export function workerConnectUrl(provider: string, origin: string, email?: string) {
   const url = new URL(`${WORKER}/api/oauth/start`);
   url.searchParams.set("provider", provider);
@@ -134,7 +134,11 @@ export async function startOAuth(provider: OauthProvider, email?: string) {
     window.location.assign(url);
     return;
   }
-  window.location.assign(workerConnectUrl(provider, window.location.origin, email));
+  const account = email || (provider === "google" ? "chrisgr33ninc@gmail.com" : "");
+  const url = new URL("/api/oauth/start", window.location.origin);
+  url.searchParams.set("provider", provider);
+  if (account) url.searchParams.set("account", account);
+  window.location.assign(url.toString());
 }
 
 type Back = { provider: OauthProvider | ""; error: string; account: string };

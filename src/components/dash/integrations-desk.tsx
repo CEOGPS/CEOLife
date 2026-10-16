@@ -187,7 +187,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
                 encryptionReady={Boolean(hub.payload?.encryptionReady)}
                 app={hub.payload?.apps?.[meta.id]}
                 busy={hub.busy}
-                onConnect={() => void hub.connect(meta.id, meta.id === "google" ? "chrisgr33ninc@gmail.com" : hub.expected[meta.id])}
+                onConnect={(clientId, clientSecret) => void hub.connect(meta.id, meta.id === "google" ? "chrisgr33ninc@gmail.com" : hub.expected[meta.id], clientId ? { clientId, clientSecret } : undefined)}
                 onTest={(account) => void hub.testAccount(account)}
                 onDisconnect={(account) => void hub.disconnect(account)}
                 onMakePrimary={(account) => void hub.makePrimary(account)}

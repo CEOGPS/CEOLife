@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { appOrigin, makeCtx } from "@/lib/integrations/http.server";
+import { rawParam } from "@/lib/integrations/oauth-flow.server";
 import { isProviderId } from "@/lib/integrations/providers";
 import { completeCallback } from "@/lib/integrations/service.server";
 
@@ -18,7 +19,7 @@ export const Route = createFileRoute("/api/integrations/callback/$provider")({
         if (!isProviderId(params.provider)) return back({ integration_error: "Unknown service." });
         const denied = url.searchParams.get("error");
         if (denied) return back({ integration_error: url.searchParams.get("error_description") || `${params.provider} said: ${denied}` });
-        const code = url.searchParams.get("code") || "";
+        const code = rawParam(url.search, "code");
         const state = url.searchParams.get("state") || "";
         if (!code || !state) return back({ integration_error: "The sign-in came back without a code. Press Connect again." });
         try {

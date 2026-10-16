@@ -5,6 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Sql } from "../db.ts";
 import { decryptText, encryptText } from "./crypto.server.ts";
 import { buildAuthUrl, checkToken, exchangeCode, isConfigured, pkcePair, redirectUri } from "./oauth.server.ts";
+import { oauthAttemptCookie, oauthAuthorizeUrl, oauthMissing, oauthSpec, rawParam, readOauthAttempt } from "./oauth-flow.server.ts";
 import { completeCallback, freshAccessToken, loadPayload, removeAccount, removeMailbox, saveExpectedEmails, setPrimary, startFlow, testAccount, testMailbox, type CallbackResult, type Ctx } from "./service.server.ts";
 import { bustMailboxes, listMailboxes, listMailboxesCached, nylasProviderFor } from "./nylas.server.ts";
 import { createLimiter } from "./limit.server.ts";
@@ -817,6 +818,58 @@ describe("a faster panel", () => {
     const before = calls.length;
     await loadPayload(ctx, "u");
     assert.equal(calls.length, before + 1);
+  });
+});
+
+describe("one callback for every card", () => {
+  const callback = "https://lifeos.ceogps.com/api/oauth/callback";
+
+  it("gmail and the work account ask Google for different scopes, and never the account picker", () => {
+    const spec = oauthSpec("google");
+    assert.ok(spec);
+    const gmail = new URL(oauthAuthorizeUrl(spec, { clientId: "cid", redirectUri: callback, state: "s", account: "chrisgr33ninc@gmail.com", challenge: "ch" }));
+    assert.equal(gmail.searchParams.get("redirect_uri"), callback);
+    assert.equal(gmail.searchParams.get("login_hint"), "chrisgr33ninc@gmail.com");
+    assert.equal(gmail.searchParams.get("prompt"), "consent");
+    assert.equal(gmail.searchParams.has("select_account") || (gmail.searchParams.get("prompt") || "").includes("select_account"), false);
+    assert.equal(gmail.searchParams.get("code_challenge_method"), "S256");
+    assert.match(gmail.searchParams.get("scope") || "", /gmail\.readonly/);
+    assert.doesNotMatch(gmail.searchParams.get("scope") || "", /analytics/);
+    const work = new URL(oauthAuthorizeUrl(spec, { clientId: "cid", redirectUri: callback, state: "s", account: "chris@ceogps.com" }));
+    assert.equal(work.searchParams.get("login_hint"), "chris@ceogps.com");
+    assert.match(work.searchParams.get("scope") || "", /analytics\.readonly/);
+    assert.match(work.searchParams.get("scope") || "", /webmasters\.readonly/);
+    assert.doesNotMatch(work.searchParams.get("scope") || "", /gmail/);
+    assert.doesNotMatch(work.searchParams.get("scope") || "", /calendar/);
+  });
+
+  it("keeps a plus sign inside the authorization code", () => {
+    assert.equal(rawParam("?code=abc+def%2F&state=s", "code"), "abc+def/");
+    assert.equal(rawParam("?state=s&code=plain", "code"), "plain");
+  });
+
+  it("remembers the redirect from the start, and ignores a different path", () => {
+    const cookie = oauthAttemptCookie(callback, "sid-1", true);
+    const readBack = readOauthAttempt(cookie.split(";")[0]);
+    assert.equal(readBack.redirectUri, callback);
+    assert.equal(readBack.sid, "sid-1");
+    const swapped = `lifeos_oauth=${encodeURIComponent(JSON.stringify({ ru: "https://lifeos.ceogps.com/steal", sid: "x" }))}`;
+    assert.equal(readOauthAttempt(swapped).redirectUri, "");
+  });
+
+  it("names the secret that is missing, and lets a public client skip one", () => {
+    const slack = oauthSpec("slack");
+    const twitter = oauthSpec("twitter");
+    assert.ok(slack && twitter);
+    assert.deepEqual(oauthMissing(slack, { clientId: "x", clientSecret: "" }), ["SLACK_CLIENT_SECRET"]);
+    assert.deepEqual(oauthMissing(twitter, { clientId: "x", clientSecret: "" }), []);
+  });
+
+  it("facebook scopes stay comma separated", () => {
+    const spec = oauthSpec("facebook");
+    assert.ok(spec);
+    const url = new URL(oauthAuthorizeUrl(spec, { clientId: "cid", redirectUri: callback, state: "s", account: "" }));
+    assert.match(url.searchParams.get("scope") || "", /^public_profile,email,pages_show_list$/);
   });
 });
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi, IntegrationsApiError, peekIntegrationsCache } from "@/lib/integrations/client";
 import { PROVIDERS, providerMeta, type AccountView, type CheckView, type IntegrationsPayload, type MailboxView, type ProviderId } from "@/lib/integrations/providers";
-import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, workerConnectUrl, workerLinked } from "@/lib/lifeos/oauth";
+import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, workerLinked } from "@/lib/lifeos/oauth";
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
 import { newId, type Memory } from "../memory";
 import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
@@ -10,6 +10,18 @@ export type Update = (recipe: (prev: Memory) => Memory) => void;
 export type Notice = { tone: "ok" | "error" | "info"; text: string } | null;
 export type KeyState = "ok" | "error" | "saved" | "untested" | "empty";
 export type KeyRowModel = KeyService & { value: string; check: CheckView | null; state: KeyState };
+
+const SID_KEY = "lifeos.oauth.sid";
+
+function tabId() {
+  let sid = "";
+  try { sid = sessionStorage.getItem(SID_KEY) || ""; } catch { sid = ""; }
+  if (!sid) {
+    sid = crypto.randomUUID();
+    try { sessionStorage.setItem(SID_KEY, sid); } catch { /* this attempt still runs */ }
+  }
+  return sid;
+}
 
 const message = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
 
@@ -96,6 +108,19 @@ export function useIntegrations(args: {
     void refresh();
   }, [refresh, say]);
 
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as { type?: string; provider?: string; ok?: boolean; message?: string; sid?: string };
+      if (!data || data.type !== "lifeos-oauth") return;
+      if (data.sid && data.sid !== tabId()) return;
+      say(data.ok ? "ok" : "error", data.message || (data.ok ? "Connected." : "The authorization did not finish."));
+      void refresh();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [refresh, say]);
+
   const flag = (key: string, on: boolean) => setBusy((prev) => ({ ...prev, [key]: on }));
   const keyValue = (name: string) => (dataRef.current.keys.find((row) => row.name === name)?.value || "").trim();
 
@@ -159,7 +184,24 @@ export function useIntegrations(args: {
 
   const connect = useCallback(async (provider: ProviderId, hint?: string, app?: { clientId?: string; clientSecret?: string }) => {
     if (provider !== "nylas") {
-      window.location.assign(workerConnectUrl(provider, window.location.origin, hint));
+      flag(`connect:${provider}`, true);
+      try {
+        if (app?.clientId) await integrationsApi.saveApp(provider, app.clientId, app.clientSecret || "");
+        const account = hint || (provider === "google" ? "chrisgr33ninc@gmail.com" : "");
+        const url = new URL("/api/oauth/start", window.location.origin);
+        url.searchParams.set("provider", provider);
+        url.searchParams.set("sid", tabId());
+        if (account) url.searchParams.set("account", account);
+        const framed = window.self !== window.top;
+        if (framed) {
+          const popup = window.open(url.toString(), "lifeos-oauth", "width=540,height=740");
+          if (popup) return;
+        }
+        window.location.assign(url.toString());
+      } catch (error) {
+        say("error", message(error, `${providerMeta(provider).name} could not start.`));
+        flag(`connect:${provider}`, false);
+      }
       return;
     }
     flag(`connect:${provider}`, true);

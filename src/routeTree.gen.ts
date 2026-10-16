@@ -24,6 +24,8 @@ import { Route as ApiKeysAccountRouteImport } from './routes/api/keys/account'
 import { Route as ApiKeysCheckRouteImport } from './routes/api/keys/check'
 import { Route as ApiKeysMachineRouteImport } from './routes/api/keys/machine'
 import { Route as ApiOauthExchangeRouteImport } from './routes/api/oauth/exchange'
+import { Route as ApiOauthStartRouteImport } from './routes/api/oauth/start'
+import { Route as ApiOauthCallbackRouteImport } from './routes/api/oauth/callback'
 import { Route as ApiWebhooksFacebookRouteImport } from './routes/api/webhooks/facebook'
 import { Route as ApiIntegrationsCallbackProviderRouteImport } from './routes/api/integrations/callback/$provider'
 
@@ -103,6 +105,16 @@ const ApiOauthExchangeRoute = ApiOauthExchangeRouteImport.update({
   path: '/api/oauth/exchange',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOauthStartRoute = ApiOauthStartRouteImport.update({
+  id: '/api/oauth/start',
+  path: '/api/oauth/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOauthCallbackRoute = ApiOauthCallbackRouteImport.update({
+  id: '/api/oauth/callback',
+  path: '/api/oauth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksFacebookRoute = ApiWebhooksFacebookRouteImport.update({
   id: '/api/webhooks/facebook',
   path: '/api/webhooks/facebook',
@@ -130,6 +142,8 @@ export interface FileRoutesByFullPath {
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
   '/api/oauth/exchange': typeof ApiOauthExchangeRoute
+  '/api/oauth/start': typeof ApiOauthStartRoute
+  '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
   '/api/integrations/': typeof ApiIntegrationsIndexRoute
   '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
@@ -149,6 +163,8 @@ export interface FileRoutesByTo {
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
   '/api/oauth/exchange': typeof ApiOauthExchangeRoute
+  '/api/oauth/start': typeof ApiOauthStartRoute
+  '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
   '/api/integrations': typeof ApiIntegrationsIndexRoute
   '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
@@ -169,6 +185,8 @@ export interface FileRoutesById {
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
   '/api/oauth/exchange': typeof ApiOauthExchangeRoute
+  '/api/oauth/start': typeof ApiOauthStartRoute
+  '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
   '/api/integrations/': typeof ApiIntegrationsIndexRoute
   '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
@@ -190,6 +208,8 @@ export interface FileRouteTypes {
     | '/api/keys/check'
     | '/api/keys/machine'
     | '/api/oauth/exchange'
+    | '/api/oauth/start'
+    | '/api/oauth/callback'
     | '/api/webhooks/facebook'
     | '/api/integrations/'
     | '/api/integrations/callback/$provider'
@@ -209,6 +229,8 @@ export interface FileRouteTypes {
     | '/api/keys/check'
     | '/api/keys/machine'
     | '/api/oauth/exchange'
+    | '/api/oauth/start'
+    | '/api/oauth/callback'
     | '/api/webhooks/facebook'
     | '/api/integrations'
     | '/api/integrations/callback/$provider'
@@ -228,6 +250,8 @@ export interface FileRouteTypes {
     | '/api/keys/check'
     | '/api/keys/machine'
     | '/api/oauth/exchange'
+    | '/api/oauth/start'
+    | '/api/oauth/callback'
     | '/api/webhooks/facebook'
     | '/api/integrations/'
     | '/api/integrations/callback/$provider'
@@ -248,6 +272,8 @@ export interface RootRouteChildren {
   ApiKeysCheckRoute: typeof ApiKeysCheckRoute
   ApiKeysMachineRoute: typeof ApiKeysMachineRoute
   ApiOauthExchangeRoute: typeof ApiOauthExchangeRoute
+  ApiOauthStartRoute: typeof ApiOauthStartRoute
+  ApiOauthCallbackRoute: typeof ApiOauthCallbackRoute
   ApiWebhooksFacebookRoute: typeof ApiWebhooksFacebookRoute
   ApiIntegrationsIndexRoute: typeof ApiIntegrationsIndexRoute
   ApiIntegrationsCallbackProviderRoute: typeof ApiIntegrationsCallbackProviderRoute
@@ -360,6 +386,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOauthExchangeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/oauth/start': {
+      id: '/api/oauth/start'
+      path: '/api/oauth/start'
+      fullPath: '/api/oauth/start'
+      preLoaderRoute: typeof ApiOauthStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/callback': {
+      id: '/api/oauth/callback'
+      path: '/api/oauth/callback'
+      fullPath: '/api/oauth/callback'
+      preLoaderRoute: typeof ApiOauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/facebook': {
       id: '/api/webhooks/facebook'
       path: '/api/webhooks/facebook'
@@ -392,6 +432,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiKeysCheckRoute: ApiKeysCheckRoute,
   ApiKeysMachineRoute: ApiKeysMachineRoute,
   ApiOauthExchangeRoute: ApiOauthExchangeRoute,
+  ApiOauthStartRoute: ApiOauthStartRoute,
+  ApiOauthCallbackRoute: ApiOauthCallbackRoute,
   ApiWebhooksFacebookRoute: ApiWebhooksFacebookRoute,
   ApiIntegrationsIndexRoute: ApiIntegrationsIndexRoute,
   ApiIntegrationsCallbackProviderRoute: ApiIntegrationsCallbackProviderRoute,
