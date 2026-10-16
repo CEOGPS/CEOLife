@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { MailboxView } from "@/lib/integrations/providers";
 import { BOARD_EMAIL_LIST } from "./catalog";
 import { timeAgo } from "./format";
-import { Button, StatusPill } from "./ui";
+import { Button, EmailText, StatusPill } from "./ui";
 import { AppFields } from "./provider-card";
 
 const LABEL: Record<string, string> = { icloud: "iCloud", google: "Google", microsoft: "Microsoft", imap: "IMAP" };
@@ -20,20 +20,20 @@ function BoxRow({ box, busy, onTest, onDisconnect, onReconnect }: {
     <li className="rounded-xl border border-white/10 bg-black/20 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-white">{box.email}</p>
+          <p className="truncate text-sm font-medium text-white"><EmailText value={box.email} /></p>
           <p className="text-xs text-white/50">{LABEL[box.provider] || box.provider || "Mailbox"}{box.createdAt ? ` · added ${timeAgo(box.createdAt)}` : ""}</p>
         </div>
         <StatusPill tone={good ? "ok" : "error"}>{good ? "Connected" : "Needs reconnecting"}</StatusPill>
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        {good ? <Button busy={busy} onClick={onTest} label={`Test ${box.email}`}>Test now</Button> : <Button primary busy={busy} onClick={onReconnect} label={`Reconnect ${box.email}`}>Reconnect</Button>}
+        {good ? <Button busy={busy} onClick={onTest} label="Test this mailbox">Test now</Button> : <Button primary busy={busy} onClick={onReconnect} label="Reconnect this mailbox">Reconnect</Button>}
         {confirm ? (
           <>
             <Button danger busy={busy} onClick={onDisconnect}>Yes, disconnect</Button>
             <Button onClick={() => setConfirm(false)}>Keep</Button>
           </>
         ) : (
-          <Button danger onClick={() => setConfirm(true)} label={`Disconnect ${box.email}`}>Disconnect</Button>
+          <Button danger onClick={() => setConfirm(true)} label="Disconnect this mailbox">Disconnect</Button>
         )}
       </div>
     </li>
@@ -83,11 +83,11 @@ export function MailboxSection({ mailboxes, note, configured, expected, app, bus
             placeholder="cagednreality@icloud.com"
             className="min-w-52 flex-1 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300"
           />
-          <Button primary type="submit" disabled={!configured || !email.trim()} busy={connecting} label="Connect this mailbox">Connect mailbox</Button>
+          <Button primary type="submit" disabled={!email.trim()} busy={connecting} label="Connect this mailbox">Connect mailbox</Button>
         </div>
         {suggestions.length ? (
           <div className="flex flex-wrap gap-1.5" aria-label="Your usual addresses">
-            {suggestions.map((item) => <button key={item} type="button" className="int-chip" aria-pressed={email.toLowerCase() === item} onClick={() => setEmail(item)}>{item}</button>)}
+            {suggestions.map((item) => <button key={item} type="button" className="int-chip" aria-pressed={email.toLowerCase() === item} onClick={() => setEmail(item)}><EmailText value={item} /></button>)}
           </div>
         ) : null}
         {!configured ? (

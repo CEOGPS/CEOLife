@@ -650,7 +650,7 @@ button.quiet.accent-orange {
 }
 
 /* Integrations panel controls. They opt out of the flat button reset above so state is visible. */
-button.int-btn,
+.int-btn,
 button.int-chip {
   display: inline-flex;
   align-items: center;
@@ -661,7 +661,7 @@ button.int-chip {
   font-weight: 500;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-button.int-btn {
+.int-btn {
   min-height: 2.25rem;
   padding: 0.4rem 0.9rem;
   border-radius: 0.6rem;
@@ -669,17 +669,18 @@ button.int-btn {
   background: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.88);
   font-size: 0.85rem;
+  text-decoration: none;
 }
-button.int-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
-button.int-btn--primary {
+.int-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+.int-btn--primary {
   border-color: oklch(0.72 0.14 220 / 70%);
   background: oklch(0.68 0.15 230 / 24%);
   color: #fff;
 }
-button.int-btn--primary:hover:not(:disabled) { background: oklch(0.68 0.15 230 / 38%); }
-button.int-btn--danger { border-color: rgba(251, 113, 133, 0.5); color: #fda4af; }
-button.int-btn--danger:hover:not(:disabled) { background: rgba(251, 113, 133, 0.14); }
-button.int-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.int-btn--primary:hover:not(:disabled) { background: oklch(0.68 0.15 230 / 38%); }
+.int-btn--danger { border-color: rgba(251, 113, 133, 0.5); color: #fda4af; }
+.int-btn--danger:hover:not(:disabled) { background: rgba(251, 113, 133, 0.14); }
+.int-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 button.int-chip {
   min-height: 2rem;
   padding: 0.25rem 0.85rem;
@@ -695,5 +696,5 @@ button.int-chip[aria-pressed="true"] {
   background: oklch(0.68 0.15 230 / 26%);
   color: #fff;
 }
-button.int-btn:focus-visible,
+.int-btn:focus-visible,
 button.int-chip:focus-visible { outline: 2px solid oklch(0.82 0.13 220); outline-offset: 2px; }

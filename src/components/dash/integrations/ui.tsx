@@ -8,6 +8,17 @@ const TONE: Record<Tone, string> = {
   idle: "border-white/15 bg-white/5 text-white/55",
 };
 
+export function EmailText({ value }: { value: string }) {
+  const safe = value.replace(/[&<>"']/g, (ch) => {
+    if (ch === "&") return "\u0026amp;";
+    if (ch === "<") return "\u0026lt;";
+    if (ch === ">") return "\u0026gt;";
+    if (ch === "\"") return "\u0026quot;";
+    return "\u0026#39;";
+  });
+  return <span dangerouslySetInnerHTML={{ __html: `<!--email_off-->${safe}<!--/email_off-->` }} />;
+}
+
 export function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
     <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[tone]}`}>

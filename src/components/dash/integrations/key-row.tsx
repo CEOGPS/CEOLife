@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { EXTRA_FIELD, KEY_LABEL, NO_KEY_NEEDED, SERVER_HELD } from "./catalog";
+import { EXTRA_FIELD, KEY_LABEL, NO_KEY_NEEDED, SERVER_HELD, oauthStartHref } from "./catalog";
 import type { KeyRowModel } from "./use-integrations";
 import { mask, timeAgo, type Tone } from "./format";
-import { Button, StatusPill } from "./ui";
+import { Button, EmailText, StatusPill } from "./ui";
 
 const LOOK: Record<KeyRowModel["state"], { tone: Tone; label: string }> = {
   ok: { tone: "ok", label: "Verified" },
@@ -14,14 +14,13 @@ const LOOK: Record<KeyRowModel["state"], { tone: Tone; label: string }> = {
 
 const PLAIN_TEXT = new Set(["grok2api URL", "Google Analytics"]);
 
-export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove, onConnectWork }: {
+export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
   row: KeyRowModel;
   busy: boolean;
   extraSaved: string;
   onSave: (name: string, value: string, extras: Record<string, string>) => void;
   onTest: (name: string) => void;
   onRemove: (name: string) => void;
-  onConnectWork?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -53,7 +52,7 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove, onConn
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-white">{row.name}</p>
           <p className="text-xs text-white/50">
-            {row.value && !loginOnly ? mask(row.value) : workGoogle ? "Uses chris@ceogps.com" : loginOnly ? "Uses your connected Google login" : SERVER_HELD.has(row.name) ? "Uses the server's credential, or add your own" : "No key yet"}
+            {row.value && !loginOnly ? mask(row.value) : workGoogle ? <>Uses <EmailText value="chris@ceogps.com" /></> : loginOnly ? "Uses your connected Google login" : SERVER_HELD.has(row.name) ? "Uses the server's credential, or add your own" : "No key yet"}
             {row.check ? ` · checked ${timeAgo(row.check.checkedAt)}` : ""}
           </p>
         </div>
@@ -97,7 +96,7 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove, onConn
         </form>
       ) : (
         <div className="mt-2 flex flex-wrap gap-2">
-          {workGoogle && onConnectWork ? <Button primary onClick={onConnectWork}>Connect chris@ceogps.com</Button> : null}
+          {workGoogle ? <a className="int-btn int-btn--primary" href={oauthStartHref("google", "chris@ceogps.com")} target="_top" rel="noopener">Connect work Google</a> : null}
           {loginOnly ? (
             <Button busy={busy} onClick={() => onTest(row.name)}>Test with Google</Button>
           ) : row.state === "empty" ? (

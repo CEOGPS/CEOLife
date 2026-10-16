@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Memory } from "./memory";
 import { PROVIDERS, type Category } from "@/lib/integrations/providers";
-import { CATEGORY_ORDER, EXTRA_FIELD } from "./integrations/catalog";
+import { CATEGORY_ORDER, EXTRA_FIELD, WORKER_OAUTH } from "./integrations/catalog";
 import { AccountsInUse } from "./integrations/accounts-in-use";
 import { KeyRow } from "./integrations/key-row";
 import { MailboxSection } from "./integrations/mailbox-section";
@@ -71,7 +71,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
     const broken = payload.accounts.filter((row) => row.status === "needs_reauth").map((row) => row.email || row.provider);
     if (broken.length) return `Reconnect: ${broken.join(", ")}.`;
     const stale = Object.values(payload.checks).filter((row) => Date.now() - Date.parse(row.checkedAt) > 7 * 24 * 60 * 60 * 1000).length;
-    const missing = PROVIDERS.filter((row) => !payload.configured[row.id]).map((row) => row.name);
+    const missing = PROVIDERS.filter((row) => !payload.configured[row.id] && !WORKER_OAUTH.has(row.id)).map((row) => row.name);
     const parts = [];
     if (stale) parts.push(`${stale} check${stale === 1 ? "" : "s"} are more than a week old. Press Test everything.`);
     if (missing.length) parts.push(`Not set up on the server: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? "…" : ""}.`);
@@ -183,11 +183,9 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
                 meta={meta}
                 accounts={hub.byProvider.get(meta.id) || []}
                 expected={hub.expected[meta.id] || ""}
-                configured={Boolean(hub.payload?.configured[meta.id])}
-                encryptionReady={Boolean(hub.payload?.encryptionReady)}
+                configured={Boolean(hub.payload?.configured[meta.id]) || WORKER_OAUTH.has(meta.id)}
                 app={hub.payload?.apps?.[meta.id]}
                 busy={hub.busy}
-                onConnect={(clientId, clientSecret) => void hub.connect(meta.id, meta.id === "google" ? "chrisgr33ninc@gmail.com" : hub.expected[meta.id], clientId ? { clientId, clientSecret } : undefined)}
                 onTest={(account) => void hub.testAccount(account)}
                 onDisconnect={(account) => void hub.disconnect(account)}
                 onMakePrimary={(account) => void hub.makePrimary(account)}
@@ -223,7 +221,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
           const failing = group.rows.filter((row) => row.state === "error").length;
           const saved = group.rows.filter((row) => row.value).length;
           return (
-            <details key={`${group.name}-${open}-${failing > 0}`} open={open || failing > 0} className="module-card group p-4">
+            <details key={`${group.name}-${open}-${failing > 0}-${hub.resultsOpen}`} open={open || failing > 0 || hub.resultsOpen} className="module-card group p-4">
               <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-sm font-medium text-white">
                 <span>{group.name} <span className="font-normal text-white/50">· {group.rows.length}</span></span>
                 <span className="text-xs font-normal text-white/50">
@@ -240,7 +238,6 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
                     onSave={saveAndTest}
                     onTest={(name) => void hub.testKey(name)}
                     onRemove={(name) => void hub.removeKey(name)}
-                    onConnectWork={row.name === "Search Console" || row.name === "Google Analytics" ? () => void hub.connect("google", "chris@ceogps.com") : undefined}
                   />
                 ))}
               </ul>

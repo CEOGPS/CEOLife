@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { AccountView, ProviderMeta } from "@/lib/integrations/providers";
-import { BOARD_EMAIL_LIST } from "./catalog";
+import { BOARD_EMAIL_LIST, oauthStartHref } from "./catalog";
 import { timeAgo } from "./format";
-import { Button, StatusPill } from "./ui";
+import { Button, EmailText, StatusPill } from "./ui";
 
 const ACCENT: Record<string, string> = {
   google: "#4285f4", microsoft: "#00a4ef", github: "#8b949e", slack: "#e01e5a", notion: "#e5e5e5",
@@ -18,7 +18,7 @@ function ExpectedRow({ expected, busy, onSave, label }: { expected: string; busy
     return (
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/60">
         <span>Account to use:</span>
-        <strong className="font-medium text-white/85">{expected || "any account"}</strong>
+        <strong className="font-medium text-white/85">{expected ? <EmailText value={expected} /> : "any account"}</strong>
         <button type="button" className="underline decoration-white/30 hover:text-white" onClick={() => { setValue(expected); setEditing(true); }} aria-label={`Change the account ${label} uses`}>
           {expected ? "Change" : "Choose"}
         </button>
@@ -39,7 +39,7 @@ function ExpectedRow({ expected, busy, onSave, label }: { expected: string; busy
       />
       <div className="flex flex-wrap gap-1.5" aria-label="Your usual addresses">
         {BOARD_EMAIL_LIST.map((email) => (
-          <button key={email} type="button" className="int-chip" aria-pressed={value.toLowerCase() === email} onClick={() => setValue(email)}>{email}</button>
+          <button key={email} type="button" className="int-chip" aria-pressed={value.toLowerCase() === email} onClick={() => setValue(email)}><EmailText value={email} /></button>
         ))}
       </div>
       <div className="flex flex-wrap gap-2">
@@ -68,7 +68,7 @@ function AccountRow({ account, expected, several, busy, onTest, onDisconnect, on
     <li className="rounded-lg border border-white/10 bg-black/20 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-white">{account.email || account.name || "Connected account"}</p>
+          <p className="truncate text-sm font-medium text-white"><EmailText value={account.email || account.name || "Connected account"} /></p>
           <p className="text-xs text-white/50">
             {untested ? "Not tested yet" : bad ? "Needs reconnecting" : `Checked ${timeAgo(account.lastCheckedAt)}`}
             {account.name && account.email ? ` · ${account.name}` : ""}
@@ -82,7 +82,7 @@ function AccountRow({ account, expected, several, busy, onTest, onDisconnect, on
       {off ? <p className="mt-2 text-xs text-amber-200">This is not the expected account ({expected}). It is saved, but other desks may prefer a different one.</p> : null}
       {account.lastError ? <p className={`mt-2 text-xs ${bad ? "text-rose-300" : "text-emerald-200"}`}>{account.lastError}</p> : null}
       <div className="mt-2 flex flex-wrap gap-2">
-        <Button busy={busy} onClick={onTest} label={`Test ${account.email || "account"}`}>Test now</Button>
+        <Button busy={busy} onClick={onTest} label="Test this account">Test now</Button>
         {several && !account.primary ? <Button busy={busy} onClick={onMakePrimary} label={`Make ${account.email || "account"} the primary account`}>Make primary</Button> : null}
         {confirm ? (
           <>
@@ -120,15 +120,13 @@ export function AppFields({ idLabel, secretLabel, clientId, hasSecret, busy, onS
   );
 }
 
-export function ProviderCard({ meta, accounts, expected, configured, encryptionReady, app, busy, onConnect, onTest, onDisconnect, onMakePrimary, onSaveExpected, onSaveApp }: {
+export function ProviderCard({ meta, accounts, expected, configured, app, busy, onTest, onDisconnect, onMakePrimary, onSaveExpected, onSaveApp }: {
   meta: ProviderMeta;
   accounts: AccountView[];
   expected: string;
   configured: boolean;
-  encryptionReady: boolean;
   app?: { clientId: string; hasSecret: boolean };
   busy: Record<string, boolean>;
-  onConnect: (clientId: string, clientSecret: string) => void;
   onTest: (account: AccountView) => void;
   onDisconnect: (account: AccountView) => void;
   onMakePrimary: (account: AccountView) => void;
@@ -141,6 +139,8 @@ export function ProviderCard({ meta, accounts, expected, configured, encryptionR
   const label = needs ? "Needs attention" : ok ? (ok > 1 ? `${ok} connected` : "Connected") : "Not connected";
   const [clientId, setClientId] = useState(app?.clientId || "");
   const [clientSecret, setClientSecret] = useState("");
+  const hint = meta.id === "google" ? "chrisgr33ninc@gmail.com" : expected;
+  const href = oauthStartHref(meta.id, hint);
   return (
     <article className="module-card flex flex-col gap-3 p-4" aria-label={`${meta.name} connection`}>
       <header className="flex items-start gap-3">
@@ -175,21 +175,22 @@ export function ProviderCard({ meta, accounts, expected, configured, encryptionR
           ))}
         </ul>
       )}
-      <form className="mt-auto space-y-2 pt-1" onSubmit={(event) => { event.preventDefault(); onConnect(clientId.trim(), clientSecret.trim()); }}>
+      <div className="mt-auto space-y-2 pt-1">
         {!configured ? (
-          <>
+          <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); onSaveApp(clientId.trim(), clientSecret.trim()); }}>
             <label className="block text-xs text-white/60">Client ID
               <input className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300" value={clientId} autoComplete="off" onChange={(event) => setClientId(event.target.value)} />
             </label>
             <label className="block text-xs text-white/60">Client secret{app?.hasSecret ? " (saved — leave blank to keep it)" : ""}
               <input className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300" type="password" value={clientSecret} autoComplete="off" onChange={(event) => setClientSecret(event.target.value)} />
             </label>
-          </>
+            <Button type="submit" busy={Boolean(busy[`app:${meta.id}`])}>Save app</Button>
+          </form>
         ) : null}
-        <Button primary type="submit" busy={Boolean(busy[`connect:${meta.id}`])} label={`${needs ? "Reconnect" : accounts.length ? "Add another" : "Connect"} ${meta.name}`}>
+        <a className="int-btn int-btn--primary" href={href} target="_top" rel="noopener">
           {needs ? "Reconnect" : accounts.length ? "Add another account" : `Connect ${meta.name}`}
-        </Button>
-      </form>
+        </a>
+      </div>
     </article>
   );
 }

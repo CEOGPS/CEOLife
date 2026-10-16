@@ -26,6 +26,41 @@ function tabId() {
 
 const message = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
 
+type KeySource = { name: string; value: string };
+
+function mergeChecks(local: Record<string, CheckView>, remote: Record<string, CheckView>) {
+  const out: Record<string, CheckView> = { ...remote };
+  for (const [key, check] of Object.entries(local)) {
+    const other = remote[key];
+    if (!other || (Date.parse(check.checkedAt || "") || 0) >= (Date.parse(other.checkedAt || "") || 0)) out[key] = check;
+  }
+  return out;
+}
+
+export function buildKeyRows(keys: KeySource[], checks: Record<string, CheckView>): KeyRowModel[] {
+  return KEY_SERVICES
+    .map((svc) => {
+      const value = (keys.find((row) => row.name === svc.name)?.value || "").trim();
+      const check = checks[`key:${svc.name}`] || null;
+      const testableWithoutKey = SERVER_HELD.has(svc.name) || NO_KEY_NEEDED.has(svc.name);
+      const mapped: KeyState | null = check ? (check.state === "ok" ? "ok" : check.state === "error" ? "error" : "saved") : null;
+      const state: KeyState = value ? (mapped ?? "untested") : testableWithoutKey ? (mapped ?? "empty") : "empty";
+      return { ...svc, value, check, state };
+    })
+    .filter((row) => !COVERED_BY_LOGIN.has(row.name) || row.value);
+}
+
+export function tally(rows: AccountView[], boxes: MailboxView[], keyRows: KeyRowModel[]) {
+  const working = rows.filter((row) => row.status === "ok" && (!row.id.startsWith("worker:") || row.lastCheckedAt)).length
+    + boxes.filter((row) => row.status === "valid").length
+    + keyRows.filter((row) => row.state === "ok").length;
+  const attention = rows.filter((row) => row.status === "needs_reauth").length
+    + boxes.filter((row) => row.status !== "valid").length
+    + keyRows.filter((row) => row.state === "error").length;
+  const untested = keyRows.filter((row) => row.state === "untested" || row.state === "saved").length;
+  return { working, attention, untested, providers: PROVIDERS.length, keys: keyRows.length };
+}
+
 export function useIntegrations(args: {
   data: Memory;
   update: Update;
@@ -41,6 +76,7 @@ export function useIntegrations(args: {
   const [loadError, setLoadError] = useState<{ status: number; text: string } | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState<Notice>(null);
+  const [resultsOpen, setResultsOpen] = useState(false);
   const checksRef = useRef<Record<string, CheckView>>({});
 
   const say = useCallback((tone: "ok" | "error" | "info", text: string) => {
@@ -57,7 +93,7 @@ export function useIntegrations(args: {
       ]);
       linked = workerRows;
       setLoadError(null);
-      const checks = { ...checksRef.current, ...next.checks };
+      const checks = mergeChecks(checksRef.current, next.checks);
       checksRef.current = checks;
       const paint = (row: AccountView) => paintChecked(row, checks[`account:${row.id}`]);
       const merged = linked.length ? {
@@ -89,6 +125,7 @@ export function useIntegrations(args: {
           setPayload((prev) => prev ? { ...prev, mailboxes: boxes.mailboxes, mailboxNote: boxes.mailboxNote, mailboxesLoaded: true } : prev);
         }).catch(() => undefined);
       }
+      return merged;
     } catch (error) {
       if (linked.length) {
         setLoadError(null);
@@ -97,6 +134,7 @@ export function useIntegrations(args: {
       } else {
         setLoadError({ status: error instanceof IntegrationsApiError ? error.status : 0, text: message(error, "Integrations could not be loaded.") });
       }
+      return null;
     } finally {
       setLoading(false);
     }
@@ -129,6 +167,20 @@ export function useIntegrations(args: {
 
   const flag = (key: string, on: boolean) => setBusy((prev) => ({ ...prev, [key]: on }));
   const keyValue = (name: string) => (dataRef.current.keys.find((row) => row.name === name)?.value || "").trim();
+  const putCheck = useCallback((subject: string, check: CheckView, accountId?: string) => {
+    checksRef.current = { ...checksRef.current, [subject]: check };
+    setPayload((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        checks: { ...prev.checks, [subject]: check },
+        accounts: accountId
+          ? prev.accounts.map((row) => row.id === accountId ? paintChecked({ ...row, lastCheckedAt: null, lastError: "" }, check) : row)
+          : prev.accounts,
+      };
+    });
+    setResultsOpen(true);
+  }, []);
 
   const accounts = useMemo(() => payload?.accounts ?? [], [payload]);
   const checks = useMemo(() => payload?.checks ?? {}, [payload]);
@@ -143,27 +195,9 @@ export function useIntegrations(args: {
     return map;
   }, [accounts]);
 
-  const keyRows = useMemo<KeyRowModel[]>(() => {
-    return KEY_SERVICES
-      .map((svc) => {
-        const value = (args.data.keys.find((row) => row.name === svc.name)?.value || "").trim();
-        const check = checks[`key:${svc.name}`] || null;
-        // A card with nothing pasted is "empty" even if it can be tested (server-held or Google-verified),
-        // unless a real test result exists. Stale results for a removed key are ignored.
-        const testableWithoutKey = SERVER_HELD.has(svc.name) || NO_KEY_NEEDED.has(svc.name);
-        const mapped: KeyState | null = check ? (check.state === "ok" ? "ok" : check.state === "error" ? "error" : "saved") : null;
-        const state: KeyState = value ? (mapped ?? "untested") : testableWithoutKey ? (mapped ?? "empty") : "empty";
-        return { ...svc, value, check, state } as KeyRowModel;
-      })
-      .filter((row) => !COVERED_BY_LOGIN.has(row.name) || row.value);
-  }, [args.data.keys, checks]);
+  const keyRows = useMemo(() => buildKeyRows(args.data.keys, checks), [args.data.keys, checks]);
 
-  const stats = useMemo(() => {
-    const working = accounts.filter((row) => row.status === "ok" && (!row.id.startsWith("worker:") || row.lastCheckedAt)).length + mailboxes.filter((row) => row.status === "valid").length + keyRows.filter((row) => row.state === "ok").length;
-    const attention = accounts.filter((row) => row.status === "needs_reauth").length + mailboxes.filter((row) => row.status !== "valid").length + keyRows.filter((row) => row.state === "error").length;
-    const untested = keyRows.filter((row) => row.state === "untested" || row.state === "saved").length;
-    return { working, attention, untested, providers: PROVIDERS.length, keys: keyRows.length };
-  }, [accounts, keyRows, mailboxes]);
+  const stats = useMemo(() => tally(accounts, mailboxes, keyRows), [accounts, keyRows, mailboxes]);
 
   /** Every email the dashboard touches, with the services connected under it. */
   const inUse = useMemo(() => {
@@ -189,32 +223,30 @@ export function useIntegrations(args: {
   }, [accounts, mailboxes, expected]);
 
   const connect = useCallback(async (provider: ProviderId, hint?: string, app?: { clientId?: string; clientSecret?: string }) => {
-    if (provider !== "nylas") {
-      flag(`connect:${provider}`, true);
-      try {
+    flag(`connect:${provider}`, true);
+    try {
+      let href = "";
+      if (provider !== "nylas") {
         if (app?.clientId) await integrationsApi.saveApp(provider, app.clientId, app.clientSecret || "");
         const account = hint || (provider === "google" ? "chrisgr33ninc@gmail.com" : "");
         const url = new URL("/api/oauth/start", window.location.origin);
         url.searchParams.set("provider", provider);
-        url.searchParams.set("sid", tabId());
         if (account) url.searchParams.set("account", account);
-        const framed = window.self !== window.top;
-        if (framed) {
-          const popup = window.open(url.toString(), "lifeos-oauth", "width=540,height=740");
-          if (popup) return;
-        }
-        window.location.assign(url.toString());
-      } catch (error) {
-        say("error", message(error, `${providerMeta(provider).name} could not start.`));
-        flag(`connect:${provider}`, false);
+        href = url.toString();
+      } else {
+        const { url } = await integrationsApi.start(provider, hint, !hint, app);
+        if (!url.startsWith("http")) throw new Error("The login page did not come back.");
+        href = url;
       }
-      return;
-    }
-    flag(`connect:${provider}`, true);
-    try {
-      const { url } = await integrationsApi.start(provider, hint, !hint, app);
-      if (!url.startsWith("http")) throw new Error("The login page did not come back.");
-      window.location.assign(url);
+      const framed = window.self !== window.top;
+      if (framed) {
+        const popup = window.open(href, "_blank", "noopener,noreferrer");
+        if (!popup) throw new Error("The browser blocked the login window. Allow popups, or open LifeOS in its own tab and press Connect.");
+        say("info", `${providerMeta(provider).name} opened in a new tab. Finish there, then press Reload.`);
+        flag(`connect:${provider}`, false);
+        return;
+      }
+      window.location.assign(href);
     } catch (error) {
       say("error", message(error, `${providerMeta(provider).name} could not start.`));
       flag(`connect:${provider}`, false);
@@ -225,23 +257,18 @@ export function useIntegrations(args: {
     flag(account.id, true);
     try {
       const result = await integrationsApi.testAccount(account.id);
-      const checkedAt = new Date().toISOString();
-      const check = { state: result.ok ? "ok" as const : "error" as const, text: result.text, checkedAt };
-      checksRef.current = { ...checksRef.current, [`account:${account.id}`]: check };
-      setPayload((prev) => prev ? {
-        ...prev,
-        checks: { ...prev.checks, [`account:${account.id}`]: check },
-        accounts: prev.accounts.map((row) => row.id === account.id ? paintChecked({ ...row, lastCheckedAt: null, lastError: "" }, check) : row),
-      } : prev);
+      const check = { state: result.ok ? "ok" as const : "error" as const, text: result.text, checkedAt: new Date().toISOString() };
+      putCheck(`account:${account.id}`, check, account.id);
       say(result.ok ? "ok" : "error", `${providerMeta(account.provider).name}${account.email ? ` (${account.email})` : ""}: ${result.text}`);
     } catch (error) {
-      say("error", message(error, "The check could not run."));
+      const text = message(error, "The check could not run.");
+      putCheck(`account:${account.id}`, { state: "error", text, checkedAt: new Date().toISOString() }, account.id);
+      say("error", text);
     } finally {
       await refresh();
       flag(account.id, false);
     }
-    return undefined;
-  }, [refresh, say]);
+  }, [putCheck, refresh, say]);
 
   const disconnect = useCallback(async (account: AccountView) => {
     flag(account.id, true);
@@ -356,12 +383,15 @@ export function useIntegrations(args: {
           if (kind === "brilliant") { if (key) saveKey("Brilliant Directories", key); if (extraValue) saveKey("Brilliant Site", extraValue); }
         }
         say(result.ok ? "ok" : "error", `${name}: ${result.text}`);
+        putCheck(`key:${name}`, { state: result.ok ? "ok" : "error", text: result.text, checkedAt: new Date().toISOString() });
         return result.ok ? "ok" as const : "error" as const;
       }
       const twin = (KEY_TWINS[name] || []).map(keyValue).find(Boolean) || "";
       const key = (value ?? keyValue(name)).trim() || twin;
-      if (!key && !SERVER_HELD.has(name)) {
-        say("error", `${name}: add a key first.`);
+      if (!key && !SERVER_HELD.has(name) && !NO_KEY_NEEDED.has(name)) {
+        const text = `${name}: add a key first.`;
+        putCheck(`key:${name}`, { state: "error", text, checkedAt: new Date().toISOString() });
+        say("error", text);
         return "error" as const;
       }
       const aux = GOOGLE_FAMILY.test(name) ? googleEmail || GMAIL_ACCOUNT
@@ -369,41 +399,78 @@ export function useIntegrations(args: {
         : name === "grok2api URL" ? keyValue("grok2api")
         : name === "Grok (xAI)" || name === "xAI" ? "chris@ceogps.com" : "";
       const result = await integrationsApi.testKey(name, key, aux);
-      say(result.ok ? "ok" : result.checked === false ? "info" : "error", `${name}: ${result.text}`);
-      return result.checked === false ? "saved" as const : result.ok ? "ok" as const : "error" as const;
+      const state = result.checked === false ? "saved" as const : result.ok ? "ok" as const : "error" as const;
+      putCheck(`key:${name}`, { state, text: result.text, checkedAt: new Date().toISOString() });
+      say(result.ok ? "ok" : state === "saved" ? "info" : "error", `${name}: ${result.text}`);
+      return state;
     } catch (error) {
-      say("error", `${name}: ${message(error, "The check could not run.")}`);
+      const text = message(error, "The check could not run.");
+      putCheck(`key:${name}`, { state: "error", text, checkedAt: new Date().toISOString() });
+      say("error", `${name}: ${text}`);
       return "error" as const;
     } finally {
       await refresh();
       flag(`key:${name}`, false);
     }
-  }, [googleEmail, refresh, say, saveKey]);
+  }, [googleEmail, putCheck, refresh, say, saveKey]);
 
   const testAll = useCallback(async () => {
     flag("all", true);
-    let ok = 0;
-    let bad = 0;
+    setResultsOpen(true);
     try {
-      const jobs: (() => Promise<boolean>)[] = [
-        ...accounts.map((row) => async () => (await integrationsApi.testAccount(row.id).catch(() => ({ ok: false }))).ok),
-        ...keyRows.filter((row) => row.value && !ACCOUNT_SERVICES[row.name]).map((row) => async () => {
-          const result = await integrationsApi.testKey(row.name, row.value).catch(() => null);
-          return Boolean(result?.ok || result?.checked === false);
+      const rows = keyRows.filter((row) => row.value || SERVER_HELD.has(row.name) || NO_KEY_NEEDED.has(row.name) || Boolean(ACCOUNT_SERVICES[row.name]));
+      const jobs: (() => Promise<void>)[] = [
+        ...accounts.map((row) => async () => {
+          try {
+            const result = await integrationsApi.testAccount(row.id);
+            putCheck(`account:${row.id}`, { state: result.ok ? "ok" : "error", text: result.text, checkedAt: new Date().toISOString() }, row.id);
+          } catch (error) {
+            putCheck(`account:${row.id}`, { state: "error", text: message(error, "The check could not run."), checkedAt: new Date().toISOString() }, row.id);
+          }
+        }),
+        ...rows.map((row) => async () => {
+          try {
+            const kind = ACCOUNT_SERVICES[row.name];
+            let result: { ok: boolean; text: string; checked?: boolean };
+            if (kind) {
+              const extra = EXTRA_FIELD[row.name];
+              const extraValue = extra ? keyValue(extra.keyName) : "";
+              result = await integrationsApi.testAccountService(row.name, kind, {
+                key: row.value,
+                secret: kind === "godaddy" ? extraValue : "",
+                site: kind === "brilliant" ? extraValue : "",
+                email: kind === "search-console" || kind === "google-analytics" ? "chris@ceogps.com" : googleEmail,
+              });
+            } else {
+              const twin = (KEY_TWINS[row.name] || []).map(keyValue).find(Boolean) || "";
+              const key = row.value || twin;
+              const aux = GOOGLE_FAMILY.test(row.name) ? googleEmail || GMAIL_ACCOUNT
+                : row.name === "grok2api" ? keyValue("grok2api URL")
+                : row.name === "grok2api URL" ? keyValue("grok2api")
+                : row.name === "Grok (xAI)" || row.name === "xAI" ? "chris@ceogps.com" : "";
+              result = await integrationsApi.testKey(row.name, key, aux);
+            }
+            const state = result.checked === false ? "saved" as const : result.ok ? "ok" as const : "error" as const;
+            putCheck(`key:${row.name}`, { state, text: result.text, checkedAt: new Date().toISOString() });
+          } catch (error) {
+            putCheck(`key:${row.name}`, { state: "error", text: message(error, "The check could not run."), checkedAt: new Date().toISOString() });
+          }
         }),
       ];
       if (!jobs.length) { say("info", "Nothing is connected yet, so there is nothing to test."); return; }
       for (let index = 0; index < jobs.length; index += 4) {
         say("info", `Testing ${Math.min(index + 4, jobs.length)} of ${jobs.length}…`);
-        const results = await Promise.all(jobs.slice(index, index + 4).map((job) => job()));
-        for (const passed of results) { if (passed) ok += 1; else bad += 1; }
+        await Promise.all(jobs.slice(index, index + 4).map((job) => job()));
       }
-      say(bad ? "error" : "ok", `${jobs.length} checked · ${ok} working${bad ? ` · ${bad} need attention` : ""}.`);
+      const merged = await refresh();
+      const snapshot = merged
+        ? tally(merged.accounts, merged.mailboxes, buildKeyRows(dataRef.current.keys, merged.checks))
+        : tally(accounts, mailboxes, buildKeyRows(dataRef.current.keys, checksRef.current));
+      say(snapshot.attention ? "error" : "ok", `Working ${snapshot.working}. Needs attention ${snapshot.attention}. Saved, not verified ${snapshot.untested}.`);
     } finally {
-      await refresh();
       flag("all", false);
     }
-  }, [accounts, keyRows, refresh, say]);
+  }, [accounts, googleEmail, keyRows, mailboxes, putCheck, refresh, say]);
 
   const importSheet = useCallback((text: string) => {
     const found = sheetKeys(text, KEY_SERVICES.map((row) => row.name));
@@ -434,7 +501,7 @@ export function useIntegrations(args: {
   }, [refresh, say]);
 
   return {
-    payload, loading, loadError, busy, notice, dismiss: () => setNotice(null),
+    payload, loading, loadError, busy, notice, resultsOpen, dismiss: () => setNotice(null),
     byProvider, keyRows, stats, googleEmail,
     mailboxes, expected, inUse, setExpected, applyPlan, makePrimary, testMailbox, disconnectMailbox,
     refresh, connect, testAccount, disconnect, saveKey, removeKey, testKey, testAll, importSheet, saveApp,

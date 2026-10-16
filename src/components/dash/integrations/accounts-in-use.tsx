@@ -1,4 +1,5 @@
-import { Button, StatusPill } from "./ui";
+import { oauthStartHref } from "./catalog";
+import { Button, EmailText, StatusPill } from "./ui";
 
 type Row = { email: string; board: boolean; items: { label: string; ok: boolean; primary: boolean }[] };
 
@@ -22,10 +23,17 @@ export function AccountsInUse({ rows, misses, busy, onApplyPlan, onConnect }: {
         <Button busy={busy} onClick={onApplyPlan} label="Apply my usual account plan">Apply my usual setup</Button>
       </div>
       <ul className="grid gap-2 md:grid-cols-3">
-        {rows.map((row) => (
+        {rows.map((row) => {
+          const icloud = row.email.toLowerCase().endsWith("@icloud.com");
+          const href = icloud ? "" : oauthStartHref("google", row.email);
+          return (
           <li key={row.email} className="rounded-xl border border-white/10 bg-black/20 p-3">
-            <p className="truncate text-sm font-medium text-white" title={row.email}>{row.email}</p>
-            <button type="button" className="mt-2 text-xs text-sky-300 underline" onClick={() => onConnect(row.email)}>Connect this address</button>
+            <p className="truncate text-sm font-medium text-white"><EmailText value={row.email} /></p>
+            {href ? (
+              <a className="mt-2 inline-block text-xs text-sky-300 underline" href={href} target="_top" rel="noopener">Connect this address</a>
+            ) : (
+              <button type="button" className="mt-2 text-xs text-sky-300 underline" onClick={() => onConnect(row.email)}>Connect this address</button>
+            )}
             {row.items.length ? (
               <ul className="mt-2 flex flex-wrap gap-1.5">
                 {row.items.map((item, index) => (
@@ -36,7 +44,8 @@ export function AccountsInUse({ rows, misses, busy, onApplyPlan, onConnect }: {
               <p className="mt-2 text-xs text-white/45">{row.board ? "Nothing connected yet" : "No services"}</p>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>
       {misses.length ? (
         <ul className="space-y-1 rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-xs text-amber-200">

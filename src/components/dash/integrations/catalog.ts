@@ -174,6 +174,20 @@ export const KEY_SERVICES: KeyService[] = [
 /** Redundant now that a one-click login covers them. They only appear when a key is already saved. */
 export const COVERED_BY_LOGIN = new Set(["Outlook", "Outlook Calendar", "Google Calendar", "Gmail (OAuth)", "Twitter/X", "X"]);
 
+/** OAuth apps that live on lifeos1-api. A missing copy in this page's env does not block Connect. */
+export const WORKER_OAUTH = new Set<ProviderId>([
+  "google", "microsoft", "github", "slack", "notion", "spotify", "discord", "facebook", "linkedin", "twitter",
+]);
+
+/** Real top-level link. Works without the click handler and escapes a preview frame. */
+export function oauthStartHref(provider: string, account?: string) {
+  const params = new URLSearchParams();
+  params.set("provider", provider);
+  const hint = (account || "").trim();
+  if (hint) params.set("account", hint);
+  return `/api/oauth/start?${params.toString()}`;
+}
+
 /** Cards that verify through a Google login or need more than one field. */
 export const ACCOUNT_SERVICES: Record<string, "search-console" | "google-analytics" | "godaddy" | "brilliant"> = {
   "Search Console": "search-console",
