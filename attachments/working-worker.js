@@ -128,9 +128,31 @@ async function pkcePair() {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
   return { verifier, challenge: b64urlBytes(new Uint8Array(digest)) };
 }
+function cleanEnv(value) {
+  return String(value || "").trim();
+}
 function clientCreds(provider, env) {
+  if (provider === "google") {
+    return {
+      clientId: cleanEnv(env.GOOGLE_CLIENT_ID || env.GOOGLE_OAUTH_CLIENT_ID),
+      clientSecret: cleanEnv(env.GOOGLE_CLIENT_SECRET || env.GOOGLE_OAUTH_CLIENT_SECRET || env.GOOGLE_SECRET)
+    };
+  }
   const key = provider.toUpperCase();
-  return { clientId: env[`${key}_CLIENT_ID`] || "", clientSecret: env[`${key}_CLIENT_SECRET`] || "" };
+  return { clientId: cleanEnv(env[`${key}_CLIENT_ID`]), clientSecret: cleanEnv(env[`${key}_CLIENT_SECRET`]) };
+}
+/** Read one query value without turning '+' into a space. Google's auth code can contain '+'. */
+function rawParam(search, name) {
+  const query = String(search || "").replace(/^\?/, "");
+  for (const part of query.split("&")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    let key = part.slice(0, eq);
+    try { key = decodeURIComponent(key); } catch { /* keep the raw key */ }
+    if (key !== name) continue;
+    try { return decodeURIComponent(part.slice(eq + 1).replace(/\+/g, "%2B")); } catch { return ""; }
+  }
+  return "";
 }
 async function refreshAccessToken(provider, refreshToken, env) {
   const tokenUrl = TOKEN_URLS[provider];
@@ -390,9 +412,14 @@ async function startOauth(request, env) {
   if (provider === "instagram") {
     return Response.json({ error: "Instagram Basic Display was shut down. Connect Instagram Business through Facebook instead." }, { status: 400, headers: corsHeaders() });
   }
-  if (!clientCreds(provider, env).clientId) {
+  const creds = clientCreds(provider, env);
+  if (!creds.clientId) {
     const back = safeOrigin(posted ? posted.origin : url.searchParams.get("origin"));
-    return Response.redirect(`${back}/panel/integrations?oauth_error=${encodeURIComponent(provider + " needs a client id and secret on the card. Paste both, then press Connect.")}`, 302);
+    return Response.redirect(`${back}/panel/integrations?oauth_error=${encodeURIComponent(provider + " needs a client id on the login service.")}`, 302);
+  }
+  if (!creds.clientSecret && provider !== "notion") {
+    const back = safeOrigin(posted ? posted.origin : url.searchParams.get("origin"));
+    return Response.redirect(`${back}/panel/integrations?oauth_error=${encodeURIComponent(provider.toUpperCase() + "_CLIENT_SECRET is missing on the login service. The consent screen can still open without it. The token step cannot.")}`, 302);
   }
   const callbackUri = provider === "discord" ? DISCORD_CALLBACK : oauthCallback(env);
   const state = issueState(posted ? posted.origin : url.searchParams.get("origin"));
@@ -478,7 +505,7 @@ async function providerEmail(provider, accessToken) {
 }
 router.get("/callback", async (request, env) => {
   const url = new URL(request.url);
-  const code = url.searchParams.get("code");
+  const code = rawParam(url.search, "code");
   const state = url.searchParams.get("state") || "";
   const error = url.searchParams.get("error");
   const hinted = url.searchParams.get("provider") || "";
@@ -496,7 +523,7 @@ router.get("/callback", async (request, env) => {
       await env.LIFEOS_KV.delete(`oauth:pkce:${state}`);
     }
     const tokenResponse = await exchangeCodeForToken(actualProvider, code, pending.redirect || (actualProvider === "discord" ? DISCORD_CALLBACK : oauthCallback(env)), env, verifier);
-    if (!tokenResponse.access_token) throw new Error("Failed to obtain access token");
+    if (!tokenResponse.access_token) throw new Error("The provider did not return a token.");
     const email = (await providerEmail(actualProvider, tokenResponse.access_token)) || pending.email || "";
     if (actualProvider === "google" && pending.email && email && email !== pending.email) {
       return back({ oauth_error: `You clicked ${pending.email}, but Google signed in as ${email}. Nothing was saved. Choose ${pending.email} on Google's account page.` });
@@ -527,7 +554,10 @@ router.get("/callback", async (request, env) => {
         oauth_provider: actualProvider
       })
     });
-    if (!saved.ok) return back({ oauth_error: "The login finished, but the token was not stored. The card was not marked connected." });
+    if (!saved.ok) {
+      const detail = (await saved.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 160);
+      return back({ oauth_error: `Google issued the token, but it was not stored (${saved.status}). ${detail}` });
+    }
     if (pending.id) {
       await fetch(`${supabaseUrl(env)}/rest/v1/integrations_credentials?user_id=eq.${encodeURIComponent(pending.user_id)}&oauth_provider=eq.${encodeURIComponent(actualProvider)}&email=eq.${encodeURIComponent(email)}&id=neq.${encodeURIComponent(pending.id)}`, {
         method: "DELETE",
@@ -695,7 +725,8 @@ async function exchangeCodeForToken(provider, code, redirectUri, env, verifier) 
   const response = await fetch(tokenUrl, { method: "POST", headers, body });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(`Token exchange failed: ${response.status} - ${data.error_description || data.error || "provider refused the code"}`);
+    const why = data.error_description || data.error || "provider refused the code";
+    throw new Error(`Token exchange failed (${response.status}): ${why}`);
   }
   if (provider === "slack" && data.ok === false) {
     throw new Error(`Slack refused the login: ${data.error || "unknown error"}`);
