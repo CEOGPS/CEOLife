@@ -58,10 +58,10 @@ function withCors(response, origin) {
 }
 __name(withCors, "withCors");
 __name2(withCors, "withCors");
-var OAUTH_CALLBACK = "https://lifeos1.ceogps.workers.dev/api/oauth/callback";
-var DISCORD_CALLBACK = "https://lifeos1.ceogps.workers.dev/oauth/callback";
+var OAUTH_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/api/oauth/callback";
+var DISCORD_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/oauth/callback";
 var DISCORD_SCOPES = "identify email guilds connections";
-var NYLAS_CALLBACK = "https://lifeos1.ceogps.workers.dev/api/nylas/callback";
+var NYLAS_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/api/nylas/callback";
 var OAUTH_ORIGINS = /* @__PURE__ */ new Set(["https://lifeos.ceogps.com", "https://lifeos1.ceogps.com"]);
 var OAUTH_PROVIDERS = /* @__PURE__ */ new Set(["google", "microsoft", "github", "slack", "facebook", "instagram", "twitter", "linkedin", "spotify", "discord", "notion"]);
 function oauthCallback(env) {

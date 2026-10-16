@@ -1,13 +1,14 @@
-name = "lifeos1"
+name = "lifeos1-api"
 main = "worker/index.ts"
 compatibility_date = "2026-07-01"
 account_id = "4cb5c0d8553b8c0c9156ee4f2bad9e6f"
 workers_dev = true
 
-# Public site. API keys stay as wrangler secrets, not in this file.
+# This is the login service that already holds the OAuth app ids.
+# The website project stays lifeos1. Do not rename this service or Connect loses those ids.
 [vars]
 APP_ORIGIN = "https://lifeos.ceogps.com"
-OAUTH_REDIRECT_URI = "https://lifeos1.ceogps.workers.dev/api/oauth/callback"
+OAUTH_REDIRECT_URI = "https://lifeos1-api.ceogps.workers.dev/api/oauth/callback"
 CORS_ORIGINS = "https://lifeos.ceogps.com,https://lifeos1.ceogps.com"
 
 [[kv_namespaces]]

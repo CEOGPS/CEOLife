@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi, IntegrationsApiError } from "@/lib/integrations/client";
 import { PROVIDERS, providerMeta, type AccountView, type CheckView, type IntegrationsPayload, type MailboxView, type ProviderId } from "@/lib/integrations/providers";
-import { catchReturn, GMAIL_ACCOUNT, getSessionToken, rememberAccounts, workerLinked } from "@/lib/lifeos/oauth";
+import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, workerConnectUrl, workerLinked } from "@/lib/lifeos/oauth";
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
 import { newId, type Memory } from "../memory";
 import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
@@ -149,21 +149,12 @@ export function useIntegrations(args: {
   }, [accounts, mailboxes, expected]);
 
   const connect = useCallback(async (provider: ProviderId, hint?: string, app?: { clientId?: string; clientSecret?: string }) => {
+    if (provider !== "nylas") {
+      window.location.assign(workerConnectUrl(provider, window.location.origin, hint));
+      return;
+    }
     flag(`connect:${provider}`, true);
     try {
-      const token = provider === "nylas" ? "" : await getSessionToken();
-      if (token) {
-        const response = await fetch("https://lifeos1-api.ceogps.workers.dev/api/oauth/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ provider, origin: window.location.origin, account_email: hint || "" }),
-        });
-        const data = await response.json().catch(() => ({})) as { url?: string };
-        if (response.ok && data.url && data.url.startsWith("http")) {
-          window.location.assign(data.url);
-          return;
-        }
-      }
       const { url } = await integrationsApi.start(provider, hint, !hint, app);
       if (!url.startsWith("http")) throw new Error("The login page did not come back.");
       window.location.assign(url);

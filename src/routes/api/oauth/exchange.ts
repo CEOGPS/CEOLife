@@ -13,8 +13,8 @@ export const Route = createFileRoute("/api/oauth/exchange")({
         const code = String(body.code || "").slice(0, 2000);
         const redirect = String(body.redirect || "").slice(0, 300);
         const allowed = new Set([
-          "https://lifeos1.ceogps.workers.dev/api/oauth/callback",
-          "https://lifeos1.ceogps.workers.dev/oauth/callback",
+          "https://lifeos1-api.ceogps.workers.dev/api/oauth/callback",
+          "https://lifeos1-api.ceogps.workers.dev/oauth/callback",
           "http://127.0.0.1:8080/panel/integrations",
           "http://localhost:8080/panel/integrations",
         ]);

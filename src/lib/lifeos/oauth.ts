@@ -107,7 +107,7 @@ export function disconnectOauth(provider: OauthProvider, email?: string) {
   write(readOauth().filter((row) => row.provider !== provider || (email ? row.email !== email : false)));
 }
 
-const WORKER = "https://lifeos1.ceogps.workers.dev";
+const WORKER = "https://lifeos1-api.ceogps.workers.dev";
 
 /** The API worker already has every app id and secret. Connect goes there. */
 export function workerConnectUrl(provider: string, origin: string, email?: string) {
