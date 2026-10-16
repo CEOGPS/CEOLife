@@ -687,10 +687,11 @@ function unionKeys(primary: KeyRow[], extra: KeyRow[]) {
 
 function mergeMedia(local: Entry[], stored: Entry[]) {
   const map = new Map<string, Entry>();
+  const filed = (row: Entry) => row.body.includes("\"album\"");
   for (const row of stored) map.set(row.id, row);
   for (const row of local) {
     const previous = map.get(row.id);
-    if (!previous || row.body.length >= previous.body.length) map.set(row.id, row);
+    if (!previous || (filed(row) && !filed(previous)) || (filed(row) === filed(previous) && row.body.length >= previous.body.length)) map.set(row.id, row);
   }
   return [...map.values()];
 }

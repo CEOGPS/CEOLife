@@ -194,7 +194,18 @@ function remember(items: Item[], albums: Album[], update: Update) {
   const shelf = items.filter((item) => /^https?:\/\//i.test(item.url)).slice(0, 320).map((item) => ({
     id: item.id,
     title: `Shelf · ${(item.filename || item.title).slice(0, 80)}`,
-    body: item.url,
+    body: JSON.stringify({
+      url: item.url,
+      album: item.album_id,
+      kind: item.kind,
+      mime: item.mime,
+      filename: item.filename,
+      alt_text: item.alt_text,
+      size: item.size_bytes,
+      tags: item.tags,
+      vault: item.vault,
+      favorite: item.favorite,
+    }),
     at: item.created_at,
   }));
   update((prev) => ({
@@ -362,7 +373,8 @@ export function MediaDesk({ data, update }: { data: Memory; update: Update }) {
       for (const row of cloud) map.set(row.id, row);
       for (const row of local) {
         const previous = map.get(row.id);
-        map.set(row.id, previous && /^https?:\/\//i.test(previous.url) && row.url.startsWith("data:") ? previous : row);
+        const chosen = previous && /^https?:\/\//i.test(previous.url) && row.url.startsWith("data:") ? previous : row;
+        map.set(row.id, { ...chosen, album_id: chosen.album_id || previous?.album_id || row.album_id || null });
       }
       setItems([...map.values()]);
       setAlbums(nextAlbums);
