@@ -224,7 +224,7 @@ export async function runAccount(data: { service: string; token: string; key: st
         return { ok: true as const, text: sites.length ? sites.slice(0, 4).join(" · ") : "No Search Console sites are on this Google login.", site };
       }
       if (data.service === "google-analytics") {
-        if (!data.token) return { ok: false as const, text: "Connect Google as chrisgr33ninc@gmail.com and allow Analytics.", site: "" };
+        if (!data.token) return { ok: false as const, text: "Connect Google as chris@ceogps.com and allow Analytics.", site: "" };
         const property = data.key.replace(/\D/g, "");
         if (!property) return { ok: false as const, text: "Paste the GA4 property ID. None is assumed, because this account has more than one property.", site: "" };
           const report = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${property}:runReport`, {

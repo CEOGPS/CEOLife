@@ -240,6 +240,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
                     onSave={saveAndTest}
                     onTest={(name) => void hub.testKey(name)}
                     onRemove={(name) => void hub.removeKey(name)}
+                    onConnectWork={row.name === "Search Console" || row.name === "Google Analytics" ? () => void hub.connect("google", "chris@ceogps.com") : undefined}
                   />
                 ))}
               </ul>

@@ -14,13 +14,14 @@ const LOOK: Record<KeyRowModel["state"], { tone: Tone; label: string }> = {
 
 const PLAIN_TEXT = new Set(["grok2api URL", "Google Analytics"]);
 
-export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
+export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove, onConnectWork }: {
   row: KeyRowModel;
   busy: boolean;
   extraSaved: string;
   onSave: (name: string, value: string, extras: Record<string, string>) => void;
   onTest: (name: string) => void;
   onRemove: (name: string) => void;
+  onConnectWork?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -30,6 +31,7 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
   const extraField = EXTRA_FIELD[row.name];
   const loginOnly = NO_KEY_NEEDED.has(row.name);
   const label = row.name in KEY_LABEL ? KEY_LABEL[row.name] : "API key";
+  const workGoogle = row.name === "Search Console" || row.name === "Google Analytics";
   const optional = row.name === "Google Analytics";
   const id = `key-${row.name.replace(/[^a-z0-9]+/gi, "-")}`;
 
@@ -51,7 +53,7 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-white">{row.name}</p>
           <p className="text-xs text-white/50">
-            {row.value && !loginOnly ? mask(row.value) : loginOnly ? "Uses your connected Google login" : SERVER_HELD.has(row.name) ? "Uses the server's credential, or add your own" : "No key yet"}
+            {row.value && !loginOnly ? mask(row.value) : workGoogle ? "Uses chris@ceogps.com" : loginOnly ? "Uses your connected Google login" : SERVER_HELD.has(row.name) ? "Uses the server's credential, or add your own" : "No key yet"}
             {row.check ? ` · checked ${timeAgo(row.check.checkedAt)}` : ""}
           </p>
         </div>
@@ -95,8 +97,9 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
         </form>
       ) : (
         <div className="mt-2 flex flex-wrap gap-2">
+          {workGoogle && onConnectWork ? <Button primary onClick={onConnectWork}>Connect chris@ceogps.com</Button> : null}
           {loginOnly ? (
-            <Button primary busy={busy} onClick={() => onTest(row.name)}>Test with Google</Button>
+            <Button busy={busy} onClick={() => onTest(row.name)}>Test with Google</Button>
           ) : row.state === "empty" ? (
             <>
               {SERVER_HELD.has(row.name) ? <Button primary busy={busy} onClick={() => onTest(row.name)} label={`Test ${row.name}`}>Test</Button> : null}

@@ -291,7 +291,7 @@ export function useIntegrations(args: {
           key,
           secret: kind === "godaddy" ? extraValue : "",
           site: kind === "brilliant" ? extraValue : "",
-          email: googleEmail,
+          email: kind === "search-console" || kind === "google-analytics" ? "chris@ceogps.com" : googleEmail,
         });
         if (result.ok) {
           if (kind === "search-console" && result.site) saveKey("Search Console", result.site);

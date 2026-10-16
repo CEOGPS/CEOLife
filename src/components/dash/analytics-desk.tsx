@@ -36,7 +36,7 @@ export function AnalyticsDesk({ data, update }: { data: Memory; update: Update }
     const { readOauth, freshGoogleToken, freshToken } = await import("@/lib/lifeos/oauth");
     const { pullAnalytics } = await import("@/lib/lifeos/sync");
     const result = await pullAnalytics({ data: {
-      google: readOauth().some((row) => row.provider === "google") ? await freshGoogleToken() : "",
+      google: await freshGoogleToken("chris@ceogps.com"),
       property,
       site,
       facebook: readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "",

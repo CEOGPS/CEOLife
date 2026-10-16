@@ -57,13 +57,26 @@ export const Route = createFileRoute("/api/integrations/test")({
           if (!ACCOUNT_KINDS.has(kind)) throw new IntegrationError(400, "Unknown check.");
           let token = "";
           if (kind === "search-console" || kind === "google-analytics") {
-            if (!ctx) return json({ ok: false, text: "Connect Google first, then test again.", site: "" });
-            try {
-              token = (await freshAccessToken(ctx, userId, "google", String(body.email || "").trim().toLowerCase())).accessToken;
-            } catch (error) {
-              const text = error instanceof Error && error.message.includes("expired")
-                ? error.message
-                : "Connect Google first, then test again.";
+            const email = "chris@ceogps.com";
+            if (ctx) {
+              try {
+                token = (await freshAccessToken(ctx, userId, "google", email)).accessToken;
+              } catch { /* the work login is stored on the API worker */ }
+            }
+            if (!token) {
+              try {
+                const response = await fetch("https://lifeos1-api.ceogps.workers.dev/api/oauth/token/fresh?board=1", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "X-Lifeos-Board": "1" },
+                  body: JSON.stringify({ provider: "google", email }),
+                  signal: AbortSignal.timeout(12000),
+                });
+                const live = await response.json() as { access_token?: string };
+                token = live.access_token || "";
+              } catch { /* leave token empty */ }
+            }
+            if (!token) {
+              const text = "Connect chris@ceogps.com for Analytics and Search Console, then test again.";
               if (ctx) await recordCheck(ctx.sql, userId, `key:${service}`, "error", text).catch(() => undefined);
               return json({ ok: false, text, site: "" });
             }

@@ -440,7 +440,7 @@ async function startOauth(request, env) {
     client_id: clientCreds(provider, env).clientId,
     redirect_uri: callbackUri,
     response_type: "code",
-    scope: getScopes(provider),
+    scope: getScopes(provider, accountEmail),
     state
   });
   if (provider === "google") {
@@ -535,7 +535,7 @@ router.get("/callback", async (request, env) => {
       oauth_access_token: tokenResponse.access_token,
       oauth_refresh_token: tokenResponse.refresh_token || null,
       oauth_expires_at: tokenResponse.expires_in ? new Date(Date.now() + tokenResponse.expires_in * 1e3).toISOString() : null,
-      oauth_scope: tokenResponse.scope || getScopes(actualProvider),
+      oauth_scope: tokenResponse.scope || getScopes(actualProvider, email),
       status: "on",
       oauth_state: null,
       email,
@@ -655,7 +655,8 @@ router.post("/token/fresh", async (request, env) => {
   if (!userId) return Response.json({ error: "Sign in required" }, { status: 401, headers: corsHeaders() });
   const body = await request.json().catch(() => ({}));
   const provider = String(body.provider || "google");
-  const email = String(body.email || "").trim().toLowerCase();
+  const asked = String(body.email || "").trim().toLowerCase();
+  const email = provider === "google" && !asked ? "chrisgr33ninc@gmail.com" : asked;
   let query = `${supabaseUrl(env)}/rest/v1/integrations_credentials?user_id=eq.${encodeURIComponent(userId)}&oauth_provider=eq.${encodeURIComponent(provider)}&status=eq.on&select=id,email,oauth_access_token,oauth_refresh_token,oauth_expires_at&order=updated_at.desc&limit=1`;
   if (email) query += `&email=eq.${encodeURIComponent(email)}`;
   const listed = await fetch(query, { headers: serviceHeaders(env) });
@@ -745,9 +746,11 @@ async function exchangeCodeForToken(provider, code, redirectUri, env, verifier) 
 }
 __name(exchangeCodeForToken, "exchangeCodeForToken");
 __name2(exchangeCodeForToken, "exchangeCodeForToken");
-function getScopes(provider) {
+function getScopes(provider, email) {
   const scopes = {
-    google: "openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly",
+    google: email === "chris@ceogps.com"
+      ? "openid email profile https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/webmasters.readonly"
+      : "openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly",
     microsoft: "openid email profile offline_access User.Read Mail.ReadWrite Calendars.Read",
     github: "repo user:email",
     slack: "chat:write channels:read",
