@@ -156,7 +156,7 @@ export function ProviderCard({ meta, accounts, expected, configured, encryptionR
       </div>
       {!configured ? (
         <p className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-2 text-xs text-amber-200">
-          Not set up on the server yet. Add <code>{key}_CLIENT_ID</code> and <code>{key}_CLIENT_SECRET</code> to the environment, then reload. Steps are in docs/INTEGRATIONS.md.
+          Not set up on the lifeos1 Pages project. Add <code>{key}_CLIENT_ID</code> and <code>{key}_CLIENT_SECRET</code> there (they are already on the lifeos1-api worker), then deploy again.
         </p>
       ) : null}
     </article>
