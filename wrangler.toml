@@ -1,4 +1,4 @@
-name = "lifeos1-api"
+name = "lifeos1"
 main = "worker/index.ts"
 compatibility_date = "2026-07-01"
 account_id = "4cb5c0d8553b8c0c9156ee4f2bad9e6f"
