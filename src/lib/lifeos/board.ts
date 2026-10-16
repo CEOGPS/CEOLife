@@ -56,7 +56,7 @@ function arr<T>(value: unknown, map: (row: unknown) => T | null, max = 80): T[] 
   return value.map(map).filter((row): row is T => row !== null).slice(0, max);
 }
 
-const HUB_NOTE = /^(Agent|Chat|Hub|Voice|Kranos) · /;
+const HUB_NOTE = /^(Agent|Chat|Hub|Voice|Kranos|Family) · /;
 
 function oneNote(row: unknown): Note | null {
   if (!row || typeof row !== "object") return null;
@@ -64,7 +64,7 @@ function oneNote(row: unknown): Note | null {
   const title = text(r.title, 80);
   if (!title) return null;
   const roomy = HUB_NOTE.test(title) || title.startsWith("Doc ·") || title.startsWith("Sheet ·");
-  return { id: text(r.id, 40) || crypto.randomUUID(), title, body: text(r.body, roomy ? 20000 : 4000) };
+  return { id: text(r.id, 40) || crypto.randomUUID(), title, body: text(r.body, roomy ? 60000 : 4000) };
 }
 
 function notesOf(value: unknown): Note[] {
@@ -81,7 +81,7 @@ function notesOf(value: unknown): Note[] {
     const prev = hub.get(note.title);
     if (!prev || note.body.length >= prev.body.length) hub.set(note.title, note);
   }
-  return [...hub.values(), ...rest].slice(0, 400);
+  return [...hub.values(), ...rest.slice(0, 400)];
 }
 
 function text(value: unknown, max: number) {

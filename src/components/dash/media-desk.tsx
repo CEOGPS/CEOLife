@@ -104,6 +104,38 @@ function loadImage(src: string) {
   });
 }
 
+function bitsOf(img: HTMLImageElement, box?: { x: number; y: number; width: number; height: number }) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 8;
+  canvas.height = 8;
+  const pen = canvas.getContext("2d", { willReadFrequently: true });
+  if (!pen) return "";
+  const sx = box?.x || 0;
+  const sy = box?.y || 0;
+  const sw = box?.width || img.naturalWidth || img.width;
+  const sh = box?.height || img.naturalHeight || img.height;
+  pen.drawImage(img, sx, sy, sw, sh, 0, 0, 8, 8);
+  const data = pen.getImageData(0, 0, 8, 8).data;
+  const gray: number[] = [];
+  for (let index = 0; index < data.length; index += 4) gray.push(data[index] * 0.3 + data[index + 1] * 0.59 + data[index + 2] * 0.11);
+  const avg = gray.reduce((sum, value) => sum + value, 0) / gray.length;
+  return gray.map((value) => (value >= avg ? "1" : "0")).join("");
+}
+
+function alike(left: string, right: string) {
+  if (!left || !right || left.length !== right.length) return left === right && Boolean(left);
+  let miss = 0;
+  for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) miss += 1;
+  return miss <= 6;
+}
+
+type FaceFinder = { detect: (source: ImageBitmap) => Promise<{ boundingBox: { x: number; y: number; width: number; height: number } }[]> };
+
+function faceFinder(): FaceFinder | null {
+  const FaceDetector = (window as unknown as { FaceDetector?: new (opts?: { fastMode?: boolean; maxDetectedFaces?: number }) => FaceFinder }).FaceDetector;
+  return FaceDetector ? new FaceDetector({ fastMode: true, maxDetectedFaces: 5 }) : null;
+}
+
 function grade(score: number) {
   if (score >= 90) return "Excellent";
   if (score >= 75) return "Good";
@@ -356,6 +388,7 @@ export function MediaDesk({ data, update }: { data: Memory; update: Update }) {
   const [moveTo, setMoveTo] = useState("");
   const [removeId, setRemoveId] = useState<string | null>(null);
   const [showVault, setShowVault] = useState(false);
+  const [faces, setFaces] = useState<{ label: string; ids: string[] }[]>([]);
 
   useEffect(() => {
     void readLibrary().then((saved) => {
@@ -460,6 +493,64 @@ export function MediaDesk({ data, update }: { data: Memory; update: Update }) {
     setNote(`${ids.length} moved to ${label}.`);
   }
 
+  async function dropDuplicates() {
+    const images = items.filter((item) => item.kind === "image" && item.url);
+    if (images.length < 2) { setNote("Not enough images to compare."); return; }
+    setNote("Comparing images…");
+    const seen: { id: string; hash: string }[] = [];
+    const drop = new Set<string>();
+    for (const item of images) {
+      let hash = `url:${item.url}`;
+      try { hash = bitsOf(await loadImage(item.url)) || hash; } catch { /* keep the url match */ }
+      const twin = seen.find((row) => alike(row.hash, hash));
+      if (twin) drop.add(item.id);
+      else seen.push({ id: item.id, hash });
+    }
+    if (!drop.size) { setNote("No duplicate images."); return; }
+    setItems((prev) => prev.filter((item) => !drop.has(item.id)));
+    setNote(`Removed ${drop.size} duplicate image${drop.size === 1 ? "" : "s"}.`);
+  }
+
+  async function findFaces() {
+    const finder = faceFinder();
+    if (!finder) { setNote("This browser cannot detect faces. Chrome can."); return; }
+    const images = items.filter((item) => item.kind === "image" && item.url).slice(0, 80);
+    if (!images.length) { setNote("No images to scan."); return; }
+    setNote("Looking for faces…");
+    const found: { id: string; hash: string }[] = [];
+    for (const item of images) {
+      try {
+        const img = await loadImage(item.url);
+        const bitmap = await createImageBitmap(img);
+        const hits = await finder.detect(bitmap);
+        bitmap.close();
+        hits.forEach((hit, index) => {
+          const hash = bitsOf(img, hit.boundingBox);
+          if (hash) found.push({ id: `${item.id}:${index}`, hash });
+        });
+      } catch { /* this picture could not be read */ }
+    }
+    const groups: { label: string; ids: string[]; hash: string }[] = [];
+    for (const face of found) {
+      const group = groups.find((row) => alike(row.hash, face.hash));
+      const itemId = face.id.split(":")[0];
+      if (group) { if (!group.ids.includes(itemId)) group.ids.push(itemId); }
+      else groups.push({ label: "", ids: [itemId], hash: face.hash });
+    }
+    setFaces(groups.map((row, index) => ({ label: row.label || `Person ${index + 1}`, ids: row.ids })));
+    setNote(groups.length ? `Found ${groups.length} face${groups.length === 1 ? "" : "s"}. Name them below.` : "No faces found.");
+  }
+
+  function nameFace(index: number, label: string) {
+    const next = faces.map((row, rowIndex) => rowIndex === index ? { ...row, label } : row);
+    setFaces(next);
+    const group = next[index];
+    if (!group) return;
+    const tag = `face:${label.trim()}`;
+    if (!label.trim()) return;
+    setItems((prev) => prev.map((item) => group.ids.includes(item.id) ? { ...item, tags: [...new Set([...item.tags.filter((row) => !row.startsWith("face:")), tag])] } : item));
+  }
+
   async function autoTag() {
     const open = shown.filter((item) => item.tags.length === 0).slice(0, 8);
     if (!open.length) { setNote("Nothing in view needs tags."); return; }
@@ -548,6 +639,8 @@ export function MediaDesk({ data, update }: { data: Memory; update: Update }) {
             <button type="button" className={`quiet ${view === "grid" ? "is-on" : ""}`} onClick={() => setView("grid")}>Grid</button>
             <button type="button" className={`quiet ${view === "list" ? "is-on" : ""}`} onClick={() => setView("list")}>List</button>
             <button type="button" className="quiet" onClick={() => void autoTag()}>Auto-tag</button>
+            <button type="button" className="quiet" onClick={() => void dropDuplicates()}>Remove duplicates</button>
+            <button type="button" className="quiet" onClick={() => void findFaces()}>Find faces</button>
             <button type="button" className="quiet" onClick={exportCsv}>Export</button>
             {picked.length ? (
               <>
@@ -562,6 +655,13 @@ export function MediaDesk({ data, update }: { data: Memory; update: Update }) {
             ) : null}
             <input ref={fileRef} className="sr-only" type="file" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv" onChange={(event) => { void addFiles([...(event.target.files || [])]); event.target.value = ""; }} />
           </div>
+          {faces.length ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {faces.map((row, index) => (
+                <input key={`${row.ids[0]}-${index}`} className="h-8 w-36 rounded-full border border-line bg-black/40 px-3 text-xs" value={row.label} aria-label={`Name for ${row.ids.length} photos`} onChange={(event) => nameFace(index, event.target.value)} />
+              ))}
+            </div>
+          ) : null}
           {note ? <p className="mb-3 text-sm text-white/50">{note}</p> : null}
           {dragging ? <p className="mb-3 text-sm text-blue-2">Drop files to upload.</p> : null}
           {!shown.length ? <p className="text-sm text-white/40">No media yet. Drop images, videos, audio, or documents here.</p> : null}

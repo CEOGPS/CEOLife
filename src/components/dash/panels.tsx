@@ -487,7 +487,7 @@ function readPhoto(file: File, onDone: (url: string) => void) {
   const image = new Image();
   const url = URL.createObjectURL(file);
   image.onload = () => {
-    const scale = Math.min(1, 240 / Math.max(image.width, image.height));
+    const scale = Math.min(1, 96 / Math.max(image.width, image.height));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.width * scale));
     canvas.height = Math.max(1, Math.round(image.height * scale));

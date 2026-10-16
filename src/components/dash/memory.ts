@@ -450,7 +450,7 @@ function readVault(): Entry[] {
 
 const SEED_IDS = new Set(["hello", "idea-1", "lead-nextdoor", "lead-group", "n1", "n2", "j1", "j2", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "p1", "p2", "e1", "e2", "s1", "s2", "m1", "m2"]);
 
-const HUB_NOTE = /^(Agent|Chat|Hub|Voice|Kranos) · /;
+const HUB_NOTE = /^(Agent|Chat|Hub|Voice|Kranos|Family) · /;
 
 export function hubNoteId(title: string) {
   let h1 = 2166136261;
