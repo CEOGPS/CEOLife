@@ -61,8 +61,8 @@ export function NowPlaying() {
         <input className="hidden w-24 sm:block" type="range" min={0} max={1} step={0.01} value={volume} aria-label="Volume" onChange={(event) => setPlayerVolume(Number(event.target.value))} />
         <button type="button" className="link-remove" onClick={stopCut}>Stop</button>
       </div>
-      {!track.url && track.page.includes("open.spotify.com/") ? (
-        <iframe title={track.title} className="mx-auto mt-2 h-20 w-full max-w-5xl rounded-xl" src={`${track.page.replace("open.spotify.com/", "open.spotify.com/embed/")}?autoplay=1`} allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" />
+      {playing.paused && (track.page.includes("open.spotify.com/") || track.url.includes("open.spotify.com/")) ? (
+        <iframe title={track.title} className="mx-auto mt-2 h-20 w-full max-w-5xl rounded-xl" src={`${(track.page.includes("open.spotify.com/") ? track.page : track.url).replace("open.spotify.com/", "open.spotify.com/embed/")}?autoplay=1`} allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" />
       ) : null}
     </div>
   );

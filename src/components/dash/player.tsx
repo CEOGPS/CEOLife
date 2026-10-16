@@ -70,35 +70,88 @@ function poke() {
   ears.forEach((fn) => fn());
 }
 
+const blobs = new Map<string, string>();
+
+function isFile(url: string) {
+  if (!url) return false;
+  if (url.startsWith("idb:") || url.startsWith("blob:") || url.startsWith("data:audio")) return true;
+  if (/spotify\.com|spotify:|youtube\.com|youtu\.be/i.test(url)) return false;
+  return /^https?:\/\//i.test(url);
+}
+
+async function fileSrc(url: string) {
+  if (!url.startsWith("idb:")) return url;
+  const saved = blobs.get(url);
+  if (saved) return saved;
+  const src = await readTrackFile(url);
+  blobs.set(url, src);
+  return src;
+}
+
+async function previewFor(track: Cut) {
+  const term = [track.artist, track.title].filter((part) => part && part !== "Local" && part !== "Music Einstein").join(" ").trim();
+  if (!term) return "";
+  const response = await fetch(`https://itunes.apple.com/search?entity=song&limit=1&term=${encodeURIComponent(term)}`);
+  const body = await response.json() as { results?: { previewUrl?: string }[] };
+  return body.results?.[0]?.previewUrl || "";
+}
+
+function arm(src: string, autoplay: boolean, track: Cut | null, backup = true) {
+  if (!audio) return;
+  audio.volume = snap.muted ? 0 : snap.volume;
+  if (audio.src !== src) audio.src = src;
+  if (!autoplay) {
+    audio.pause();
+    poke();
+    return;
+  }
+  const owned = !!track && (track.url.startsWith("idb:") || track.url.startsWith("data:audio") || track.url.startsWith("blob:"));
+  const fail = () => {
+    if (!track || !backup || owned) {
+      snap = { ...snap, paused: true };
+      poke();
+      return;
+    }
+    void previewFor(track).then((next) => {
+      if (snap.track?.id !== track.id || !next || next === src) {
+        snap = { ...snap, paused: true };
+        poke();
+        return;
+      }
+      arm(next, true, track, false);
+    }).catch(() => { snap = { ...snap, paused: true }; poke(); });
+  };
+  audio.addEventListener("error", fail, { once: true });
+  void audio.play().then(() => {
+    audio.removeEventListener("error", fail);
+    snap = { ...snap, paused: false };
+    poke();
+  }).catch(fail);
+}
+
 function load(track: Cut | null, autoplay: boolean) {
   snap = { ...snap, track, paused: !autoplay || !track, progress: 0, duration: 0 };
-  if (!audio) {
-    poke();
-    return;
-  }
-  audio.volume = snap.muted ? 0 : snap.volume;
-  if (!track?.url) {
-    audio.pause();
-    audio.removeAttribute("src");
-    poke();
-    return;
-  }
-  if (track.url.startsWith("idb:")) {
-    void readTrackFile(track.url).then((src) => {
-      if (snap.track?.id !== track.id || !audio) return;
-      audio.src = src;
-      if (autoplay) void audio.play().catch(() => { snap = { ...snap, paused: true }; poke(); });
-      poke();
-    }).catch(() => { snap = { ...snap, paused: true }; poke(); });
-    poke();
-    return;
-  }
-  if (audio.src !== track.url) {
-    audio.src = track.url;
-  }
-  if (autoplay) void audio.play().catch(() => { snap = { ...snap, paused: true }; poke(); });
-  else audio.pause();
   poke();
+  if (!audio || !track) return;
+  const direct = track.url.startsWith("idb:") ? blobs.get(track.url) || "" : isFile(track.url) ? track.url : "";
+  if (direct) {
+    arm(direct, autoplay, track);
+    return;
+  }
+  void (track.url.startsWith("idb:") ? fileSrc(track.url) : Promise.resolve("")).then(async (src) => {
+    if (snap.track?.id !== track.id) return;
+    let next = src;
+    if (!next) {
+      try { next = await previewFor(track); } catch { next = ""; }
+    }
+    if (snap.track?.id !== track.id) return;
+    if (!next) {
+      snap = { ...snap, paused: true };
+      poke();
+      return;
+    }
+    arm(next, autoplay, track, false);
+  });
 }
 
 export function step(dir: number) {
@@ -155,12 +208,17 @@ export function playCut(track: Cut, queue: Cut[] = [track]) {
 
 export function togglePause() {
   if (!snap.track) return;
-  if (!audio || !snap.track.url) {
+  if (!audio) {
     snap = { ...snap, paused: !snap.paused };
     poke();
     return;
   }
-  if (snap.paused) {
+  const bare = !audio.getAttribute("src") || /spotify\.com|youtube\.com|youtu\.be/i.test(audio.currentSrc);
+  if (snap.paused || bare) {
+    if (bare) {
+      load(snap.track, true);
+      return;
+    }
     snap = { ...snap, paused: false };
     void audio.play().catch(() => { snap = { ...snap, paused: true }; poke(); });
   } else {
