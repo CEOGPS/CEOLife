@@ -116,7 +116,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
         ) : null}
         {signedOut ? (
           <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">
-            Connect opens that service's own login. The app id is already on the API. Pick the account there. It is saved on that card only.
+            Paste the client id and client secret on the card, then press Connect. That opens the service. Pick the account there. The secret stays in the box until Connect succeeds.
           </div>
         ) : hub.loadError ? (
           <div className="rounded-xl border border-rose-400/40 bg-rose-400/10 p-3 text-sm text-rose-200">
@@ -173,7 +173,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
                 encryptionReady={Boolean(hub.payload?.encryptionReady)}
                 app={hub.payload?.apps?.[meta.id]}
                 busy={hub.busy}
-                onConnect={() => void hub.connect(meta.id)}
+                onConnect={(clientId, clientSecret) => void hub.connect(meta.id, undefined, { clientId, clientSecret })}
                 onTest={(account) => void hub.testAccount(account)}
                 onDisconnect={(account) => void hub.disconnect(account)}
                 onMakePrimary={(account) => void hub.makePrimary(account)}

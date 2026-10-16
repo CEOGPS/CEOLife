@@ -107,14 +107,14 @@ export function AppFields({ idLabel, secretLabel, clientId, hasSecret, busy, onS
   const [id, setId] = useState(clientId);
   const [secret, setSecret] = useState("");
   return (
-    <form className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3" onSubmit={(event) => { event.preventDefault(); onSave(id.trim(), secret.trim()); setSecret(""); }}>
+    <form className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3" onSubmit={(event) => { event.preventDefault(); onSave(id.trim(), secret.trim()); }}>
       <label className="block text-xs text-white/60">{idLabel}
         <input className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300" value={id} autoComplete="off" onChange={(event) => setId(event.target.value)} />
       </label>
-      <label className="block text-xs text-white/60">{secretLabel}{hasSecret ? " (leave blank to keep the saved one)" : ""}
+      <label className="block text-xs text-white/60">{secretLabel}{hasSecret ? " (already saved — type a new one only to replace it)" : ""}
         <input className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300" type="password" value={secret} autoComplete="off" onChange={(event) => setSecret(event.target.value)} />
       </label>
-      <Button primary type="submit" busy={busy}>Save app</Button>
+      <Button primary type="submit" busy={busy}>Save</Button>
     </form>
   );
 }
@@ -127,7 +127,7 @@ export function ProviderCard({ meta, accounts, expected, configured, encryptionR
   encryptionReady: boolean;
   app?: { clientId: string; hasSecret: boolean };
   busy: Record<string, boolean>;
-  onConnect: () => void;
+  onConnect: (clientId: string, clientSecret: string) => void;
   onTest: (account: AccountView) => void;
   onDisconnect: (account: AccountView) => void;
   onMakePrimary: (account: AccountView) => void;
@@ -138,7 +138,8 @@ export function ProviderCard({ meta, accounts, expected, configured, encryptionR
   const ok = accounts.length - needs;
   const tone = needs ? "error" : ok ? "ok" : "idle";
   const label = needs ? "Needs attention" : ok ? (ok > 1 ? `${ok} connected` : "Connected") : "Not connected";
-  const blocked = false;
+  const [clientId, setClientId] = useState(app?.clientId || "");
+  const [clientSecret, setClientSecret] = useState("");
   return (
     <article className="module-card flex flex-col gap-3 p-4" aria-label={`${meta.name} connection`}>
       <header className="flex items-start gap-3">
@@ -173,11 +174,21 @@ export function ProviderCard({ meta, accounts, expected, configured, encryptionR
           ))}
         </ul>
       )}
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
-        <Button primary disabled={blocked} busy={Boolean(busy[`connect:${meta.id}`])} onClick={onConnect} label={`${needs ? "Reconnect" : accounts.length ? "Add another" : "Connect"} ${meta.name}`}>
+      <form className="mt-auto space-y-2 pt-1" onSubmit={(event) => { event.preventDefault(); onConnect(clientId.trim(), clientSecret.trim()); }}>
+        {!configured ? (
+          <>
+            <label className="block text-xs text-white/60">Client ID
+              <input className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300" value={clientId} autoComplete="off" onChange={(event) => setClientId(event.target.value)} />
+            </label>
+            <label className="block text-xs text-white/60">Client secret{app?.hasSecret ? " (saved — leave blank to keep it)" : ""}
+              <input className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300" type="password" value={clientSecret} autoComplete="off" onChange={(event) => setClientSecret(event.target.value)} />
+            </label>
+          </>
+        ) : null}
+        <Button primary type="submit" busy={Boolean(busy[`connect:${meta.id}`])} label={`${needs ? "Reconnect" : accounts.length ? "Add another" : "Connect"} ${meta.name}`}>
           {needs ? "Reconnect" : accounts.length ? "Add another account" : `Connect ${meta.name}`}
         </Button>
-      </div>
+      </form>
     </article>
   );
 }

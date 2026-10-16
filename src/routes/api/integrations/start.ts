@@ -8,14 +8,16 @@ export const Route = createFileRoute("/api/integrations/start")({
     handlers: {
       POST: ({ request }) => guarded(async () => {
         const userId = await requireUser(request);
-        const body = await readBody<{ provider: string; hint_email: string; choose: boolean }>(request);
+        const body = await readBody<{ provider: string; hint_email: string; choose: boolean; client_id?: string; client_secret?: string }>(request);
         if (!isProviderId(body.provider)) throw new IntegrationError(400, "Unknown service.");
         const result = await startFlow(await makeCtx(), {
           userId,
           provider: body.provider,
           origin: appOrigin(request),
           hintEmail: String(body.hint_email || ""),
-          choose: body.choose === true,
+          choose: body.choose === true || !String(body.hint_email || "").trim(),
+          clientId: String(body.client_id || ""),
+          clientSecret: String(body.client_secret || ""),
         });
         return json(result);
       }),

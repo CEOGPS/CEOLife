@@ -391,7 +391,8 @@ async function startOauth(request, env) {
     return Response.json({ error: "Instagram Basic Display was shut down. Connect Instagram Business through Facebook instead." }, { status: 400, headers: corsHeaders() });
   }
   if (!clientCreds(provider, env).clientId) {
-    return Response.json({ error: `${provider.toUpperCase()}_CLIENT_ID is not configured` }, { status: 500, headers: corsHeaders() });
+    const back = safeOrigin(posted ? posted.origin : url.searchParams.get("origin"));
+    return Response.redirect(`${back}/panel/integrations?oauth_error=${encodeURIComponent(provider + " needs a client id and secret on the card. Paste both, then press Connect.")}`, 302);
   }
   const callbackUri = provider === "discord" ? DISCORD_CALLBACK : oauthCallback(env);
   const state = issueState(posted ? posted.origin : url.searchParams.get("origin"));

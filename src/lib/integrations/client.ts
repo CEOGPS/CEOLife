@@ -35,7 +35,8 @@ export type TestResult = { ok: boolean; text: string; checked?: boolean };
 export const integrationsApi = {
   list: () => call<IntegrationsPayload>(""),
   /** `choose: true` lets the person pick the account on the provider's own page (nothing is refused). */
-  start: (provider: ProviderId, hintEmail?: string, choose = false) => call<{ url: string }>("/start", { provider, hint_email: hintEmail || "", choose }),
+  start: (provider: ProviderId, hintEmail?: string, choose = false, app?: { clientId?: string; clientSecret?: string }) =>
+    call<{ url: string }>("/start", { provider, hint_email: hintEmail || "", choose, client_id: app?.clientId || "", client_secret: app?.clientSecret || "" }),
   testAccount: (accountId: string) => call<TestResult>("/test", { account_id: accountId }, 30000),
   testKey: (service: string, key: string, email = "") => call<TestResult>("/test", { service, key, email }, 30000),
   testAccountService: (service: string, kind: string, fields: { key?: string; secret?: string; site?: string; email?: string }) =>

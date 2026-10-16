@@ -3,7 +3,7 @@ import type { AccountView, IntegrationsPayload, ProviderId } from "./providers.t
 import { PROVIDER_IDS } from "./providers.ts";
 import {
   accountAllowed, buildAuthUrl, checkToken, exchangeCode, isConfigured, lookupIdentity,
-  newState, PROVIDER_CONFIG, pkcePair, refreshAccess, type EnvReader, type Fetch,
+  newState, overlayApps, PROVIDER_CONFIG, pkcePair, refreshAccess, type EnvReader, type Fetch,
 } from "./oauth.server.ts";
 import {
   deleteAccount, findAccountRow, getAccountRow, listAccounts, listAppCreds, listChecks, listExpected, makePrimary, markAccount,
@@ -84,19 +84,29 @@ export async function removeMailbox(ctx: Ctx, mailboxId: string) {
  *  - `choose`      the person picks on the provider's own page: no hint, nothing is refused
  *  - neither       falls back to the address saved as "Account to use", if there is one
  */
-export async function startFlow(ctx: Ctx, args: { userId: string; provider: ProviderId; origin: string; hintEmail?: string; choose?: boolean }) {
-  // Nylas keeps its own mailbox records, so only the other services need the token-encryption key.
+export async function startFlow(ctx: Ctx, args: { userId: string; provider: ProviderId; origin: string; hintEmail?: string; choose?: boolean; clientId?: string; clientSecret?: string }) {
   if (args.provider !== "nylas") needSecret(ctx);
-  if (!isConfigured(args.provider, ctx.read)) {
+  const typedId = String(args.clientId || "").trim();
+  const typedSecret = String(args.clientSecret || "").trim();
+  if (typedId || typedSecret) {
+    try {
+      await saveApp(ctx, args.userId, args.provider, typedId, typedSecret);
+    } catch (error) {
+      if (!typedId || !typedSecret) throw error;
+    }
+  }
+  let read = ctx.read;
+  if (typedId && typedSecret) read = overlayApps(ctx.read, [{ provider: args.provider, clientId: typedId, clientSecret: typedSecret }]);
+  if (!isConfigured(args.provider, read)) {
     const key = args.provider.toUpperCase();
-    throw new IntegrationError(503, `${key}_CLIENT_ID and ${key}_CLIENT_SECRET are not set on the server yet. See docs/INTEGRATIONS.md.`);
+    throw new IntegrationError(400, `Paste ${key}_CLIENT_ID and ${key}_CLIENT_SECRET into this card, then press Connect.`);
   }
   const state = newState();
   const pkce = PROVIDER_CONFIG[args.provider].pkce ? await pkcePair() : null;
   const expected = args.choose ? "" : (await listExpected(ctx.sql, args.userId))[args.provider] || "";
   const hintEmail = args.choose ? "" : (args.hintEmail || expected).trim().toLowerCase().slice(0, 200);
   await saveState(ctx.sql, { state, userId: args.userId, provider: args.provider, verifier: pkce?.verifier ?? null, hintEmail });
-  return { url: buildAuthUrl({ id: args.provider, origin: args.origin, state, challenge: pkce?.challenge, hintEmail, read: ctx.read }) };
+  return { url: buildAuthUrl({ id: args.provider, origin: args.origin, state, challenge: pkce?.challenge, hintEmail, read }) };
 }
 
 /** `account` is null for Nylas mailboxes: Nylas holds those, so nothing is stored here. */
