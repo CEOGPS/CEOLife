@@ -58,15 +58,14 @@ function withCors(response, origin) {
 }
 __name(withCors, "withCors");
 __name2(withCors, "withCors");
-var OAUTH_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/api/oauth/callback";
-var DISCORD_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/oauth/callback";
+var OAUTH_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/oauth/callback";
+var DISCORD_CALLBACK = OAUTH_CALLBACK;
 var DISCORD_SCOPES = "identify email guilds connections";
 var NYLAS_CALLBACK = "https://lifeos1-api.ceogps.workers.dev/api/nylas/callback";
 var OAUTH_ORIGINS = /* @__PURE__ */ new Set(["https://lifeos.ceogps.com", "https://lifeos1.ceogps.com"]);
 var OAUTH_PROVIDERS = /* @__PURE__ */ new Set(["google", "microsoft", "github", "slack", "facebook", "instagram", "twitter", "linkedin", "spotify", "discord", "notion"]);
-function oauthCallback(env) {
-  const named = String(env.OAUTH_REDIRECT_URI || "").trim();
-  return named === OAUTH_CALLBACK ? named : OAUTH_CALLBACK;
+function oauthCallback(_env) {
+  return OAUTH_CALLBACK;
 }
 __name(oauthCallback, "oauthCallback");
 __name2(oauthCallback, "oauthCallback");
@@ -421,7 +420,7 @@ async function startOauth(request, env) {
     const back = safeOrigin(posted ? posted.origin : url.searchParams.get("origin"));
     return Response.redirect(`${back}/panel/integrations?oauth_error=${encodeURIComponent(provider.toUpperCase() + "_CLIENT_SECRET is missing on the login service. The consent screen can still open without it. The token step cannot.")}`, 302);
   }
-  const callbackUri = provider === "discord" ? DISCORD_CALLBACK : oauthCallback(env);
+  const callbackUri = oauthCallback(env);
   const state = issueState(posted ? posted.origin : url.searchParams.get("origin"));
   const oauthUrls = {
     google: "https://accounts.google.com/o/oauth2/v2/auth",
@@ -447,7 +446,7 @@ async function startOauth(request, env) {
     params.set("access_type", "offline");
     params.set("include_granted_scopes", "true");
     params.set("login_hint", accountEmail || "chrisgr33ninc@gmail.com");
-    params.set("prompt", "consent");
+    params.set("prompt", "select_account consent");
   }
   if (provider === "notion") {
     params.set("owner", "user");
@@ -481,11 +480,21 @@ __name(startOauth, "startOauth");
 __name2(startOauth, "startOauth");
 router.get("/start", startOauth);
 router.post("/start", startOauth);
-function resultPage(origin, title, message) {
+function escapeHtml(value) {
+  return String(value).replace(/&/g, "&" + "amp;").replace(/</g, "&" + "lt;").replace(/>/g, "&" + "gt;").replace(/"/g, "&" + "quot;");
+}
+function resultPage(origin, title, message, saved) {
   const back = `${origin}/panel/integrations`;
-  const safe = String(message).replace(/[&<>]/g, (ch) => ({ "&": "&", "<": "<", ">": ">" })[ch]);
-  const safeTitle = String(title).replace(/[&<>]/g, (ch) => ({ "&": "&", "<": "<", ">": ">" })[ch]);
-  return new Response(`<!doctype html><meta charset="utf-8"><title>${safeTitle}</title><body style="font:16px sans-serif;background:#111;color:#fff;padding:2rem"><p>${safe}</p><p>You may now return to the website.</p><p><a href="${back}">Return to LifeOS</a></p></body>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+  const stay = saved ? "<p style=\"margin:0 0 20px\">This connection stays on the account. You do not sign in again to use it.</p>" : "";
+  return new Response(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head>
+<body style="margin:0;background:#0b0b0b;color:#f5f5f5;font:16px/1.5 system-ui,sans-serif;padding:48px 24px">
+<main style="max-width:32rem;margin:0 auto">
+<h1 style="font-size:1.5rem;margin:0 0 12px">${escapeHtml(title)}</h1>
+<p style="margin:0 0 16px;color:#d0d0d0">${escapeHtml(message)}</p>
+${stay}
+<p style="margin:0"><a href="${escapeHtml(back)}" style="color:#7dd3fc">Return to LifeOS</a></p>
+</main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 async function providerEmail(provider, accessToken) {
   const endpoints = {
@@ -510,26 +519,26 @@ router.get("/callback", async (request, env) => {
   const error = url.searchParams.get("error");
   const hinted = url.searchParams.get("provider") || "";
   const origin = originFromState(state);
-  const back = (params) => Response.redirect(`${origin}/panel/integrations?${new URLSearchParams(params).toString()}`, 302);
-  if (error) return back({ oauth_error: url.searchParams.get("error_description") || error });
-  if (!code || !state.includes("|")) return back({ oauth_error: "Missing code or state" });
+  const done = (title, message, saved) => resultPage(origin, title, message, saved);
+  if (error) return done("Not connected", url.searchParams.get("error_description") || error, false);
+  if (!code || !state.includes("|")) return done("Not connected", "The provider came back without a code. Press Connect again.", false);
   try {
     const pending = await claimState(env, state, hinted);
-    if (!pending) throw new Error("Invalid or expired OAuth state");
+    if (!pending) throw new Error("That sign-in expired. Press Connect again.");
     const actualProvider = pending.oauth_provider;
     let verifier = "";
     if (actualProvider === "twitter" && env.LIFEOS_KV) {
       verifier = await env.LIFEOS_KV.get(`oauth:pkce:${state}`) || "";
       await env.LIFEOS_KV.delete(`oauth:pkce:${state}`);
     }
-    const tokenResponse = await exchangeCodeForToken(actualProvider, code, pending.redirect || (actualProvider === "discord" ? DISCORD_CALLBACK : oauthCallback(env)), env, verifier);
+    const tokenResponse = await exchangeCodeForToken(actualProvider, code, pending.redirect || oauthCallback(env), env, verifier);
     if (!tokenResponse.access_token) throw new Error("The provider did not return a token.");
     const email = (await providerEmail(actualProvider, tokenResponse.access_token)) || pending.email || "";
     if (actualProvider === "google" && pending.email && email && email !== pending.email) {
-      return back({ oauth_error: `You clicked ${pending.email}, but Google signed in as ${email}. Nothing was saved. Choose ${pending.email} on Google's account page.` });
+      return done("Not connected", `You asked for ${pending.email}, but Google signed in as ${email}. Nothing was saved.`, false);
     }
     if (actualProvider === "google" && email !== "chris@ceogps.com" && email !== "chrisgr33ninc@gmail.com") {
-      return back({ oauth_error: "That Google account is not one of the board mailboxes. Nothing was saved." });
+      return done("Not connected", "That Google account is not one of the board mailboxes. Nothing was saved.", false);
     }
     const updateData = {
       oauth_access_token: tokenResponse.access_token,
@@ -556,7 +565,7 @@ router.get("/callback", async (request, env) => {
     });
     if (!saved.ok) {
       const detail = (await saved.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 160);
-      return back({ oauth_error: `Google issued the token, but it was not stored (${saved.status}). ${detail}` });
+      return done("Not connected", `The provider issued a token, but it was not stored (${saved.status}). ${detail}`, false);
     }
     if (pending.id) {
       await fetch(`${supabaseUrl(env)}/rest/v1/integrations_credentials?user_id=eq.${encodeURIComponent(pending.user_id)}&oauth_provider=eq.${encodeURIComponent(actualProvider)}&email=eq.${encodeURIComponent(email)}&id=neq.${encodeURIComponent(pending.id)}`, {
@@ -564,10 +573,11 @@ router.get("/callback", async (request, env) => {
         headers: serviceHeaders(env)
       }).catch(() => void 0);
     }
-    return back({ oauth_success: actualProvider });
+    const who = email ? ` as ${email}` : "";
+    return done("Connected", `${actualProvider} is connected${who}. You can return to the app.`, true);
   } catch (e) {
     console.error("[oauth/callback] error:", e instanceof Error ? e.message : "OAuth failed");
-    return back({ oauth_error: e instanceof Error ? e.message : "OAuth failed" });
+    return done("Not connected", e instanceof Error ? e.message : "OAuth failed", false);
   }
 });
 router.get("/disconnect", async (request, env) => {

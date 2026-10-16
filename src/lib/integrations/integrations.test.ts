@@ -9,6 +9,7 @@ import { oauthAttemptCookie, oauthAuthorizeUrl, oauthMissing, oauthSpec, rawPara
 import { completeCallback, freshAccessToken, loadPayload, removeAccount, removeMailbox, saveExpectedEmails, setPrimary, startFlow, testAccount, testMailbox, type CallbackResult, type Ctx } from "./service.server.ts";
 import { bustMailboxes, listMailboxes, listMailboxesCached, nylasProviderFor } from "./nylas.server.ts";
 import { createLimiter } from "./limit.server.ts";
+import { paintChecked, workerAccountRef } from "./worker-account.ts";
 
 const ENV: Record<string, string> = {
   GOOGLE_CLIENT_ID: "g-id", GOOGLE_CLIENT_SECRET: "g-secret",
@@ -870,6 +871,31 @@ describe("one callback for every card", () => {
     assert.ok(spec);
     const url = new URL(oauthAuthorizeUrl(spec, { clientId: "cid", redirectUri: callback, state: "s", account: "" }));
     assert.match(url.searchParams.get("scope") || "", /^public_profile,email,pages_show_list$/);
+  });
+
+  it("the registered callback is the worker /oauth/callback, and a worker card only looks tested after a real check", () => {
+    const worker = readFileSync(new URL("../../../attachments/working-worker.js", import.meta.url), "utf8");
+    const toml = readFileSync(new URL("../../../wrangler.toml", import.meta.url), "utf8");
+    const callbackUri = "https://lifeos1-api.ceogps.workers.dev/oauth/callback";
+    assert.match(worker, /var OAUTH_CALLBACK = "https:\/\/lifeos1-api\.ceogps\.workers\.dev\/oauth\/callback"/);
+    assert.match(toml, /OAUTH_REDIRECT_URI = "https:\/\/lifeos1-api\.ceogps\.workers\.dev\/oauth\/callback"/);
+    assert.match(worker, /select_account consent/);
+    assert.match(worker, /This connection stays on the account/);
+    assert.doesNotMatch(worker, /oauth_success: actualProvider/);
+    assert.equal(workerAccountRef("worker:dropbox:a@b.com"), null);
+    assert.deepEqual(workerAccountRef("worker:google:chris@ceogps.com"), { provider: "google", email: "chris@ceogps.com" });
+    const blank = {
+      id: "worker:google:chrisgr33ninc@gmail.com", provider: "google" as const, email: "chrisgr33ninc@gmail.com", name: "",
+      primary: true, status: "ok" as const, scopes: [], expiresAt: null, lastCheckedAt: null, lastError: "",
+    };
+    assert.equal(paintChecked(blank).lastCheckedAt, null);
+    const painted = paintChecked(blank, { state: "ok", text: "Signed in as chrisgr33ninc@gmail.com", checkedAt: "2026-10-16T17:00:00.000Z" });
+    assert.equal(painted.status, "ok");
+    assert.equal(painted.lastError, "Signed in as chrisgr33ninc@gmail.com");
+    assert.equal(painted.lastCheckedAt, "2026-10-16T17:00:00.000Z");
+    const failed = paintChecked(blank, { state: "error", text: "Google refused the token: invalid", checkedAt: "2026-10-16T17:01:00.000Z" });
+    assert.equal(failed.status, "needs_reauth");
+    assert.match(failed.lastError, /refused the token/);
   });
 });
 

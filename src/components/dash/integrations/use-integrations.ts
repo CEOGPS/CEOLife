@@ -5,6 +5,7 @@ import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, workerLinked } from "@/li
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
 import { newId, type Memory } from "../memory";
 import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
+import { paintChecked } from "@/lib/integrations/worker-account";
 
 export type Update = (recipe: (prev: Memory) => Memory) => void;
 export type Notice = { tone: "ok" | "error" | "info"; text: string } | null;
@@ -40,6 +41,7 @@ export function useIntegrations(args: {
   const [loadError, setLoadError] = useState<{ status: number; text: string } | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState<Notice>(null);
+  const checksRef = useRef<Record<string, CheckView>>({});
 
   const say = useCallback((tone: "ok" | "error" | "info", text: string) => {
     setNotice({ tone, text });
@@ -55,12 +57,16 @@ export function useIntegrations(args: {
       ]);
       linked = workerRows;
       setLoadError(null);
+      const checks = { ...checksRef.current, ...next.checks };
+      checksRef.current = checks;
+      const paint = (row: AccountView) => paintChecked(row, checks[`account:${row.id}`]);
       const merged = linked.length ? {
         ...next,
+        checks,
         configured: { ...next.configured, ...Object.fromEntries(linked.map((row) => [row.provider, true])) },
         accounts: [
-          ...next.accounts,
-          ...linked.filter((row) => !next.accounts.some((item) => item.provider === row.provider && item.email === row.email)).map((row) => ({
+          ...next.accounts.map(paint),
+          ...linked.filter((row) => !next.accounts.some((item) => item.provider === row.provider && item.email === row.email)).map((row) => paint({
             id: `worker:${row.provider}:${row.email}`,
             provider: row.provider,
             email: row.email,
@@ -73,7 +79,7 @@ export function useIntegrations(args: {
             lastError: "",
           })),
         ],
-      } : next;
+      } : { ...next, checks, accounts: next.accounts.map(paint) };
       setPayload(merged);
       const live = merged.accounts.filter((row) => row.status === "ok").map((row) => ({ provider: row.provider, email: row.email, primary: row.primary }));
       rememberAccounts(live);
@@ -153,7 +159,7 @@ export function useIntegrations(args: {
   }, [args.data.keys, checks]);
 
   const stats = useMemo(() => {
-    const working = accounts.filter((row) => row.status === "ok").length + mailboxes.filter((row) => row.status === "valid").length + keyRows.filter((row) => row.state === "ok").length;
+    const working = accounts.filter((row) => row.status === "ok" && (!row.id.startsWith("worker:") || row.lastCheckedAt)).length + mailboxes.filter((row) => row.status === "valid").length + keyRows.filter((row) => row.state === "ok").length;
     const attention = accounts.filter((row) => row.status === "needs_reauth").length + mailboxes.filter((row) => row.status !== "valid").length + keyRows.filter((row) => row.state === "error").length;
     const untested = keyRows.filter((row) => row.state === "untested" || row.state === "saved").length;
     return { working, attention, untested, providers: PROVIDERS.length, keys: keyRows.length };
@@ -219,6 +225,14 @@ export function useIntegrations(args: {
     flag(account.id, true);
     try {
       const result = await integrationsApi.testAccount(account.id);
+      const checkedAt = new Date().toISOString();
+      const check = { state: result.ok ? "ok" as const : "error" as const, text: result.text, checkedAt };
+      checksRef.current = { ...checksRef.current, [`account:${account.id}`]: check };
+      setPayload((prev) => prev ? {
+        ...prev,
+        checks: { ...prev.checks, [`account:${account.id}`]: check },
+        accounts: prev.accounts.map((row) => row.id === account.id ? paintChecked({ ...row, lastCheckedAt: null, lastError: "" }, check) : row),
+      } : prev);
       say(result.ok ? "ok" : "error", `${providerMeta(account.provider).name}${account.email ? ` (${account.email})` : ""}: ${result.text}`);
     } catch (error) {
       say("error", message(error, "The check could not run."));

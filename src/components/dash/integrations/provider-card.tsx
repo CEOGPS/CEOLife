@@ -62,6 +62,7 @@ function AccountRow({ account, expected, several, busy, onTest, onDisconnect, on
 }) {
   const [confirm, setConfirm] = useState(false);
   const bad = account.status === "needs_reauth";
+  const untested = account.id.startsWith("worker:") && !account.lastCheckedAt;
   const off = Boolean(expected) && Boolean(account.email) && account.email.toLowerCase() !== expected.toLowerCase();
   return (
     <li className="rounded-lg border border-white/10 bg-black/20 p-3">
@@ -69,17 +70,17 @@ function AccountRow({ account, expected, several, busy, onTest, onDisconnect, on
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-white">{account.email || account.name || "Connected account"}</p>
           <p className="text-xs text-white/50">
-            {bad ? "Needs reconnecting" : `Checked ${timeAgo(account.lastCheckedAt)}`}
+            {untested ? "Not tested yet" : bad ? "Needs reconnecting" : `Checked ${timeAgo(account.lastCheckedAt)}`}
             {account.name && account.email ? ` · ${account.name}` : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {several && account.primary ? <StatusPill tone="ok">Primary</StatusPill> : null}
-          <StatusPill tone={bad ? "error" : "ok"}>{bad ? "Needs attention" : "Working"}</StatusPill>
+          <StatusPill tone={untested ? "idle" : bad ? "error" : "ok"}>{untested ? "Not tested" : bad ? "Needs attention" : "Working"}</StatusPill>
         </div>
       </div>
       {off ? <p className="mt-2 text-xs text-amber-200">This is not the expected account ({expected}). It is saved, but other desks may prefer a different one.</p> : null}
-      {bad && account.lastError ? <p className="mt-2 text-xs text-rose-300">{account.lastError}</p> : null}
+      {account.lastError ? <p className={`mt-2 text-xs ${bad ? "text-rose-300" : "text-emerald-200"}`}>{account.lastError}</p> : null}
       <div className="mt-2 flex flex-wrap gap-2">
         <Button busy={busy} onClick={onTest} label={`Test ${account.email || "account"}`}>Test now</Button>
         {several && !account.primary ? <Button busy={busy} onClick={onMakePrimary} label={`Make ${account.email || "account"} the primary account`}>Make primary</Button> : null}

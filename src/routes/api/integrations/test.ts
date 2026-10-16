@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { runAccount, runProbe } from "@/lib/lifeos/env-keys";
 import { guarded, json, makeCtx, readBody, requireUser, throttle } from "@/lib/integrations/http.server";
+import { checkToken } from "@/lib/integrations/oauth.server";
 import { freshAccessToken, IntegrationError, testAccount, testMailbox } from "@/lib/integrations/service.server";
 import { recordCheck } from "@/lib/integrations/store.server";
+import { workerAccountRef } from "@/lib/integrations/worker-account";
 
 const ACCOUNT_KINDS = new Set(["search-console", "google-analytics", "godaddy", "brilliant"]);
+const WORKER = "https://lifeos1-api.ceogps.workers.dev";
 
 type Body = {
   account_id: string;
@@ -16,6 +19,18 @@ type Body = {
   secret: string;
   site: string;
 };
+
+async function workerToken(provider: string, email: string) {
+  const response = await fetch(`${WORKER}/api/oauth/token/fresh?board=1`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Lifeos-Board": "1" },
+    body: JSON.stringify({ provider, email }),
+    signal: AbortSignal.timeout(12000),
+  });
+  const live = await response.json().catch(() => ({})) as { access_token?: string; error?: string };
+  if (!response.ok || !live.access_token) return { token: "", error: live.error || "Not connected on the login service." };
+  return { token: live.access_token, error: "" };
+}
 
 /**
  * One endpoint for every "is this working?" button.
@@ -40,8 +55,20 @@ export const Route = createFileRoute("/api/integrations/test")({
         const body = await readBody<Body>(request);
 
         if (body.account_id) {
+          const id = String(body.account_id);
+          const workerRef = workerAccountRef(id);
+          if (workerRef) {
+            const live = await workerToken(workerRef.provider, workerRef.email).catch(() => ({ token: "", error: "The login service did not answer." }));
+            const health = live.token
+              ? await checkToken(workerRef.provider, live.token)
+              : { ok: false, text: live.error || `${workerRef.email || workerRef.provider} is not connected. Press Connect once.` };
+            if (ctx) await recordCheck(ctx.sql, userId, `account:${id}`, health.ok ? "ok" : "error", health.text).catch(() => undefined);
+            return json(health);
+          }
           if (!ctx) return json({ ok: false, text: "The connection list is unavailable right now." });
-          return json(await testAccount(ctx, userId, String(body.account_id)));
+          const health = await testAccount(ctx, userId, id);
+          await recordCheck(ctx.sql, userId, `account:${id}`, health.ok ? "ok" : "error", health.text).catch(() => undefined);
+          return json(health);
         }
         if (body.mailbox_id) {
           if (!ctx) return json({ ok: false, text: "Mailboxes are unavailable right now." });
@@ -65,14 +92,7 @@ export const Route = createFileRoute("/api/integrations/test")({
             }
             if (!token) {
               try {
-                const response = await fetch("https://lifeos1-api.ceogps.workers.dev/api/oauth/token/fresh?board=1", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "X-Lifeos-Board": "1" },
-                  body: JSON.stringify({ provider: "google", email }),
-                  signal: AbortSignal.timeout(12000),
-                });
-                const live = await response.json() as { access_token?: string };
-                token = live.access_token || "";
+                token = (await workerToken("google", email)).token;
               } catch { /* leave token empty */ }
             }
             if (!token) {

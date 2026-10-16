@@ -125,7 +125,7 @@ export async function updateTokens(sql: Sql, secret: string, id: string, args: {
 }
 
 export async function markAccount(sql: Sql, id: string, ok: boolean, detail: string) {
-  await sql`update integration_accounts set status = ${ok ? "ok" : "needs_reauth"}, last_checked_at = now(), last_error = ${ok ? "" : detail}, updated_at = now() where id = ${id}`;
+  await sql`update integration_accounts set status = ${ok ? "ok" : "needs_reauth"}, last_checked_at = now(), last_error = ${detail}, updated_at = now() where id = ${id}`;
 }
 
 export async function deleteAccount(sql: Sql, userId: string, id: string) {
