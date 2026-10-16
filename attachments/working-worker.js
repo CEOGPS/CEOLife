@@ -445,9 +445,9 @@ async function startOauth(request, env) {
   });
   if (provider === "google") {
     params.set("access_type", "offline");
-    params.set("prompt", "select_account consent");
     params.set("include_granted_scopes", "true");
-    if (accountEmail) params.set("login_hint", accountEmail);
+    params.set("login_hint", accountEmail || "chrisgr33ninc@gmail.com");
+    params.set("prompt", "consent");
   }
   if (provider === "notion") {
     params.set("owner", "user");
