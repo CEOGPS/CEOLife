@@ -58,6 +58,25 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
     return map;
   }, [status]);
 
+  // Only integrations that can actually be connected right now are shown: a
+  // provider whose credentials are on the server, a service already connected,
+  // or a card you can fill in yourself (an API key or a local address).
+  // Providers still waiting on a secret, and services with no public API at
+  // all, stay out of the panel until they can work.
+  const available = useMemo(
+    () =>
+      CATALOG.filter((entry) => {
+        const provider = oauthProviderId(entry);
+        if (provider) {
+          const info = status?.providers[provider];
+          if (!info) return true;
+          return info.configured || connections.get(provider)?.status === "connected";
+        }
+        return !entry.methods.includes("none");
+      }),
+    [status, connections],
+  );
+
   useEffect(() => { setMarks(readMarks()); }, []);
 
   useEffect(() => {
@@ -208,7 +227,7 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
 
   function applySheet(text: string) {
     try {
-      const names = CATALOG.filter((entry) => entry.methods.some((method) => KEY_METHODS.has(method))).map((entry) => entry.name);
+      const names = available.filter((entry) => entry.methods.some((method) => KEY_METHODS.has(method))).map((entry) => entry.name);
       const found = sheetKeys(text, names);
       if (!found.length) {
         setSheetNote("Nothing matched a card. Paste two columns, name and value, or lines like OPENAI_API_KEY=...");
@@ -250,7 +269,7 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
       if (keyedNames.has(entry.name)) return 2;
       return 3;
     };
-    return CATALOG.filter((entry) => {
+    return available.filter((entry) => {
       if (category !== "all" && entry.category !== category) return false;
       const provider = oauthProviderId(entry);
       const connected = provider ? connections.get(provider)?.status === "connected" || marks[entry.name]?.state === "connected" : marks[entry.name]?.state === "connected";
@@ -262,33 +281,33 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
       return `${entry.name} ${entry.summary} ${CATEGORY_LABEL[entry.category]} ${entry.dependents.join(" ")}`.toLowerCase().includes(needle);
     }).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, category, filter, connections, marks, data.keys]);
+  }, [query, category, filter, connections, marks, data.keys, available]);
 
   const counts = useMemo(() => {
-    const connected = CATALOG.filter((entry) => {
+    const connected = available.filter((entry) => {
       const provider = oauthProviderId(entry);
       if (provider) return connections.get(provider)?.status === "connected";
       return marks[entry.name]?.state === "connected";
     }).length;
-    const todo = CATALOG.filter((entry) => oauthProviderId(entry) && connections.get(oauthProviderId(entry) as string)?.status !== "connected").length;
-    const keys = CATALOG.filter((entry) => entry.methods.some((method) => KEY_METHODS.has(method))).length;
-    const none = CATALOG.filter((entry) => entry.methods.includes("none")).length;
+    const todo = available.filter((entry) => oauthProviderId(entry) && connections.get(oauthProviderId(entry) as string)?.status !== "connected").length;
+    const keys = available.filter((entry) => entry.methods.some((method) => KEY_METHODS.has(method))).length;
+    const none = available.filter((entry) => entry.methods.includes("none")).length;
     return { connected, todo, keys, none, saved: keyedNames.size };
-  }, [connections, marks, keyedNames]);
+  }, [available, connections, marks, keyedNames]);
 
-  const filters: { id: Filter; label: string; count: number }[] = [
-    { id: "all", label: "All", count: CATALOG.length },
+  const filters = ([
+    { id: "all", label: "All", count: available.length },
     { id: "connected", label: "Connected", count: counts.connected },
     { id: "todo", label: "Connect now", count: counts.todo },
     { id: "keys", label: "API keys", count: counts.keys },
     { id: "none", label: "No public API", count: counts.none },
-  ];
+  ] as { id: Filter; label: string; count: number }[]).filter((item) => item.id === "all" || item.count > 0);
 
   const categories = useMemo(() => {
     const seen = new Map<IntegrationCategory, number>();
-    for (const entry of CATALOG) seen.set(entry.category, (seen.get(entry.category) || 0) + 1);
+    for (const entry of available) seen.set(entry.category, (seen.get(entry.category) || 0) + 1);
     return [...seen.entries()];
-  }, []);
+  }, [available]);
 
   return (
     <div>
@@ -403,7 +422,7 @@ export function IntegrationsDesk({ data, update }: { data: Memory; update: Updat
             }} />
           </label>
           <button type="button" className="quiet" onClick={() => {
-            const names = CATALOG.filter((entry) => entry.methods.some((method) => KEY_METHODS.has(method))).map((entry) => entry.name);
+            const names = available.filter((entry) => entry.methods.some((method) => KEY_METHODS.has(method))).map((entry) => entry.name);
             const csv = `name,value\n${names.map((name) => `${name},`).join("\n")}\n`;
             const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
             const link = document.createElement("a");
