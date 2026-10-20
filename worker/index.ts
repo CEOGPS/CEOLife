@@ -5,15 +5,39 @@ function allowedOrigins(env: WorkerEnv) {
   return new Set(raw.split(",").map((item) => item.trim()).filter(Boolean));
 }
 
-type WorkerEnv = Record<string, unknown>;
+type WorkerEnv = Record<string, unknown> & {
+  OAUTH?: { fetch: (request: Request) => Promise<Response> | Response };
+};
 type WorkerExport = {
   fetch: (request: Request, env: WorkerEnv, ctx: ExecutionContext) => Promise<Response> | Response;
 };
+
+const OAUTH_PATHS = new Set([
+  "/oauth/callback",
+  "/api/oauth/callback",
+  "/api/oauth/start",
+  "/api/oauth/linked",
+  "/api/oauth/status",
+  "/api/oauth/token/fresh",
+  "/api/oauth/disconnect",
+]);
 
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext) {
     const url = new URL(request.url);
     const allowed = allowedOrigins(env);
+    // Client ids live on lifeos1-oauth. This worker only forwards those paths.
+    // The browser still returns to https://lifeos1-api.ceogps.workers.dev/oauth/callback.
+    if (OAUTH_PATHS.has(url.pathname) && env.OAUTH) {
+      const target = new URL(request.url);
+      target.hostname = "oauth.internal";
+      if (url.pathname === "/oauth/callback") target.pathname = "/api/oauth/callback";
+      const headers = new Headers(request.headers);
+      headers.delete("host");
+      const init: RequestInit = { method: request.method, headers, redirect: "manual" };
+      if (request.method !== "GET" && request.method !== "HEAD") init.body = request.body;
+      return env.OAUTH.fetch(new Request(target, init));
+    }
     let inbound = request;
     if (url.pathname === "/oauth/callback") {
       const rewritten = new URL(request.url);

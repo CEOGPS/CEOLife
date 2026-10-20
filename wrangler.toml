@@ -23,3 +23,8 @@ database_id = "9aa6e88b-bba8-43c8-8591-5fac48d5a200"
 [[r2_buckets]]
 binding = "LIFEOS_STORAGE"
 bucket_name = "lifeos-storage"
+
+# OAuth client ids and secrets live on this worker, not on lifeos1-api.
+[[services]]
+binding = "OAUTH"
+service = "lifeos1-oauth"
