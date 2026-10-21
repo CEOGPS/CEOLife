@@ -62,10 +62,16 @@ export const pullWithKey = createServerFn({ method: "POST" })
         return { ok: true as const, text: `${body.items?.length || 0} videos`, videos: (body.items || []).map((row) => ({ title: row.snippet?.title || "Video", href: `https://www.youtube.com/watch?v=${row.id?.videoId || ""}` })).filter((row) => row.href.includes("v=")) };
       }
       if (data.name === "ElevenLabs") {
-        const response = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": data.key } });
-        const body = await response.json() as { voices?: { name: string }[]; detail?: { message?: string } };
-        if (!response.ok) return { ok: false as const, text: body.detail?.message || "ElevenLabs refused the key." };
-        return { ok: true as const, text: (body.voices || []).slice(0, 6).map((row) => row.name).join(", ") || "No voices" };
+        const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM?output_format=mp3_22050_32", {
+          method: "POST",
+          headers: { "xi-api-key": data.key, "Content-Type": "application/json", Accept: "audio/mpeg" },
+          body: JSON.stringify({ text: "Hi", model_id: "eleven_flash_v2_5" }),
+        });
+        if (response.ok) return { ok: true as const, text: "Speech works." };
+        const body = await response.json().catch(() => ({})) as { detail?: { message?: string } };
+        const message = body.detail?.message || "";
+        if (response.status === 402 || /library voices/i.test(message)) return { ok: true as const, text: "Key accepted. This free plan cannot use shared library voices." };
+        return { ok: false as const, text: message || "ElevenLabs refused the key." };
       }
       return { ok: true as const, text: "Key is loaded. This service has no live pull yet." };
     } catch (error) {
@@ -328,6 +334,31 @@ function cleanKey(value: string) {
   return value.trim().replace(/^['"]|['"]$/g, "").replace(/^(bearer|token)\s+/i, "").trim();
 }
 
+async function probeElevenLabs(key: string) {
+  const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM?output_format=mp3_22050_32", {
+    method: "POST",
+    headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
+    body: JSON.stringify({ text: "Hi", model_id: "eleven_flash_v2_5" }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (response.ok) return { ok: true as const, checked: true as const, text: "Key accepted. Speech works." };
+  const raw = await response.text();
+  let message = "";
+  try {
+    const body = JSON.parse(raw) as { detail?: { message?: string } };
+    message = body.detail?.message || "";
+  } catch {
+    message = raw.slice(0, 180);
+  }
+  if (response.status === 402 || /library voices/i.test(message)) {
+    return { ok: true as const, checked: true as const, text: "Key accepted. This free plan cannot use shared library voices. Speech works for a voice you created." };
+  }
+  if (/missing the permission voices_read/i.test(message)) {
+    return { ok: true as const, checked: true as const, text: "Key accepted. It cannot list voices. Turn on Voices (read) on this key in ElevenLabs if you want the voice list." };
+  }
+  return { ok: false as const, checked: true as const, text: message || "ElevenLabs refused the key." };
+}
+
 function timed(work: Promise<Response>) {
   return new Promise<Response>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("The service did not answer in time.")), 8000);
@@ -366,7 +397,7 @@ export async function runProbe(data: { name: string; key: string; email: string 
       if (data.name === "Groq") return readBody(await timed(fetch("https://api.groq.com/openai/v1/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "DeepSeek") return readBody(await timed(fetch("https://api.deepseek.com/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "Mistral") return readBody(await timed(fetch("https://api.mistral.ai/v1/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
-      if (data.name === "ElevenLabs") return readBody(await timed(fetch("https://api.elevenlabs.io/v1/voices?page_size=1", { headers: { "xi-api-key": key }, signal: AbortSignal.timeout(8000) })));
+      if (data.name === "ElevenLabs") return probeElevenLabs(key);
       if (data.name === "YouTube" || data.name === "Google Maps") {
         const path = data.name === "YouTube"
           ? `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=music&key=${encodeURIComponent(key)}`
