@@ -193,7 +193,7 @@ export const speakVoice = createServerFn({ method: "POST" })
   }))
   .handler(async ({ data }) => {
     const key = data.key || process.env.ELEVENLABS_API_KEY || process.env.ELEVEN_API_KEY || "";
-    const voice = data.voice || "EXAVITQu4vr4xnSDxMaL";
+    const voice = data.voice || "JfHXJKFB6nBnp6ILqo2W";
     if (!key || !data.text) return { ok: false as const, audio: "" };
     for (const model_id of ["eleven_turbo_v2_5", "eleven_multilingual_v2", "eleven_flash_v2_5"]) {
       const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}`, {

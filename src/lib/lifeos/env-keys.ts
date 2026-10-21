@@ -62,12 +62,12 @@ export const pullWithKey = createServerFn({ method: "POST" })
         return { ok: true as const, text: `${body.items?.length || 0} videos`, videos: (body.items || []).map((row) => ({ title: row.snippet?.title || "Video", href: `https://www.youtube.com/watch?v=${row.id?.videoId || ""}` })).filter((row) => row.href.includes("v=")) };
       }
       if (data.name === "ElevenLabs") {
-        const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL?output_format=mp3_22050_32", {
+        const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/JfHXJKFB6nBnp6ILqo2W?output_format=mp3_22050_32", {
           method: "POST",
           headers: { "xi-api-key": data.key, "Content-Type": "application/json", Accept: "audio/mpeg" },
           body: JSON.stringify({ text: "Hi", model_id: "eleven_flash_v2_5" }),
         });
-        if (response.ok) return { ok: true as const, text: "Speech works with Sarah." };
+        if (response.ok) return { ok: true as const, text: "Speech works with Lanie." };
         const body = await response.json().catch(() => ({})) as { detail?: { message?: string } };
         const message = body.detail?.message || "";
         if (response.status === 402 || /library voices/i.test(message)) return { ok: true as const, text: "Key accepted. This free plan cannot use shared library voices." };
@@ -335,13 +335,13 @@ function cleanKey(value: string) {
 }
 
 async function probeElevenLabs(key: string) {
-  const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL?output_format=mp3_22050_32", {
+  const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/JfHXJKFB6nBnp6ILqo2W?output_format=mp3_22050_32", {
     method: "POST",
     headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
     body: JSON.stringify({ text: "Hi", model_id: "eleven_flash_v2_5" }),
     signal: AbortSignal.timeout(8000),
   });
-  if (response.ok) return { ok: true as const, checked: true as const, text: "Key accepted. Speech works with Sarah." };
+  if (response.ok) return { ok: true as const, checked: true as const, text: "Key accepted. Speech works with Lanie." };
   const raw = await response.text();
   let message = "";
   try {
@@ -351,7 +351,7 @@ async function probeElevenLabs(key: string) {
     message = raw.slice(0, 180);
   }
   if (response.status === 402 || /library voices/i.test(message)) {
-    return { ok: true as const, checked: true as const, text: "Key accepted. Sarah is on your account. Stephanie, Jedediah, and Selected are library voices this free plan cannot use." };
+    return { ok: true as const, checked: true as const, text: "Key accepted. Lanie and Liz are on this account. Library voices are blocked on the free plan." };
   }
   if (/missing the permission voices_read/i.test(message)) {
     return { ok: true as const, checked: true as const, text: "Key accepted. It cannot list voices. Turn on Voices (read) on this key in ElevenLabs if you want the voice list." };

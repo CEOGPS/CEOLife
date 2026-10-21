@@ -1,4 +1,9 @@
+export const LANIE_VOICE_ID = "JfHXJKFB6nBnp6ILqo2W";
+export const LIZ_VOICE_ID = "zTbifru5adS90nIWyHY5";
+
 export const VOICES = [
+  { name: "Lanie", id: LANIE_VOICE_ID },
+  { name: "Liz", id: LIZ_VOICE_ID },
   { name: "uTZG", id: "uTZG99vYUBiDowASgVNz" },
   { name: "Lily", id: "pFZP5JQG7iQjIQuC4Bku" },
   { name: "Jessica", id: "cgSgspJ2msm6clMCkdW9" },
@@ -21,7 +26,7 @@ const ASSIGNED: Record<string, string> = {
   Viper: "FGY2WhTYpPnrIDTdsKH5",
   Rage: "EXAVITQu4vr4xnSDxMaL",
   Aurora: "5z1dCJ9XLHwLPLqjq7Dz",
-  Breeze: "09vslFmztgVtc8A1kDJl",
+  Breeze: LIZ_VOICE_ID,
   Wire: "uTZG99vYUBiDowASgVNz",
   Clerk: "pFZP5JQG7iQjIQuC4Bku",
   Closer: "cgSgspJ2msm6clMCkdW9",
@@ -30,8 +35,8 @@ const ASSIGNED: Record<string, string> = {
   Line: "FGY2WhTYpPnrIDTdsKH5",
   Studio: "EXAVITQu4vr4xnSDxMaL",
   Host: "5z1dCJ9XLHwLPLqjq7Dz",
-  Scout: "09vslFmztgVtc8A1kDJl",
-  Gauge: "Cb8NLd0sUB8jI4MW2f9M",
+  Scout: LIZ_VOICE_ID,
+  Gauge: LANIE_VOICE_ID,
   Hack: "uTZG99vYUBiDowASgVNz",
   Lens: "pFZP5JQG7iQjIQuC4Bku",
   Sim: "cgSgspJ2msm6clMCkdW9",
