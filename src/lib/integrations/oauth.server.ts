@@ -209,8 +209,14 @@ export const PROVIDER_CONFIG: Record<ProviderId, ProviderConfig> = {
       return { id: str(r.body.id), email: str(r.body.email).toLowerCase(), name: str(r.body.name) };
     },
     health: async (token, f) => {
-      const r = await getJson(f, `https://graph.facebook.com/me?fields=id,name&access_token=${encodeURIComponent(token)}`);
-      return r.ok ? { ok: true, text: `Signed in as ${str(r.body.name)}` } : { ok: false, text: `Facebook refused the token: ${reason(r.body, r.status)}` };
+      const response = await f("https://lifeos1-oauth.ceogps.workers.dev/api/oauth/facebook/check?board=1", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", "X-Lifeos-Board": "1" },
+        body: JSON.stringify({ access_token: token }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const body = (await response.json().catch(() => ({}))) as { ok?: boolean; text?: string };
+      return body.ok ? { ok: true, text: body.text || "Signed in to Facebook." } : { ok: false, text: body.text || "Facebook refused the token." };
     },
     upgrade: async (set, creds, f) => {
       // Swap the 1-2 hour token for a ~60 day one so the connection survives.
