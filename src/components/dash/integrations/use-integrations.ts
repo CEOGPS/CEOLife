@@ -4,7 +4,7 @@ import { PROVIDERS, providerMeta, type AccountView, type CheckView, type Integra
 import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, workerLinked } from "@/lib/lifeos/oauth";
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
 import { newId, type Memory } from "../memory";
-import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
+import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, PUBLIC_TEST, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
 import { paintChecked } from "@/lib/integrations/worker-account";
 
 export type Update = (recipe: (prev: Memory) => Memory) => void;
@@ -42,7 +42,7 @@ export function buildKeyRows(keys: KeySource[], checks: Record<string, CheckView
     .map((svc) => {
       const value = (keys.find((row) => row.name === svc.name)?.value || "").trim();
       const check = checks[`key:${svc.name}`] || null;
-      const testableWithoutKey = SERVER_HELD.has(svc.name) || NO_KEY_NEEDED.has(svc.name);
+      const testableWithoutKey = SERVER_HELD.has(svc.name) || NO_KEY_NEEDED.has(svc.name) || PUBLIC_TEST.has(svc.name);
       const mapped: KeyState | null = check ? (check.state === "ok" ? "ok" : check.state === "error" ? "error" : "saved") : null;
       const state: KeyState = value ? (mapped ?? "untested") : testableWithoutKey ? (mapped ?? "empty") : "empty";
       return { ...svc, value, check, state };
@@ -57,7 +57,8 @@ export function tally(rows: AccountView[], boxes: MailboxView[], keyRows: KeyRow
   const attention = rows.filter((row) => row.status === "needs_reauth").length
     + boxes.filter((row) => row.status !== "valid").length
     + keyRows.filter((row) => row.state === "error").length;
-  const untested = keyRows.filter((row) => row.state === "untested" || row.state === "saved").length;
+  const untested = keyRows.filter((row) => row.state === "untested" || row.state === "saved").length
+    + rows.filter((row) => row.id.startsWith("worker:") && row.status === "ok" && !row.lastCheckedAt).length;
   return { working, attention, untested, providers: PROVIDERS.length, keys: keyRows.length };
 }
 

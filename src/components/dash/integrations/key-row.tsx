@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { EXTRA_FIELD, KEY_LABEL, NO_KEY_NEEDED, SERVER_HELD, oauthStartHref } from "./catalog";
+import { EXTRA_FIELD, KEY_LABEL, NO_KEY_NEEDED, PUBLIC_TEST, SERVER_HELD, oauthStartHref } from "./catalog";
 import type { KeyRowModel } from "./use-integrations";
 import { mask, timeAgo, type Tone } from "./format";
 import { Button, EmailText, StatusPill } from "./ui";
 
 const LOOK: Record<KeyRowModel["state"], { tone: Tone; label: string }> = {
-  ok: { tone: "ok", label: "Verified" },
-  error: { tone: "error", label: "Failed" },
-  saved: { tone: "warn", label: "Saved · can't verify" },
-  untested: { tone: "warn", label: "Saved · not tested" },
+  ok: { tone: "ok", label: "Working" },
+  error: { tone: "error", label: "Not working" },
+  saved: { tone: "warn", label: "Not tested" },
+  untested: { tone: "warn", label: "Not tested" },
   empty: { tone: "idle", label: "Not added" },
 };
 
@@ -52,13 +52,13 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-white">{row.name}</p>
           <p className="text-xs text-white/50">
-            {row.value && !loginOnly ? mask(row.value) : workGoogle ? <>Uses <EmailText value="chris@ceogps.com" /></> : loginOnly ? "Uses your connected Google login" : SERVER_HELD.has(row.name) ? "Uses the server's credential, or add your own" : "No key yet"}
+            {row.value && !loginOnly ? mask(row.value) : workGoogle ? <>Uses <EmailText value="chris@ceogps.com" /></> : loginOnly ? "Uses your connected Google login" : SERVER_HELD.has(row.name) ? "Uses the server's credential, or add your own" : PUBLIC_TEST.has(row.name) ? "Public endpoint. Not your account." : "No key yet"}
             {row.check ? ` · checked ${timeAgo(row.check.checkedAt)}` : ""}
           </p>
         </div>
         <StatusPill tone={look.tone}>{look.label}</StatusPill>
       </div>
-      {row.check?.text ? <p className={`mt-1.5 text-xs ${row.state === "error" ? "text-rose-300" : "text-white/55"}`}>{row.check.text}</p> : null}
+      {row.check?.text ? <p className={`mt-1.5 text-xs ${row.state === "error" ? "text-rose-300" : row.state === "ok" ? "text-emerald-200" : "text-amber-200"}`}>{row.check.text}</p> : null}
 
       {editing ? (
         <form className="mt-3 space-y-2" onSubmit={(event) => { event.preventDefault(); submit(); }}>
@@ -101,8 +101,8 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
             <Button busy={busy} onClick={() => onTest(row.name)}>Test with Google</Button>
           ) : row.state === "empty" ? (
             <>
-              {SERVER_HELD.has(row.name) ? <Button primary busy={busy} onClick={() => onTest(row.name)} label={`Test ${row.name}`}>Test</Button> : null}
-              <Button primary={!SERVER_HELD.has(row.name)} onClick={open}>Add key</Button>
+              {SERVER_HELD.has(row.name) || PUBLIC_TEST.has(row.name) ? <Button primary busy={busy} onClick={() => onTest(row.name)} label={`Test ${row.name}`}>Test</Button> : null}
+              <Button primary={!SERVER_HELD.has(row.name) && !PUBLIC_TEST.has(row.name)} onClick={open}>Add key</Button>
             </>
           ) : (
             <>

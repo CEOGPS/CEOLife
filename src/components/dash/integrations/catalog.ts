@@ -213,6 +213,11 @@ export const NO_KEY_NEEDED = new Set(["Search Console"]);
 /** These can be tested with nothing pasted because the server holds the credential. */
 export const SERVER_HELD = new Set(["Cloudflare", "Cloudflare Account", "Cloudflare Token"]);
 
+/** No account API. Test hits a public endpoint and says so. A saved key is not marked working. */
+export const PUBLIC_TEST = new Set([
+  "Crypto.com", "Docker", "Firefox", "GitLab", "Kraken", "Postman", "VS Code", "Weather", "WordPress", "Yahoo",
+]);
+
 /** Services that share one stored key under two names. */
 export const KEY_TWINS: Record<string, string[]> = {
   xAI: ["xAI", "Grok (xAI)"],

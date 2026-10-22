@@ -76,11 +76,11 @@ function AccountRow({ account, expected, several, busy, onTest, onDisconnect, on
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {several && account.primary ? <StatusPill tone="ok">Primary</StatusPill> : null}
-          <StatusPill tone={untested ? "idle" : bad ? "error" : "ok"}>{untested ? "Not tested" : bad ? "Needs attention" : "Working"}</StatusPill>
+          <StatusPill tone={untested ? "warn" : bad ? "error" : "ok"}>{untested ? "Not tested" : bad ? "Not working" : "Working"}</StatusPill>
         </div>
       </div>
       {off ? <p className="mt-2 text-xs text-amber-200">This is not the expected account ({expected}). It is saved, but other desks may prefer a different one.</p> : null}
-      {account.lastError ? <p className={`mt-2 text-xs ${bad ? "text-rose-300" : "text-emerald-200"}`}>{account.lastError}</p> : null}
+      {account.lastError ? <p className={`mt-2 text-xs ${bad ? "text-rose-300" : untested ? "text-amber-200" : "text-emerald-200"}`}>{account.lastError}</p> : null}
       <div className="mt-2 flex flex-wrap gap-2">
         <Button busy={busy} onClick={onTest} label="Test this account">Test now</Button>
         {several && !account.primary ? <Button busy={busy} onClick={onMakePrimary} label={`Make ${account.email || "account"} the primary account`}>Make primary</Button> : null}
@@ -133,10 +133,11 @@ export function ProviderCard({ meta, accounts, expected, configured, app, busy, 
   onSaveExpected: (email: string) => void;
   onSaveApp: (clientId: string, clientSecret: string) => void;
 }) {
-  const needs = accounts.filter((row) => row.status === "needs_reauth").length;
-  const ok = accounts.length - needs;
-  const tone = needs ? "error" : ok ? "ok" : "idle";
-  const label = needs ? "Needs attention" : ok ? (ok > 1 ? `${ok} connected` : "Connected") : "Not connected";
+  const failed = accounts.filter((row) => row.status === "needs_reauth").length;
+  const working = accounts.filter((row) => row.status === "ok" && (!row.id.startsWith("worker:") || row.lastCheckedAt)).length;
+  const waiting = accounts.filter((row) => row.status === "ok" && row.id.startsWith("worker:") && !row.lastCheckedAt).length;
+  const tone = failed ? "error" : working ? "ok" : waiting ? "warn" : "idle";
+  const label = failed ? "Not working" : working ? "Working" : waiting ? "Not tested" : "Not connected";
   const [clientId, setClientId] = useState(app?.clientId || "");
   const [clientSecret, setClientSecret] = useState("");
   const hint = meta.id === "google" ? "chrisgr33ninc@gmail.com" : expected;
@@ -188,7 +189,7 @@ export function ProviderCard({ meta, accounts, expected, configured, app, busy, 
           </form>
         ) : null}
         <a className="int-btn int-btn--primary" href={href} target="_top" rel="noopener">
-          {needs ? "Reconnect" : accounts.length ? "Add another account" : `Connect ${meta.name}`}
+          {failed ? "Reconnect" : accounts.length ? "Add another account" : `Connect ${meta.name}`}
         </a>
       </div>
     </article>
