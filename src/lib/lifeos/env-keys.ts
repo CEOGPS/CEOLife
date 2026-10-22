@@ -456,7 +456,12 @@ export async function runProbe(data: { name: string; key: string; email: string 
       if (data.name === "Slack") return readBody(await timed(fetch("https://slack.com/api/auth.test", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "X") return readBody(await timed(fetch("https://api.x.com/2/users/me", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "Jotform") return readBody(await timed(fetch(`https://api.jotform.com/user?apiKey=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) })));
-      if (data.name === "Qwen") return readBody(await timed(fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
+      if (data.name === "Qwen") {
+        const token = key || process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY || "";
+        if (!token) return { ok: false as const, checked: true as const, text: "No Qwen key is saved, and the server has no DashScope key." };
+        const base = (process.env.DASHSCOPE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
+        return readBody(await timed(fetch(`${base}/models`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) })));
+      }
       if (data.name === "Runwav") return readBody(await timed(fetch("https://api.dev.runwayml.com/v1/tasks?pageSize=1", { headers: { ...auth, "X-Runway-Version": "2024-11-06" }, signal: AbortSignal.timeout(8000) })));
       const bearer: Record<string, string> = {
         Asana: "https://app.asana.com/api/1.0/users/me",

@@ -268,26 +268,41 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
       return;
     }
     if (mode === "image") {
-      void import("@/lib/lifeos/sync").then(({ makePicture }) => makePicture({ data: { prompt: text, key: data.keys.find((row) => row.name === "xAI")?.value || "" } })).then((result) => {
-        update((prev) => ({
-          ...prev,
-          media: [{ id: newId(), title: `Image · ${text}`, body: result.url || text, at: new Date().toISOString() }, ...prev.media],
-          links: result.url ? [{ id: newId(), label: `Image · ${text.slice(0, 40)}`, href: result.url }, ...prev.links] : prev.links,
-        }));
-        setClip("");
-      setStatus(result.ok ? "Image saved to Media" : "Image brief saved");
-      say(result.ok ? "Image saved to Media." : "Image brief saved. The picture service did not return a file.");
+      void import("./local-agents").then(({ askQwen }) => askQwen(data, text, "image")).then((job) => {
+        if (job.ok && job.url) {
+          update((prev) => ({
+            ...prev,
+            media: [{ id: newId(), title: `Image · ${text}`, body: job.url, at: new Date().toISOString() }, ...prev.media],
+            links: [{ id: newId(), label: `Image · ${text.slice(0, 40)}`, href: job.url }, ...prev.links],
+          }));
+          setStatus("Qwen saved the image");
+          say("Qwen saved the image.");
+          return;
+        }
+        return import("@/lib/lifeos/sync").then(({ makePicture }) => makePicture({ data: { prompt: text, key: data.keys.find((row) => row.name === "xAI")?.value || "" } })).then((result) => {
+          update((prev) => ({
+            ...prev,
+            media: [{ id: newId(), title: `Image · ${text}`, body: result.url || text, at: new Date().toISOString() }, ...prev.media],
+            links: result.url ? [{ id: newId(), label: `Image · ${text.slice(0, 40)}`, href: result.url }, ...prev.links] : prev.links,
+          }));
+          setStatus(result.ok ? "Image saved to Media" : "Image brief saved");
+          say(result.ok ? "Image saved to Media." : "Image brief saved. The picture service did not return a file.");
+        });
       }).catch(() => say("Image brief saved."));
       return;
     }
     if (mode === "video") {
-      setClip(text);
-      update((prev) => ({
-        ...prev,
-        media: [{ id: newId(), title: `Video · ${text.slice(0, 48)}`, body: text, at: new Date().toISOString() }, ...prev.media],
-      }));
-      setStatus("Video search saved");
-      say("Video search saved to Media.");
+      void import("./local-agents").then(({ askQwen }) => askQwen(data, text, "video")).then((job) => {
+        const body = job.ok && job.url ? job.url : text;
+        update((prev) => ({
+          ...prev,
+          media: [{ id: newId(), title: `Video · ${text.slice(0, 48)}`, body, at: new Date().toISOString() }, ...prev.media],
+          links: job.url ? [{ id: newId(), label: `Video · ${text.slice(0, 40)}`, href: job.url }, ...prev.links] : prev.links,
+        }));
+        setClip(job.url || text);
+        setStatus(job.ok && job.url ? "Qwen saved the video" : job.ok ? "Qwen answered" : "Video search saved");
+        say(job.ok && job.url ? "Qwen saved the video." : "Video note saved to Media.");
+      }).catch(() => say("Video note saved."));
       return;
     }
     if (mode === "writer") {
@@ -303,9 +318,16 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
       });
       return;
     }
-    update((prev) => ({ ...prev, notes: [{ id: newId(), title: `Code · ${text.slice(0, 48)}`, body: text }, ...prev.notes] }));
-    setStatus("Code note saved");
-    say("Code note saved.");
+    void import("./local-agents").then(({ askHermes }) => askHermes(data, text)).then((job) => {
+      const body = job.ok && job.text ? job.text : text;
+      update((prev) => ({ ...prev, notes: [{ id: newId(), title: `Code · ${text.slice(0, 48)}`, body }, ...prev.notes] }));
+      setStatus(job.ok ? "Hermes saved the note" : "Code note saved");
+      say(job.ok ? "Hermes saved the note." : "Code note saved.");
+    }).catch(() => {
+      update((prev) => ({ ...prev, notes: [{ id: newId(), title: `Code · ${text.slice(0, 48)}`, body: text }, ...prev.notes] }));
+      setStatus("Code note saved");
+      say("Code note saved.");
+    });
   }
 
   const lines = data.thread.filter((row) => (agent === "Kranos" ? row.platform === "kranos" : row.platform !== "kranos"));

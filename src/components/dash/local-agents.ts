@@ -102,13 +102,38 @@ export async function askQwen(data: Memory, prompt: string, kind: "image" | "vid
   }
 }
 
-export async function pingCli(who: "hermes" | "qwen") {
+export async function pingGateway(url: string) {
+  const root = url.replace(/\/$/, "");
+  if (!/^https?:\/\//i.test(root)) return "";
+  for (const path of ["/health", "/v1/models"]) {
+    try {
+      const response = await fetch(`${root}${path}`, { signal: AbortSignal.timeout(4000) });
+      if (response.ok) return `This computer's gateway answered ${path}.`;
+    } catch { /* the gateway is not on this computer, or it blocked the page */ }
+  }
+  return "";
+}
+
+export async function askQwenChat(data: Memory, prompt: string): Promise<LocalJob> {
+  const root = base(data, "Qwen URL", "http://127.0.0.1:8000");
+  const token = saved(data, "Qwen");
   try {
-    const { runCliAgent } = await import("@/lib/lifeos/cli-agents");
-    const result = await runCliAgent({ data: { who, check: true } });
-    return result.text;
+    const response = await fetch(`${root}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ model: "qwen", messages: [{ role: "user", content: prompt }] }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await readBody(response);
+    const text = chatText(body);
+    if (response.ok && text) return { ok: true, who: "Qwen", text, url: "" };
+  } catch { /* cloud key next */ }
+  try {
+    const { runHostedAgent } = await import("@/lib/lifeos/cli-agents");
+    const cloud = await runHostedAgent({ data: { who: "qwen", prompt, key: token } });
+    return { ok: cloud.ok, who: "Qwen", text: cloud.text, url: cloud.url || "" };
   } catch {
-    return "The app could not start the command.";
+    return { ok: false, who: "Qwen", text: "Qwen did not answer. The local gateway is down and the server could not use the DashScope key.", url: "" };
   }
 }
 

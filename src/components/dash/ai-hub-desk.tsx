@@ -6,7 +6,7 @@ import { defaultVoice, readClones, voiceId, VOICES } from "./voices";
 import { VoiceClone } from "./dock";
 import { AGENT_SKILLS, matchedSkill, runAgentTool, skillBrief } from "./agent-tools";
 import { applyActs, askWithAbilities } from "./erebus-abilities";
-import { pingCli } from "./local-agents";
+import { askHermes, askQwen, askQwenChat, pingGateway } from "./local-agents";
 import { boardFacts } from "./facts";
 
 type Update = (recipe: (prev: Memory) => Memory) => void;
@@ -284,6 +284,21 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
     const row = CATALOG.find((item) => item.id === model);
     const preface = [boardFacts(data, question), history, skillBrief(), matchedSkill(question), prompt, tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
     const call = (nextQuestion: string, sheet: string) => askNyx({ data: { question: nextQuestion, facts: sheet, name, prompt, model, key: keyFor(data, model), mind: mindOf(row?.key || ""), endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "" } });
+    if (name === "Hermes" || name === "Qwen") {
+      const job = name === "Hermes"
+        ? await askHermes(data, question)
+        : /\b(video|clip|animate)\b/i.test(question)
+          ? await askQwen(data, question, "video")
+          : /\b(image|picture|photo|draw)\b/i.test(question)
+            ? await askQwen(data, question, "image")
+            : await askQwenChat(data, question);
+      const reply = [tool?.text, job.text].filter(Boolean).join("\n\n") || "No reply.";
+      const done = [...next, { role: "ai" as const, text: reply }];
+      setLines(done);
+      setNote(job.ok ? name : "Not working");
+      saveChat(update, name, done);
+      return;
+    }
     if (name === "Erebus") {
       try {
         const { askErebus } = await import("@/routes/api/agents/erebus");
@@ -406,6 +421,7 @@ function LocalLink({ name, urlName, fallback, data, update, cli }: { name: strin
   const [url, setUrl] = useState(savedUrl);
   const [key, setKey] = useState("");
   const [note, setNote] = useState("");
+  const [prompt, setPrompt] = useState("");
   function put(label: string, value: string) {
     update((prev) => ({ ...prev, keys: [{ id: newId(), name: label, value }, ...prev.keys.filter((row) => row.name !== label)] }));
   }
@@ -416,7 +432,24 @@ function LocalLink({ name, urlName, fallback, data, update, cli }: { name: strin
       <input className="mt-2 h-8 w-full rounded-full border border-line bg-black/40 px-3 text-sm" placeholder={savedKey ? "Key saved" : "API key if this server requires one"} value={key} onChange={(event) => setKey(event.target.value)} />
       <div className="mt-2 flex gap-3">
         <button type="button" className="quiet is-on" onClick={() => { put(urlName, url.trim()); if (key.trim()) put(name, key.trim()); setNote("Saved."); }}>Save</button>
-        <button type="button" className={`quiet ${note === "Checking the command…" ? "is-busy" : ""}`} aria-busy={note === "Checking the command…"} disabled={note === "Checking the command…"} onClick={() => { setNote("Checking the command…"); void pingCli(cli).then(setNote); }}>Check CLI</button>
+        <button type="button" className={`quiet ${note === "Checking…" ? "is-busy" : ""}`} aria-busy={note === "Checking…"} disabled={note === "Checking…"} onClick={() => {
+          setNote("Checking…");
+          void (async () => {
+            const gateway = await pingGateway(url.trim());
+            const { runHostedAgent } = await import("@/lib/lifeos/cli-agents");
+            const hosted = await runHostedAgent({ data: { who: cli, check: true, key: key.trim() || savedKey, url: url.trim() } }).catch(() => ({ ok: false, text: "The server did not answer." }));
+            setNote([gateway, hosted.text].filter(Boolean).join(" ") || "No gateway and no server key answered.");
+          })();
+        }}>Check</button>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <input className="h-8 min-w-0 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder={cli === "qwen" ? "Ask Qwen" : "Ask Hermes"} value={prompt} onChange={(event) => setPrompt(event.target.value)} />
+        <button type="button" className="quiet is-on" disabled={!prompt.trim()} onClick={() => {
+          const line = prompt.trim();
+          setPrompt("");
+          setNote("Sending…");
+          void (cli === "qwen" ? askQwenChat(data, line) : askHermes(data, line)).then((job) => setNote(job.text || "No reply."));
+        }}>Send</button>
       </div>
       {note ? <p className="mt-2 text-sm text-white/70">{note}</p> : null}
     </div>
