@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { EngineBar } from "./engine-bar";
+import { LucidProjects } from "./lucid-projects";
 import { newId, type Memory } from "./memory";
 
 type Update = (recipe: (prev: Memory) => Memory) => void;
 type ToolId = "content" | "email" | "listings" | "social" | "leads" | "assets";
-type Tab = "find" | "runs" | "tools" | "accounts" | "log";
+type Tab = "find" | "runs" | "tools" | "accounts" | "log" | "projects";
 type Step = { id: string; label: string; owner: "lucid" | "you"; done: boolean; output: string };
 type Idea = { id: string; name: string; summary: string; effort: string; range: string; tools: ToolId[]; account: string; risks: string; steps: Step[] };
 type Run = { id: string; name: string; status: "needs accounts" | "running" | "waiting" | "paused" | "stopped" | "done"; steps: Step[]; earned: string; updated: string };
@@ -21,7 +22,7 @@ const TOOLS: { id: ToolId; label: string; does: string }[] = [
   { id: "leads", label: "Leads", does: "Builds the searches and the reply" },
   { id: "assets", label: "Files", does: "Turns one file into a listing" },
 ];
-const TABS: [Tab, string][] = [["find", "Find"], ["runs", "Runs"], ["tools", "Tool access"], ["accounts", "Accounts"], ["log", "Activity"]];
+const TABS: [Tab, string][] = [["find", "Find"], ["projects", "Projects"], ["runs", "Runs"], ["tools", "Tool access"], ["accounts", "Accounts"], ["log", "Activity"]];
 
 function ideaSet(niche: string, hours: string, face: boolean): Idea[] {
   const topic = niche.trim() || "a subject you can explain without research";
@@ -138,6 +139,7 @@ export function LucidDesk({ data, update }: { data: Memory; update: Update }) {
       <div className="flex flex-wrap gap-3">
         {TABS.map(([id, label]) => <button key={id} type="button" className={`quiet ${tab === id ? "is-on" : ""}`} onClick={() => setTab(id)}>{label}</button>)}
       </div>
+      {tab === "projects" ? <LucidProjects /> : null}
       {tab === "find" ? (
         <section className="grid gap-3">
           <div className="flex flex-wrap gap-2">

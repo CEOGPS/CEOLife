@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { EngineBar } from "./engine-bar";
-import { moneyTips } from "@/lib/lifeos/board";
+import { DailyKind } from "./live-feed";
 import { newId, type Memory } from "./memory";
 import { fmtDate, fmtMoney } from "./format";
 
@@ -418,7 +418,7 @@ export function FinanceDesk({ data, update }: { data: Memory; update: Update }) 
           <div>
             <h1 className="text-2xl">Insights</h1>
             <p className="text-sm text-white/50">Notes from the numbers on this board. Not a trade.</p>
-            {moneyTips(data).map((tip) => <p key={tip} className="mt-3 text-sm">{tip}</p>)}
+            <DailyKind data={data} kind="money" />
             {data.products.map((row) => <p key={row.id} className="mt-2 text-sm text-white/70">{row.name} returns {fmtMoney(row.revenue - row.cost)} on {fmtMoney(row.cost)} cost ({roi(row.cost, row.revenue)}).</p>)}
             <button type="button" className="bg-blue mt-4" onClick={() => {
               setInsight("Reading the figures…");

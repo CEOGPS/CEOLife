@@ -1,4 +1,5 @@
 import worker from "../attachments/working-worker.js";
+import { handleTruth, probeGreen } from "./truth";
 
 function allowedOrigins(env: WorkerEnv) {
   const raw = String(env.CORS_ORIGINS || "https://lifeos.ceogps.com,https://lifeos1.ceogps.com");
@@ -23,9 +24,21 @@ const OAUTH_PATHS = new Set([
 ]);
 
 export default {
+  async scheduled(_event: { cron: string }, env: WorkerEnv, ctx: ExecutionContext) {
+    ctx.waitUntil(probeGreen(env).then((rows) => {
+      console.log(`nightly green probe ${rows.length}`);
+    }).catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : "nightly probe failed");
+    }));
+  },
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext) {
     const url = new URL(request.url);
     const allowed = allowedOrigins(env);
+    const owned = await handleTruth(request, env);
+    if (owned) {
+      if (url.pathname.startsWith("/api/")) return cors(owned, request, allowed);
+      return owned;
+    }
     // Client ids live on lifeos1-oauth. This worker only forwards those paths.
     // The browser still returns to https://lifeos1-api.ceogps.workers.dev/oauth/callback.
     if (OAUTH_PATHS.has(url.pathname) && env.OAUTH) {

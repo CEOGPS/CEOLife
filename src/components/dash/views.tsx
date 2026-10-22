@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, ResponsiveContainer, XAxis } from "recharts";
-import { band, insights, LIFE_HACKS, lifeHacks, moneyTips } from "@/lib/lifeos/board";
+import { band } from "@/lib/lifeos/board";
+import { ActivityFeed, DailyKind } from "./live-feed";
 import { newId, useMemory, type Memory } from "./memory";
 import { WiredPanel } from "./panels";
 import { WeatherClock } from "./weather";
@@ -351,8 +352,8 @@ export function Dashboard() {
             <button type="submit" className="min-h-11 bg-blue px-3 text-sm">Add</button>
           </form>
         </Card>
-        <Card title="AI Money Tips" to="finance">{moneyTips(data).map((tip) => <p key={tip} className="text-sm">{tip}</p>)}</Card>
-        <Card title="Life Hacks">{[...lifeHacks(data), ...LIFE_HACKS.map((row) => `${row.title}. ${row.body}`)].map((tip) => <p key={tip} className="text-sm">{tip}</p>)}</Card>
+        <Card title="AI Money Tips" to="finance"><DailyKind data={data} kind="money" /></Card>
+        <Card title="Life Hacks"><DailyKind data={data} kind="hacks" /></Card>
         <Card title="Leads" to="leads">
           {data.leads.map((row) => <p key={row.id} className="min-h-11 text-sm">{row.name} <span className="text-ember">{row.status}</span></p>)}
         </Card>
@@ -382,7 +383,7 @@ export function Dashboard() {
         <Card title="YouTube Player" to="media">
           <YoutubeBox apiKey={data.keys.find((row) => row.name === "YouTube")?.value || ""} />
         </Card>
-        <Card title="AI Insights" to="finance">{insights(data).map((tip) => <p key={tip} className="text-sm">{tip}</p>)}</Card>
+        <Card title="AI Insights" to="finance"><DailyKind data={data} kind="insights" /></Card>
         <Card title="Music Player" to="music">
           <p className="truncate text-sm">{playing.track?.title || data.tracks[0]?.title || "Nothing playing"}</p>
           <p className="truncate text-[11px] text-white/40">{playing.track?.artist || data.tracks[0]?.artist || "Music keeps playing when you leave this page."}</p>
@@ -492,7 +493,7 @@ export function Dashboard() {
       <div className="mt-2"><Add label="New assignment" onAdd={(task) => update((prev) => ({ ...prev, jobs: [{ id: newId(), agent: "Erebus", task, active: true }, ...prev.jobs] }))} /></div>
     </Card>
     <Card title="Activity Feed">
-      {data.notifs.map((row) => <p key={row.id} className="min-h-11 text-sm">{row.text} <span className="accent-purple">{row.source}</span></p>)}
+      <ActivityFeed />
     </Card>
     </div>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { newId, type EmailCampaign, type EmailDomain, type MailFolder, type MailItem, type Memory } from "./memory";
 import { fmtDate } from "./format";
-import { BOARD_EMAILS } from "@/lib/lifeos/oauth";
+
 
 function plain(value: string) {
   return value.replace(/<[^>]+>/g, " ").replace(/&/g, "&").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
@@ -159,8 +159,12 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
           emailHub: accounts.length ? { ...prev.emailHub, accounts: [...accounts, ...prev.emailHub.accounts] } : prev.emailHub,
         };
       });
-      setBoxes(Array.isArray(result.statuses) ? result.statuses : []);
-      setNote(result.text || (incoming.length ? "Mail pulled." : "No mail came back."));
+      const pulledBoxes = Array.isArray(result.statuses) ? result.statuses : [];
+      const { probeMail } = await import("@/lib/lifeos/truth");
+      const probed = await probeMail();
+      setBoxes(probed.statuses.length ? probed.statuses : pulledBoxes);
+      const saved = probed.error ? ` Saved status did not stick: ${probed.error}` : "";
+      setNote((probed.statuses[0]?.text || result.text || (incoming.length ? "Mail pulled." : "No mail came back.")) + saved);
     } catch {
       setNote("Could not pull mail.");
     } finally { setBusy(""); }
@@ -168,22 +172,18 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
 
   const pulled = useRef(false);
   useEffect(() => {
-    const missing = BOARD_EMAILS.filter((email) => !data.emailHub.accounts.some((row) => row.email.toLowerCase() === email));
-    if (missing.length) {
-      update((prev) => ({
-        ...prev,
-        emailHub: {
-          ...prev.emailHub,
-          accounts: [
-            ...missing.map((email) => ({ id: newId(), email, name: email.split("@")[0], provider: (email.endsWith("@gmail.com") ? "gmail" : email.includes("outlook") || email.includes("hotmail") ? "outlook" : email.includes("yahoo") ? "yahoo" : "imap") as const })),
-            ...prev.emailHub.accounts.filter((row) => !missing.includes(row.email.toLowerCase() as (typeof BOARD_EMAILS)[number])),
-          ],
-        },
-      }));
-    }
     if (pulled.current) return;
     pulled.current = true;
-    void pullMail();
+    void import("@/lib/lifeos/truth").then(({ listChecks }) => listChecks()).then((saved) => {
+      const prior = saved.rows.filter((row) => row.subject.startsWith("mail:")).map((row) => ({
+        email: row.subject.slice(5),
+        ok: row.state === "green",
+        text: row.detail,
+        count: 0,
+      }));
+      if (prior.length) setBoxes(prior);
+      if (saved.error) setNote(saved.error);
+    }).finally(() => { void pullMail(); });
   }, []);
 
   function setHub(recipe: (prev: Memory["emailHub"]) => Memory["emailHub"]) {

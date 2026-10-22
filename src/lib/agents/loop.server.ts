@@ -2,6 +2,7 @@ import { doneAnswer, runPlannerLine, toolLine, type PlannerAct } from "@/compone
 import type { Memory } from "@/components/dash/memory";
 import { chatOllama } from "@/lib/lifeos/ollama";
 import { chatProvider, type ProviderId } from "@/lib/lifeos/providers";
+import { agentToolCatalog, runAgentAct } from "./agent-acts";
 import { memoryBlock, pullErebusMemory, pushErebusMemory, rememberFailure, rememberOrder, type ErebusMemory } from "./memory";
 import { skillBlock, type Skill } from "./skills";
 import { toolList } from "./tools";
@@ -52,11 +53,30 @@ function learn(mem: ErebusMemory, fact: string) {
   return mem;
 }
 
+function erebusPrompt(prompt: string) {
+  const custom = prompt.replace(/use only the facts given\.?/gi, "").replace(/if a fact is missing, say it is not on the board\.?/gi, "").trim();
+  return [
+    "You are Erebus. You run this dashboard. Reason from the question and the tool results. Board facts are context. If a fact is missing, say it is unknown and answer the rest. Do not invent connection statuses, mail counts, balances, or people.",
+    "Kranos manages workers, agents, and Telegram. Hermes and Qwen stay separate tools.",
+    custom,
+  ].filter(Boolean).join("\n");
+}
+
+function nextTool(text: string) {
+  const known = toolLine(text);
+  if (known) return known;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (/^(BROWSER|SITE|SOCIAL|EMAIL|CODE|BLOG|IMAGE|VIDEO|MUSIC):/i.test(line)) return line;
+  }
+  return "";
+}
+
 export async function runErebus(data: ErebusInput) {
   let mem = await pullErebusMemory("Erebus");
   const board = boardOf(data.memory);
   const acts: PlannerAct[] = [];
-  const system = [data.prompt || "You are Erebus. Use only the facts given. If a fact is missing, say it is not on the board.", memoryBlock(mem), skillBlock(data.skills || []), toolList()].filter(Boolean).join("\n\n");
+  const system = [erebusPrompt(data.prompt || ""), memoryBlock(mem), skillBlock(data.skills || []), toolList(), agentToolCatalog()].filter(Boolean).join("\n\n");
   let question = data.question;
   let facts = data.facts;
   let last = { ok: false, text: "", mind: data.mind };
@@ -74,9 +94,9 @@ export async function runErebus(data: ErebusInput) {
     if (!last.text) break;
     const finished = doneAnswer(last.text);
     if (finished) return finish({ ok: true, text: finished, mind: last.mind });
-    const line = toolLine(last.text);
+    const line = nextTool(last.text);
     if (!line) return finish({ ok: last.ok, text: last.text.trim(), mind: last.mind });
-    const act = await runPlannerLine(board, line);
+    const act = (await runAgentAct(line)) || await runPlannerLine(board, line);
     acts.push(act);
     if (act.fact) mem = learn(mem, act.fact);
     facts = `${data.facts}\n\nTool result:\n${act.text}`;

@@ -31,7 +31,7 @@ export const cloudAgent = createServerFn({ method: "POST" })
   }))
   .handler(async ({ data }) => {
     if (!data.question) return { ok: false as const, text: "Nothing to do.", steps: [] as string[] };
-    const system = "You are the LifeOS agent on Cloudflare, working for Erebus. Use only the facts given. To read one public page, reply with exactly FETCH: https://address and nothing else. When you are finished, reply with DONE: and the answer. Never invent names, numbers, or statuses.";
+    const system = "You are the LifeOS agent on Cloudflare, working for Erebus. Reason from the question. Facts are context. If a fact is missing, say it is unknown and answer the rest. To read one public page, reply with exactly FETCH: https://address and nothing else. When you are finished, reply with DONE: and the answer. Do not invent names, numbers, or statuses.";
     let facts = data.facts;
     let question = data.question;
     const steps: string[] = [];

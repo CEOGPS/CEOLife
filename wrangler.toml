@@ -28,3 +28,7 @@ bucket_name = "lifeos-storage"
 [[services]]
 binding = "OAUTH"
 service = "lifeos1-oauth"
+
+# Free Cron Trigger. Re-probes only credentials with status=on.
+[triggers]
+crons = ["0 8 * * *"]

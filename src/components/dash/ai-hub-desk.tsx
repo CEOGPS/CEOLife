@@ -553,8 +553,8 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
       </aside>
       <section className="module-card p-4">
         <EngineBar panel="AI Hub" data={data} update={update} />
-        {section === "erebus" ? <Profile name="Erebus" stamp={stamp} blurb="Coding agent. Builds, edits, and checks the work. Creation tools stay here." data={data} update={update} /> : null}
-        {section === "kranos" ? <Profile name="Kranos" stamp={stamp} blurb="Every other agent reports here. Kranos writes the progress summary and what should change." data={data} update={update} /> : null}
+        {section === "erebus" ? <Profile name="Erebus" stamp={stamp} blurb="Runs the dashboard. Reasons from the question, then uses tools when you approve them." data={data} update={update} /> : null}
+        {section === "kranos" ? <Profile name="Kranos" stamp={stamp} blurb="Manages workers, agents, and Telegram. Writes the progress summary from their reports." data={data} update={update} /> : null}
         {section === "messaging" ? (
           <div>
             <Profile name="Telegram" stamp={stamp} blurb={telegram ? "Bot token is on this machine. It only sends and reads messages." : "No Telegram token on this machine. Settings still save."} data={data} update={update} />
@@ -631,7 +631,7 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
         {section === "hierarchy" ? (
           <div>
             <h1 className="text-2xl">Hierarchy</h1>
-            <p className="mt-1 text-sm text-white/50">Erebus does the code. Everyone else reports to Kranos. Kranos writes one summary: progress, what is stuck, and what could be better.</p>
+            <p className="mt-1 text-sm text-white/50">Erebus runs the dashboard. Kranos manages workers, agents, and Telegram. Hermes and Qwen are separate tools you open on their own tabs.</p>
             <button type="button" className="quiet is-on mt-3" onClick={() => {
               setBriefing(true);
               const facts = laneDigest(data);
@@ -648,8 +648,10 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
               }).catch(() => setBrief(facts)).finally(() => setBriefing(false));
             }}>{briefing ? "Collecting…" : "Collect reports"}</button>
             <pre className="mt-4 whitespace-pre-wrap text-sm text-white/75">{brief || savedBrief || laneDigest(data)}</pre>
-            <p className="mt-4 text-sm">Erebus <span className="text-white/40">code</span></p>
-            <p className="mt-2 pl-4 text-sm">Kranos <span className="text-white/40">collects the reports</span></p>
+            <p className="mt-4 text-sm">Erebus <span className="text-white/40">runs the dashboard</span></p>
+            <p className="mt-2 pl-4 text-sm">Kranos <span className="text-white/40">workers, agents, and Telegram</span></p>
+            <p className="mt-2 text-sm">Hermes <span className="text-white/40">separate tool · files and terminal</span></p>
+            <p className="mt-1 text-sm">Qwen <span className="text-white/40">separate tool · image and video</span></p>
             {STAFF.map((row) => <p key={row.name} className="mt-1 pl-8 text-sm text-white/70">{row.name}<span className="ml-2 text-white/40">{row.role}</span></p>)}
           </div>
         ) : null}

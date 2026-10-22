@@ -278,10 +278,17 @@ export function SearchDesk({ data, update }: { data: Memory; update: Update }) {
         update((prev) => ({ ...prev, query }));
         setNote("Searching…");
         const base = data.keys.find((row) => row.name === "SearXNG")?.value || "http://127.0.0.1:8888";
-        void import("@/lib/lifeos/sync").then(({ lookup }) => lookup({ data: { query, kind, key: data.keys.find((row) => row.name === "Dogpile")?.value || "", base } })).then((result) => {
+        void import("@/lib/lifeos/sync").then(async ({ lookup, reverseImage }) => {
+          if (kind === "image") {
+            const reversed = await reverseImage({ data: { url: query } });
+            setLive(reversed.hits);
+            setNote(reversed.note || (reversed.hits.length ? `${reversed.images.length} image matches.` : "No reverse-image match came back."));
+            return;
+          }
+          const result = await lookup({ data: { query, kind, key: data.keys.find((row) => row.name === "Dogpile")?.value || "", base } });
           setLive(result.hits);
           setNote(result.note || (result.hits.length ? "" : "No live results."));
-        }).catch(() => setNote("Search did not answer."));
+        }).catch((error) => setNote(error instanceof Error ? error.message : "Search did not answer."));
       }}>
         <input className={field} value={q} placeholder={kind === "image" ? "Image URL" : kind === "phone" ? "Phone" : kind === "email" ? "Email" : "Search"} onChange={(event) => setQ(kind === "phone" ? fmtPhone(event.target.value) : event.target.value)} />
         <button type="submit" className={`bg-blue ${note === "Searching…" ? "is-busy" : ""}`} aria-busy={note === "Searching…"} disabled={note === "Searching…"}>Search</button>

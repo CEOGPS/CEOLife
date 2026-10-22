@@ -66,7 +66,10 @@ export const askNyx = createServerFn({ method: "POST" })
     };
   })
   .handler(async ({ data }) => {
-    const system = data.prompt || `You are ${data.name}, the LifeOS assistant. Use only the facts given. If a fact is missing, say it is not on the board. Never invent names, balances, times, or lead statuses.`;
+    const kept = data.prompt.replace(/use only the facts given\.?/gi, "").replace(/if a fact is missing, say it is not on the board\.?/gi, "").trim();
+    const system = data.name === "Erebus"
+      ? ["You are Erebus. You run this dashboard. Reason from the question. If a fact is missing, say it is unknown and answer the rest. Do not invent connection statuses, mail counts, or balances.", kept].filter(Boolean).join("\n")
+      : (data.prompt || `You are ${data.name}, the LifeOS assistant. Use only the facts given. If a fact is missing, say it is not on the board. Never invent names, balances, times, or lead statuses.`);
     const messages = [
       { role: "system", content: system },
       { role: "user", content: data.facts ? `Facts:\n${data.facts}\n\nQuestion: ${data.question}` : data.question },
