@@ -12,6 +12,47 @@ import { YoutubeBox } from "./media-desk";
 import { playCut, stopCut, togglePause, usePlayer } from "./player";
 import { NAV } from "./shell";
 
+function TelegramPanel() {
+  const [lines, setLines] = useState<{ id: string; who: string; text: string; mine: boolean }[]>([]);
+  const [chat, setChat] = useState("");
+  const [text, setText] = useState("");
+  const [note, setNote] = useState("Checking the bot…");
+  function load() {
+    void import("@/lib/lifeos/sync").then(async ({ pullChats, telegramBot }) => {
+      const bot = await telegramBot({ data: { token: "" } });
+      setNote(bot.ok ? `Connected ${bot.bot}` : bot.error);
+      const live = await pullChats({ data: { telegram: "" } }).catch(() => null);
+      const rows = (live?.messages || []).filter((row) => row.platform === "telegram").slice(-8);
+      setLines(rows);
+      const last = [...rows].reverse().find((row) => !row.mine);
+      const id = last?.id.split(":")[1] || "";
+      if (id) setChat(id);
+    }).catch(() => setNote("Telegram did not answer."));
+  }
+  useEffect(() => { load(); }, []);
+  return (
+    <Card title="Telegram">
+      <p className="mb-2 text-xs text-muted">{note}</p>
+      {lines.map((row) => <p key={row.id} className="text-sm"><span className="text-white/45">{row.who}: </span>{row.text}</p>)}
+      {!lines.length ? <p className="text-sm text-muted">No messages yet.</p> : null}
+      <form className="mt-3 flex gap-2" onSubmit={(event) => {
+        event.preventDefault();
+        const line = text.trim();
+        if (!line) return;
+        setNote("Sending…");
+        void import("@/lib/lifeos/sync").then(({ telegramBot }) => telegramBot({ data: { token: "", chat, text: line } })).then((result) => {
+          setNote(result.ok ? "Sent." : result.error);
+          if (result.ok) { setText(""); load(); }
+        });
+      }}>
+        <input className="min-h-11 w-28 rounded-lg border border-line bg-ink px-3 text-sm" placeholder="Chat id" value={chat} onChange={(event) => setChat(event.target.value)} />
+        <input className="min-h-11 min-w-0 flex-1 rounded-lg border border-line bg-ink px-3 text-sm" placeholder="Message" value={text} onChange={(event) => setText(event.target.value)} />
+        <button type="submit" className="min-h-11 bg-blue px-3 text-sm">Send</button>
+      </form>
+    </Card>
+  );
+}
+
 function PageHead({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-3">
@@ -337,6 +378,7 @@ export function Dashboard() {
             </button>
           ))}
         </Card>
+        <TelegramPanel />
         <Card title="YouTube Player" to="media">
           <YoutubeBox apiKey={data.keys.find((row) => row.name === "YouTube")?.value || ""} />
         </Card>

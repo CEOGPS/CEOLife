@@ -22,6 +22,13 @@ const MINDS = [
   { id: "grok", label: "Grok", card: "xAI", model: "grok-4.5" },
 ] as const;
 
+const HANDS = [
+  { id: "off", label: "Erebus" },
+  { id: "hermes", label: "Hermes" },
+  { id: "qwen", label: "Qwen" },
+  { id: "cloud", label: "Cloud" },
+] as const;
+
 function mindCall(data: Memory, mind: (typeof MINDS)[number]["id"]) {
   const row = MINDS.find((item) => item.id === mind) || MINDS[0];
   const nvidia = data.keys.find((item) => item.name === "NVIDIA")?.value || data.keys.find((item) => item.name === "NVIDIA NIM")?.value || "";
@@ -120,6 +127,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
   const [clip, setClip] = useState("");
   const [status, setStatus] = useState("Ready");
   const [mind, setMind] = useState<(typeof MINDS)[number]["id"]>("ollama");
+  const [hand, setHand] = useState<(typeof HANDS)[number]["id"]>("off");
   const [used, setUsed] = useState("Grok");
   const [levels, setLevels] = useState<number[]>(() => Array(28).fill(6));
   const [voice, setVoice] = useState(() => {
@@ -241,12 +249,25 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
       const packed = [facts(data, text), skillBrief(), matchedSkill(text), tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
       const { askNyx } = await import("@/lib/lifeos/sync");
       const turned = await askWithAbilities(data, text, packed, async (question, sheet) => {
+        if (hand === "hermes" || hand === "qwen") {
+          const { askHermes, askQwenChat } = await import("./local-agents");
+          const brief = hand === "hermes"
+            ? `You are Hermes on this computer, working for ${agent}. Do the file, browser, or terminal work, then answer.\n${sheet}\n\n${question}`
+            : `You are Qwen, working for ${agent}. Answer from the facts. If this is a picture or video, describe the file you made.\n${sheet}\n\n${question}`;
+          const job = hand === "hermes" ? await askHermes(data, brief) : await askQwenChat(data, brief);
+          return { ok: job.ok, text: job.text, mind: hand };
+        }
+        if (hand === "cloud") {
+          const { cloudAgent } = await import("@/lib/lifeos/cloud-agent");
+          const result = await cloudAgent({ data: { question, facts: sheet } });
+          return { ok: result.ok, text: result.text, mind: "cloud" };
+        }
         const result = await askNyx({ data: { question, facts: sheet, name: agent, ...mindCall(data, mind) } });
         return result;
       });
       applyActs(update, turned.acts);
       const reply = [tool ? tool.text : "", turned.text].filter(Boolean).join("\n\n") || "None of the models answered. Switch intelligence and try again.";
-      const via = MINDS.find((row) => row.id === turned.mind)?.label || used;
+      const via = HANDS.find((row) => row.id === turned.mind)?.label || MINDS.find((row) => row.id === turned.mind)?.label || used;
       setUsed(via);
       update((prev) => ({ ...prev, thread: [...prev.thread, { id: newId(), who: `${agent} · ${via}`, text: reply, mine: false, platform: tag }] }));
       say(tool?.spoken || turned.text || tool?.text || reply);
@@ -355,9 +376,14 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
         </div>
       ) : null}
       <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1">
-        {MINDS.map((row) => <button key={row.id} type="button" className={`quiet ${mind === row.id ? "is-on" : ""}`} onClick={() => setMind(row.id)}>{row.label}</button>)}
+        {HANDS.map((row) => <button key={row.id} type="button" className={`quiet ${hand === row.id ? "is-on" : ""}`} onClick={() => setHand(row.id)}>{row.label}</button>)}
         <span className="text-xs text-white/45">{used}</span>
       </div>
+      {hand === "off" ? (
+      <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1">
+        {MINDS.map((row) => <button key={row.id} type="button" className={`quiet ${mind === row.id ? "is-on" : ""}`} onClick={() => setMind(row.id)}>{row.label}</button>)}
+      </div>
+      ) : null}
       <div className="az-thread min-h-0 w-full min-w-0 flex-1 overflow-y-auto px-3 py-2 text-sm leading-5">
         {mode === "chat" ? lines.slice(-12).map((row) => <p key={row.id} className={`py-1 ${row.mine ? "text-right" : ""}`}><span className="text-white/45">{row.who}: </span>{row.text}</p>) : null}
         {!lines.length && mode === "chat" ? <p className="text-sm text-white/40">Ask about the board. I only use what is saved.</p> : null}

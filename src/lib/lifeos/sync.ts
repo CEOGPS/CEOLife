@@ -1132,8 +1132,9 @@ export const telegramBot = createServerFn({ method: "POST" })
     text: String(input?.text || "").trim().slice(0, 500),
   }))
   .handler(async ({ data }) => {
-    if (!/^\d+:[A-Za-z0-9_-]+$/.test(data.token)) return { ok: false as const, bot: "", error: "That is not a bot token." };
-    const base = `https://api.telegram.org/bot${data.token}`;
+    const token = data.token || process.env.TELEGRAM_BOT_TOKEN || "";
+    if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) return { ok: false as const, bot: "", error: "No Telegram bot token is saved on the server." };
+    const base = `https://api.telegram.org/bot${token}`;
     if (!data.text) {
       const info = await fetch(`${base}/getMe`);
       const body = await info.json() as { ok?: boolean; result?: { username?: string; first_name?: string }; description?: string };
