@@ -63,6 +63,7 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
   const [note, setNote] = useState("");
   const [accountForm, setAccountForm] = useState({ email: "", name: "", provider: "gmail" as const });
   const [campaign, setCampaign] = useState({ name: "", fromName: "", fromEmail: "", subject: "", body: "", listIds: [] as string[], when: "" });
+  const [boxes, setBoxes] = useState<{ email: string; ok: boolean; text: string; count: number }[]>([]);
   const [busy, setBusy] = useState("");
   const [domainName, setDomainName] = useState("");
   const [selector, setSelector] = useState("lifeos");
@@ -158,6 +159,7 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
           emailHub: accounts.length ? { ...prev.emailHub, accounts: [...accounts, ...prev.emailHub.accounts] } : prev.emailHub,
         };
       });
+      setBoxes(Array.isArray(result.statuses) ? result.statuses : []);
       setNote(result.text || (incoming.length ? "Mail pulled." : "No mail came back."));
     } catch {
       setNote("Could not pull mail.");
@@ -173,7 +175,7 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
         emailHub: {
           ...prev.emailHub,
           accounts: [
-            ...missing.map((email) => ({ id: newId(), email, name: email.split("@")[0], provider: "gmail" as const })),
+            ...missing.map((email) => ({ id: newId(), email, name: email.split("@")[0], provider: (email.endsWith("@gmail.com") ? "gmail" : email.includes("outlook") || email.includes("hotmail") ? "outlook" : email.includes("yahoo") ? "yahoo" : "imap") as const })),
             ...prev.emailHub.accounts.filter((row) => !missing.includes(row.email.toLowerCase() as (typeof BOARD_EMAILS)[number])),
           ],
         },
@@ -275,6 +277,17 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
       {note ? <p className="text-ember text-xs">{note}</p> : null}
 
       {tab === "Inbox" ? (
+        <div className="grid gap-3">
+          <section className="module-card p-3">
+            <p className="text-sm">Nylas</p>
+            {busy === "pull" && !boxes.length ? <p className="mt-2 text-sm text-amber-200">Checking Nylas…</p> : null}
+            {boxes.map((row) => (
+              <p key={row.email || row.text} className={`mt-1 text-sm ${row.ok ? "text-emerald-300" : "text-rose-300"}`}>
+                {row.email || "Nylas"}: {row.text}
+              </p>
+            ))}
+            {!boxes.length && busy !== "pull" ? <p className="mt-2 text-sm text-white/50">Press Pull all three. Each mailbox shows whether Nylas connected.</p> : null}
+          </section>
         <div className="grid min-h-[36rem] gap-3 lg:grid-cols-[12rem_24rem_1fr]">
           <section className="module-card h-fit p-3">
             <p className="text-sm">Accounts</p>
@@ -356,6 +369,7 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
               </div>
             ) : <p className="text-base text-white/45">Select a message, or compose one.</p>}
           </section>
+        </div>
         </div>
       ) : null}
 

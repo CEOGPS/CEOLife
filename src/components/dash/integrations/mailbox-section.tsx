@@ -10,11 +10,12 @@ const LABEL: Record<string, string> = { icloud: "iCloud", google: "Google", micr
 function BoxRow({ box, busy, onTest, onDisconnect, onReconnect }: {
   box: MailboxView;
   busy: boolean;
-  onTest: () => void;
+  onTest: () => Promise<string | void>;
   onDisconnect: () => void;
   onReconnect: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
+  const [detail, setDetail] = useState("");
   const good = box.status === "valid";
   return (
     <li className="rounded-xl border border-white/10 bg-black/20 p-3">
@@ -23,10 +24,11 @@ function BoxRow({ box, busy, onTest, onDisconnect, onReconnect }: {
           <p className="truncate text-sm font-medium text-white"><EmailText value={box.email} /></p>
           <p className="text-xs text-white/50">{LABEL[box.provider] || box.provider || "Mailbox"}{box.createdAt ? ` · added ${timeAgo(box.createdAt)}` : ""}</p>
         </div>
-        <StatusPill tone={good ? "ok" : "error"}>{good ? "Connected" : "Needs reconnecting"}</StatusPill>
+        <StatusPill tone={detail.startsWith("Checking") ? "warn" : detail && !good ? "error" : good ? "ok" : "error"}>{detail.startsWith("Checking") ? "Checking" : good ? "Listed" : "Not working"}</StatusPill>
       </div>
+      {detail ? <p className={`mt-2 text-xs ${detail.startsWith("Checking") ? "text-amber-200" : /connected and valid/i.test(detail) ? "text-emerald-200" : "text-rose-300"}`}>{detail}</p> : <p className="mt-2 text-xs text-amber-200">Listed by Nylas. Press Test now to see if mail can actually be read.</p>}
       <div className="mt-2 flex flex-wrap gap-2">
-        {good ? <Button busy={busy} onClick={onTest} label="Test this mailbox">Test now</Button> : <Button primary busy={busy} onClick={onReconnect} label="Reconnect this mailbox">Reconnect</Button>}
+        {good ? <Button busy={busy} onClick={() => { setDetail("Checking Nylas…"); void onTest().then((text) => setDetail(text || "Nylas did not say what happened.")); }} label="Test this mailbox">Test now</Button> : <Button primary busy={busy} onClick={onReconnect} label="Reconnect this mailbox">Reconnect</Button>}
         {confirm ? (
           <>
             <Button danger busy={busy} onClick={onDisconnect}>Yes, disconnect</Button>
@@ -49,7 +51,7 @@ export function MailboxSection({ mailboxes, note, configured, expected, app, bus
   app?: { clientId: string; hasSecret: boolean };
   busy: Record<string, boolean>;
   onConnect: (email: string) => void;
-  onTest: (box: MailboxView) => void;
+  onTest: (box: MailboxView) => Promise<string | void>;
   onDisconnect: (box: MailboxView) => void;
   onSaveApp: (clientId: string, clientSecret: string) => void;
 }) {

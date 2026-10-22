@@ -13,6 +13,21 @@ export type KeyState = "ok" | "error" | "saved" | "untested" | "empty";
 export type KeyRowModel = KeyService & { value: string; check: CheckView | null; state: KeyState };
 
 const SID_KEY = "lifeos.oauth.sid";
+const CHECKS_KEY = "lifeos.integration.checks";
+
+function readStoredChecks(): Record<string, CheckView> {
+  try {
+    const raw = localStorage.getItem(CHECKS_KEY);
+    const parsed = raw ? JSON.parse(raw) as Record<string, CheckView> : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredChecks(checks: Record<string, CheckView>) {
+  try { localStorage.setItem(CHECKS_KEY, JSON.stringify(checks)); } catch { /* private mode */ }
+}
 
 function tabId() {
   let sid = "";
@@ -94,8 +109,9 @@ export function useIntegrations(args: {
       ]);
       linked = workerRows;
       setLoadError(null);
-      const checks = mergeChecks(checksRef.current, next.checks);
+      const checks = mergeChecks({ ...readStoredChecks(), ...checksRef.current }, next.checks);
       checksRef.current = checks;
+      writeStoredChecks(checks);
       const paint = (row: AccountView) => paintChecked(row, checks[`account:${row.id}`]);
       const merged = linked.length ? {
         ...next,
@@ -170,6 +186,7 @@ export function useIntegrations(args: {
   const keyValue = (name: string) => (dataRef.current.keys.find((row) => row.name === name)?.value || "").trim();
   const putCheck = useCallback((subject: string, check: CheckView, accountId?: string) => {
     checksRef.current = { ...checksRef.current, [subject]: check };
+    writeStoredChecks(checksRef.current);
     setPayload((prev) => {
       if (!prev) return prev;
       return {
@@ -327,14 +344,16 @@ export function useIntegrations(args: {
     flag(box.id, true);
     try {
       const result = await integrationsApi.testMailbox(box.id);
+      putCheck(`mailbox:${box.id}`, { state: result.ok ? "ok" : "error", text: result.text, checkedAt: new Date().toISOString() });
       say(result.ok ? "ok" : "error", result.text);
+      return result.text;
     } catch (error) {
-      say("error", message(error, "The check could not run."));
+      return message(error, "The check could not run.");
     } finally {
       await refresh();
       flag(box.id, false);
     }
-  }, [refresh, say]);
+  }, [putCheck, refresh, say]);
 
   const disconnectMailbox = useCallback(async (box: MailboxView) => {
     flag(box.id, true);

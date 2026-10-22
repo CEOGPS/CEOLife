@@ -565,65 +565,81 @@ export const pullInbox = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const messages: InboxRow[] = [];
     const accounts: { email: string; name: string; provider: "gmail" | "imap" }[] = [];
+    const statuses: { email: string; ok: boolean; text: string; count: number }[] = [];
     const notes: string[] = [];
     const bag = await envBag();
-    const apiKey = (data.nylasKey.startsWith("nyk_") ? data.nylasKey : "") || bag.NYLAS_API_KEY || "";
-    const grants = [...new Set([
-      bag.NYLAS_GRANT_KEY_CEOGPS,
-      bag.NYLAS_GRANT_KEY_CAGEDNREALITY,
-      bag.NYLAS_GRANT_KEY_CHRISGR33NINC,
-      data.nylasKey && !data.nylasKey.startsWith("nyk_") ? data.nylasKey : "",
-    ].map((id) => String(id || "").trim()).filter(Boolean))];
+    const pasted = data.nylasKey.trim();
+    const apiKey = (pasted.startsWith("nyk_") ? pasted : "") || bag.NYLAS_API_KEY || "";
 
     if (apiKey) {
       const headers = { Authorization: `Bearer ${apiKey}`, Accept: "application/json" };
-      let ids = grants;
-      if (!ids.length) {
-        const listed = await fetch("https://api.us.nylas.com/v3/grants?limit=8", { headers });
-        const body = await listed.json() as { data?: { id: string; email?: string }[]; error?: { message?: string } };
-        if (!listed.ok) notes.push(body.error?.message || "Nylas refused the key.");
-        else ids = (body.data || []).map((row) => row.id);
-      }
-      for (const id of ids.slice(0, 6)) {
-        const response = await fetch(`https://api.us.nylas.com/v3/grants/${encodeURIComponent(id)}/messages?limit=20`, { headers });
-        const body = await response.json() as {
-          data?: { id?: string; subject?: string; snippet?: string; date?: number; folders?: string[]; from?: { name?: string; email?: string }[]; to?: { name?: string; email?: string }[] }[];
-          error?: { message?: string };
-        };
-        if (!response.ok) { notes.push(body.error?.message || `Nylas grant ${id.slice(0, 8)} refused.`); continue; }
-        const owner = (body.data || []).map((row) => (row.to || []).map((item) => item.email).find(Boolean) || "").find(Boolean) || "";
-        if (owner) accounts.push({ email: owner, name: owner, provider: "imap" });
-        for (const row of body.data || []) {
-          const from = (row.from || []).map((item) => item.email || item.name || "").filter(Boolean).join(", ");
-          const to = (row.to || []).map((item) => item.email || item.name || "").filter(Boolean).join(", ");
-          messages.push({
-            id: `nylas:${row.id || `${id}:${row.date || row.subject}`}`,
-            title: row.subject || "No subject",
-            body: row.snippet || "",
-            at: row.date ? new Date(row.date * 1000).toISOString() : new Date().toISOString(),
-            folder: nylasFolder(row.folders || []),
-            from,
-            to,
-            starred: (row.folders || []).some((name) => name.toUpperCase().includes("STAR")),
-            account: owner || to || from,
-          });
+      const listed = await fetch("https://api.us.nylas.com/v3/grants?limit=20", { headers });
+      const body = await listed.json() as { data?: { id?: string; email?: string; grant_status?: string }[]; error?: { message?: string } };
+      if (!listed.ok) statuses.push({ email: "", ok: false, text: body.error?.message || `Nylas refused the key (HTTP ${listed.status}).`, count: 0 });
+      else if (!body.data?.length) statuses.push({ email: "", ok: false, text: "Nylas accepted the key. No mailbox is connected.", count: 0 });
+      else {
+        for (const grant of body.data.slice(0, 6)) {
+          const email = (grant.email || "").toLowerCase();
+          const id = grant.id || "";
+          if (grant.grant_status && grant.grant_status !== "valid") {
+            statuses.push({ email, ok: false, text: `Nylas says ${grant.grant_status}. Reconnect this mailbox.`, count: 0 });
+            continue;
+          }
+          if (!id) {
+            statuses.push({ email, ok: false, text: "Nylas returned this mailbox without an id.", count: 0 });
+            continue;
+          }
+          const response = await fetch(`https://api.us.nylas.com/v3/grants/${encodeURIComponent(id)}/messages?limit=20`, { headers });
+          const mail = await response.json() as {
+            data?: { id?: string; subject?: string; snippet?: string; date?: number; folders?: string[]; from?: { name?: string; email?: string }[]; to?: { name?: string; email?: string }[] }[];
+            error?: { message?: string };
+          };
+          if (!response.ok) {
+            statuses.push({ email, ok: false, text: mail.error?.message || `Mail refused (HTTP ${response.status}).`, count: 0 });
+            continue;
+          }
+          const rows = mail.data || [];
+          if (email) accounts.push({ email, name: email, provider: email.endsWith("@gmail.com") ? "gmail" : "imap" });
+          for (const row of rows) {
+            const from = (row.from || []).map((item) => item.email || item.name || "").filter(Boolean).join(", ");
+            const to = (row.to || []).map((item) => item.email || item.name || "").filter(Boolean).join(", ");
+            messages.push({
+              id: `nylas:${row.id || `${id}:${row.date || row.subject}`}`,
+              title: row.subject || "No subject",
+              body: row.snippet || "",
+              at: row.date ? new Date(row.date * 1000).toISOString() : new Date().toISOString(),
+              folder: nylasFolder(row.folders || []),
+              from,
+              to,
+              starred: (row.folders || []).some((name) => name.toUpperCase().includes("STAR")),
+              account: email || to || from,
+            });
+          }
+          statuses.push({ email, ok: true, text: rows.length ? `${rows.length} messages.` : "Connected. The inbox is empty.", count: rows.length });
         }
       }
-      notes.push(ids.length ? `Nylas ${ids.length} mailbox${ids.length === 1 ? "" : "es"}.` : "Nylas key is set, but no grant is connected.");
-    } else notes.push("Nylas key is not on the server.");
+    } else statuses.push({ email: "", ok: false, text: "Nylas key is not on the server.", count: 0 });
+    notes.push(...statuses.map((row) => `${row.email || "Nylas"}: ${row.text}`));
 
     const googleTokens = [...new Set([data.googleToken, ...data.googleTokens].map((item) => item.trim()).filter(Boolean))];
-    if (!googleTokens.length) notes.push("Google is not connected. Connect chrisgr33ninc@gmail.com.");
+    if (!googleTokens.length) {
+      notes.push("Google is not connected. Connect chrisgr33ninc@gmail.com.");
+      statuses.push({ email: "chrisgr33ninc@gmail.com", ok: false, text: "Google is not connected.", count: 0 });
+    }
     for (const googleToken of googleTokens) {
       const headers = { Authorization: `Bearer ${googleToken}` };
       const who = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", { headers });
       const profile = await who.json() as { email?: string; name?: string; error?: { message?: string } };
-      if (!who.ok) notes.push(profile.error?.message || "Google refused the session. Reconnect it in Integrations.");
+      if (!who.ok) {
+        notes.push(profile.error?.message || "Google refused the session. Reconnect it in Integrations.");
+        statuses.push({ email: "Google", ok: false, text: profile.error?.message || "Google refused the session.", count: 0 });
+      }
       else {
         const email = (profile.email || "").toLowerCase();
         const allowed = ["chrisgr33ninc@gmail.com"];
         if (!allowed.includes(email)) {
           notes.push(`Google is signed in as ${profile.email || "another account"}. Use chrisgr33ninc@gmail.com.`);
+          statuses.push({ email: profile.email || "Google", ok: false, text: "Signed in as the wrong Google account.", count: 0 });
         } else {
         if (profile.email) accounts.push({ email: profile.email, name: profile.name || profile.email, provider: "gmail" });
         const list = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20", { headers });
@@ -649,11 +665,13 @@ export const pullInbox = createServerFn({ method: "POST" })
             } satisfies InboxRow;
           }));
           messages.push(...rows.filter((row): row is InboxRow => Boolean(row)));
-          notes.push(`Gmail ${rows.filter(Boolean).length} messages.`);
+          const count = rows.filter(Boolean).length;
+          notes.push(`Gmail ${count} messages.`);
+          statuses.push({ email: profile.email || "Gmail", ok: true, text: count ? `${count} Gmail messages.` : "Connected. The Gmail inbox is empty.", count });
         }
         }
       }
     }
 
-    return { ok: messages.length > 0, text: notes.join(" "), messages, accounts };
+    return { ok: messages.length > 0, text: notes.join(" "), messages, accounts, statuses };
   });

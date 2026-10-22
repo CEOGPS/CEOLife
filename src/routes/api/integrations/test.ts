@@ -73,6 +73,7 @@ export const Route = createFileRoute("/api/integrations/test")({
         if (body.mailbox_id) {
           if (!ctx) return json({ ok: false, text: "Mailboxes are unavailable right now." });
           const { ok, text } = await testMailbox(ctx, String(body.mailbox_id));
+          await recordCheck(ctx.sql, userId, `mailbox:${body.mailbox_id}`, ok ? "ok" : "error", text).catch(() => undefined);
           return json({ ok, text });
         }
 
