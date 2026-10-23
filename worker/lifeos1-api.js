@@ -138,7 +138,7 @@ async function refreshAccessToken(provider, refreshToken, env) {
   if (!tokenUrl || !clientId || !clientSecret) throw new Error(`Missing ${provider} client credentials`);
   const params = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
   const headers = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
-  if (provider === "twitter") {
+  if (provider === "spotify" || provider === "twitter") {
     headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
   } else {
     params.set("client_id", clientId);
@@ -453,7 +453,15 @@ router.get("/callback", async (request, env) => {
   const origin = originFromState(state);
   const back = (params) => Response.redirect(`${origin}/panel/integrations?${new URLSearchParams(params).toString()}`, 302);
   if (error) return back({ oauth_error: url.searchParams.get("error_description") || error });
-  if (!code || !state.includes("|")) return back({ oauth_error: "Missing code or state" });
+  if (!code || !state.includes("|")) {
+    const referer = request.headers.get("referer") || "";
+    const spotify = hinted === "spotify" || /accounts\.spotify\.com/i.test(referer);
+    if (spotify) {
+      const described = url.searchParams.get("error_description") || url.searchParams.get("error") || "Spotify returned no code and no error. Press Connect again.";
+      return back({ oauth_error: described });
+    }
+    return back({ oauth_error: "Missing code or state" });
+  }
   try {
     const pending = await claimState(env, state, hinted);
     if (!pending) throw new Error("Invalid or expired OAuth state");
@@ -639,7 +647,9 @@ async function exchangeCodeForToken(provider, code, redirectUri, env, verifier) 
     params.set("redirect_uri", redirectUri);
     params.set("grant_type", "authorization_code");
     if (verifier) params.set("code_verifier", verifier);
-    if (provider === "twitter") {
+    if (provider === "spotify") {
+      headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
+    } else if (provider === "twitter") {
       headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
       params.set("client_id", clientId);
     } else {

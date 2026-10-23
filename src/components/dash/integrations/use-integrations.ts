@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi, IntegrationsApiError, peekIntegrationsCache } from "@/lib/integrations/client";
 import { PROVIDERS, providerMeta, type AccountView, type CheckView, type IntegrationsPayload, type MailboxView, type ProviderId } from "@/lib/integrations/providers";
-import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, workerLinked } from "@/lib/lifeos/oauth";
+import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, SPOTIFY_CONNECT_URL, workerLinked } from "@/lib/lifeos/oauth";
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
 import { newId, type Memory } from "../memory";
 import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, PUBLIC_TEST, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
@@ -259,7 +259,9 @@ export function useIntegrations(args: {
     flag(`connect:${provider}`, true);
     try {
       let href = "";
-      if (provider !== "nylas") {
+      if (provider === "spotify") {
+        href = SPOTIFY_CONNECT_URL;
+      } else if (provider !== "nylas") {
         if (app?.clientId) await integrationsApi.saveApp(provider, app.clientId, app.clientSecret || "");
         const account = hint || (provider === "google" ? "chrisgr33ninc@gmail.com" : "");
         const url = new URL("/api/oauth/start", window.location.origin);

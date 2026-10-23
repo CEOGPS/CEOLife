@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import type { Sql } from "../db.ts";
 import { decryptText, encryptText } from "./crypto.server.ts";
-import { buildAuthUrl, checkToken, exchangeCode, isConfigured, pkcePair, redirectUri } from "./oauth.server.ts";
+import { buildAuthUrl, checkToken, exchangeCode, isConfigured, pkcePair, redirectUri, refreshAccess } from "./oauth.server.ts";
 import { oauthAttemptCookie, oauthAuthorizeUrl, oauthMissing, oauthSpec, rawParam, readOauthAttempt } from "./oauth-flow.server.ts";
 import { completeCallback, freshAccessToken, loadPayload, removeAccount, removeMailbox, saveExpectedEmails, setPrimary, startFlow, testAccount, testMailbox, type CallbackResult, type Ctx } from "./service.server.ts";
 import { bustMailboxes, listMailboxes, listMailboxesCached, nylasProviderFor } from "./nylas.server.ts";
@@ -135,6 +135,17 @@ describe("code exchange", () => {
     assert.equal(headers.Authorization, `Basic ${btoa("n-id:n-secret")}`);
     assert.equal(headers["Content-Type"], "application/json");
     assert.equal(JSON.parse(String(calls[0].init?.body)).grant_type, "authorization_code");
+  });
+  it("spotify refresh sends Basic and leaves the secret out of the body", async () => {
+    const { f, calls } = mockFetch({ "https://accounts.spotify.com/api/token": () => ({ access_token: "sp-1", expires_in: 3600 }) });
+    await refreshAccess({ id: "spotify", refreshToken: "sp-r", read, f });
+    const body = new URLSearchParams(String(calls[0].init?.body));
+    const headers = calls[0].init?.headers as Record<string, string>;
+    assert.equal(body.get("grant_type"), "refresh_token");
+    assert.equal(body.get("refresh_token"), "sp-r");
+    assert.equal(body.has("client_id"), false);
+    assert.equal(body.has("client_secret"), false);
+    assert.equal(headers.Authorization, `Basic ${btoa("sp-id:sp-secret")}`);
   });
   it("twitter uses Basic auth and sends the PKCE verifier", async () => {
     const { f, calls } = mockFetch({ "https://api.twitter.com/2/oauth2/token": () => ({ access_token: "t-1", refresh_token: "t-r", expires_in: 7200 }) });

@@ -129,7 +129,7 @@ async function refreshAccess(provider: string, refreshToken: string, env: Env) {
   if (!tokenUrl || !clientId || !clientSecret) throw new Error(`Missing ${provider} client credentials on the worker.`);
   const params = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
   const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
-  if (provider === "twitter") headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
+  if (provider === "spotify" || provider === "twitter") headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
   else {
     params.set("client_id", clientId);
     params.set("client_secret", clientSecret);

@@ -128,7 +128,14 @@ export async function workerLinked(): Promise<{ provider: OauthProvider; email: 
     .map((row) => ({ provider: row.provider as OauthProvider, email: row.email || "" }));
 }
 
+/** Spotify Connect and Reconnect always start here. The site then sends the browser to Spotify. */
+export const SPOTIFY_CONNECT_URL = "https://lifeos.ceogps.com/api/oauth/start?provider=spotify";
+
 export async function startOAuth(provider: OauthProvider, email?: string) {
+  if (provider === "spotify") {
+    window.location.assign(SPOTIFY_CONNECT_URL);
+    return;
+  }
   if (provider === "nylas") {
     const { url } = await integrationsApi.start(provider, email, !email);
     window.location.assign(url);

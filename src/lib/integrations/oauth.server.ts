@@ -172,6 +172,7 @@ export const PROVIDER_CONFIG: Record<ProviderId, ProviderConfig> = {
     scopes: ["user-read-email", "user-read-private", "playlist-read-private", "user-library-read", "user-read-recently-played", "user-top-read"],
     scopeSep: " ",
     authExtra: { show_dialog: "true" },
+    basicAuth: true,
     identity: async (token, _raw, f) => {
       const r = await getJson(f, "https://api.spotify.com/v1/me", bearer(token));
       if (!r.ok) throw new Error(`Spotify would not identify this login: ${reason(r.body, r.status)}`);

@@ -181,6 +181,7 @@ export const WORKER_OAUTH = new Set<ProviderId>([
 
 /** Real top-level link. Works without the click handler and escapes a preview frame. */
 export function oauthStartHref(provider: string, account?: string) {
+  if (provider === "spotify") return "https://lifeos.ceogps.com/api/oauth/start?provider=spotify";
   const params = new URLSearchParams();
   params.set("provider", provider);
   const hint = (account || "").trim();

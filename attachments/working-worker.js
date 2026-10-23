@@ -159,7 +159,7 @@ async function refreshAccessToken(provider, refreshToken, env) {
   if (!tokenUrl || !clientId || !clientSecret) throw new Error(`Missing ${provider} client credentials`);
   const params = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
   const headers = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
-  if (provider === "twitter") {
+  if (provider === "spotify" || provider === "twitter") {
     headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
   } else {
     params.set("client_id", clientId);
@@ -483,7 +483,8 @@ router.post("/start", startOauth);
 function escapeHtml(value) {
   return String(value).replace(/&/g, "&" + "amp;").replace(/</g, "&" + "lt;").replace(/>/g, "&" + "gt;").replace(/"/g, "&" + "quot;");
 }
-function resultPage(origin, title, message, saved) {
+const SPOTIFY_ERROR_SCRIPT = "<script>(function(){var h=new URLSearchParams(String(location.hash||\"\").replace(/^#/,\"\"));var s=new URLSearchParams(location.search);var spotify=/accounts\\.spotify\\.com/i.test(document.referrer||\"\")||s.get(\"provider\")===\"spotify\"||h.get(\"provider\")===\"spotify\";if(!spotify)return;var msg=h.get(\"error_description\")||s.get(\"error_description\")||h.get(\"error\")||s.get(\"error\")||\"\";var p=document.querySelector(\"main p\");if(!p)return;if(msg)p.textContent=msg;else if(p.textContent===\"Missing code or state\"||p.textContent===\"The provider came back without a code. Press Connect again.\")p.textContent=\"Spotify returned no code and no error. Press Connect again.\";})();</script>";
+function resultPage(origin, title, message, saved, detail) {
   const back = `${origin}/panel/integrations`;
   const stay = saved ? "<p style=\"margin:0 0 20px\">This connection stays on the account. You do not sign in again to use it.</p>" : "";
   return new Response(`<!doctype html>
@@ -494,6 +495,7 @@ function resultPage(origin, title, message, saved) {
 <p style="margin:0 0 16px;color:#d0d0d0">${escapeHtml(message)}</p>
 ${stay}
 <p style="margin:0"><a href="${escapeHtml(back)}" style="color:#7dd3fc">Return to LifeOS</a></p>
+${detail || ""}
 </main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 async function providerEmail(provider, accessToken) {
@@ -519,9 +521,17 @@ router.get("/callback", async (request, env) => {
   const error = url.searchParams.get("error");
   const hinted = url.searchParams.get("provider") || "";
   const origin = originFromState(state);
-  const done = (title, message, saved) => resultPage(origin, title, message, saved);
+  const done = (title, message, saved, detail) => resultPage(origin, title, message, saved, detail);
   if (error) return done("Not connected", url.searchParams.get("error_description") || error, false);
-  if (!code || !state.includes("|")) return done("Not connected", "The provider came back without a code. Press Connect again.", false);
+  if (!code || !state.includes("|")) {
+    const referer = request.headers.get("referer") || "";
+    const spotify = hinted === "spotify" || /accounts\.spotify\.com/i.test(referer);
+    if (spotify) {
+      const described = rawParam(url.search, "error_description") || rawParam(url.search, "error") || "Spotify returned no code and no error. Press Connect again.";
+      return done("Not connected", described, false, SPOTIFY_ERROR_SCRIPT);
+    }
+    return done("Not connected", "The provider came back without a code. Press Connect again.", false, SPOTIFY_ERROR_SCRIPT);
+  }
   try {
     const pending = await claimState(env, state, hinted);
     if (!pending) throw new Error("That sign-in expired. Press Connect again.");
@@ -724,7 +734,9 @@ async function exchangeCodeForToken(provider, code, redirectUri, env, verifier) 
     params.set("redirect_uri", redirectUri);
     params.set("grant_type", "authorization_code");
     if (verifier) params.set("code_verifier", verifier);
-    if (provider === "twitter") {
+    if (provider === "spotify") {
+      headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
+    } else if (provider === "twitter") {
       headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
       params.set("client_id", clientId);
     } else {
