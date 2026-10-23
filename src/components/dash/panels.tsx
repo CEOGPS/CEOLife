@@ -1029,9 +1029,9 @@ async function grounded(question: string, data: Memory) {
     const result = await askNyx({ data: { question, facts: facts(data) } });
     if (result.ok && result.text) return result.text;
   } catch {
-    /* board-only reply below */
+    return "No model answered. Nothing was filled in from the board.";
   }
-  return "No model reply. The note was saved from what you typed.";
+  return "No model answered. Nothing was filled in from the board.";
 }
 
 export function WiredPanel({ slug, data, update }: { slug: string; data: Memory; update: Update }) {

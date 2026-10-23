@@ -222,6 +222,7 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
   const [points, setPoints] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
   const [note, setNote] = useState("");
+  const [library, setLibrary] = useState<{ title: string; url: string; source: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [job, setJob] = useState("");
   const [engine, setEngine] = useState<"luma" | "wan">("luma");
@@ -248,6 +249,30 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
     const id = newId();
     update((prev) => ({ ...prev, media: [{ id, title: label, body: value, at: new Date().toISOString() }, ...prev.media] }));
     setOpenId(id);
+  }
+
+  async function pullLibrary() {
+    setNote("Pulling connected accounts…");
+    try {
+      const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
+      const { pullCreator } = await import("@/lib/lifeos/sync");
+      const { logFeed } = await import("@/lib/lifeos/truth");
+      const linked = readOauth();
+      const facebook = linked.some((row) => row.provider === "facebook") ? await freshToken("facebook") : "";
+      const github = linked.some((row) => row.provider === "github") ? await freshToken("github") : "";
+      const youtube = data.keys.find((row) => row.name === "YouTube")?.value || "";
+      const youtubeHandle = data.socialAccounts.find((row) => row.id === "youtube")?.handle || "";
+      const result = await pullCreator({ data: { facebook, github, youtube, youtubeHandle } });
+      setLibrary(result.items);
+      const summary = result.note || `${result.items.length} items from connected accounts.`;
+      setNote(summary);
+      void logFeed("creator", result.items.length ? "action" : "error", "Creator pull", summary);
+    } catch (error) {
+      const summary = error instanceof Error ? error.message : "Creator pull did not answer.";
+      setLibrary([]);
+      setNote(summary);
+      void import("@/lib/lifeos/truth").then(({ logFeed }) => logFeed("creator", "error", "Creator pull", summary));
+    }
   }
 
   async function run() {
@@ -323,14 +348,16 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl">Creator</h1>
-          <p className="text-sm text-white/50">Images, 9 second video, and blogs. Music videos are in Music Einstein.</p>
+          <p className="text-sm text-white/50">Pull lists media from the connected GitHub, Facebook, and YouTube accounts.</p>
         </div>
+        <button type="button" className="quiet is-on" onClick={() => void pullLibrary()}>Pull connected accounts</button>
         <div className="flex gap-4">
           {(["image", "video", "animate", "wan", "audio", "write"] as Studio[]).map((name) => (
             <button key={name} type="button" className={`quiet ${studio === name ? "is-on" : ""}`} onClick={() => setStudio(name)}>{name === "wan" ? "Wan" : name[0].toUpperCase() + name.slice(1)}</button>
           ))}
         </div>
       </div>
+      {library.length ? <ul className="module-card p-4 text-sm">{library.map((row) => <li key={row.url} className="py-1"><a className="text-blue-2" href={row.url} target="_blank" rel="noreferrer">{row.title}</a> <span className="text-white/40">{row.source}</span></li>)}</ul> : null}
       <div className="grid gap-3 xl:grid-cols-[22rem_1fr]">
         <section className="module-card p-4">
           <label className="block text-[11px] text-white/45">Title

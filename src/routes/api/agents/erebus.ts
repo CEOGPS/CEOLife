@@ -16,6 +16,7 @@ type ErebusInput = {
   key: string;
   memory: Partial<Memory>;
   skills: Skill[];
+  agent?: string;
 };
 
 function clean(input: ErebusInput) {
@@ -39,6 +40,7 @@ function clean(input: ErebusInput) {
       name: String(skill?.name || "").slice(0, 80),
       text: String(skill?.text || "").slice(0, 800),
     })),
+    agent: ["Erebus", "Kranos", "Hermes", "Qwen"].includes(String(input?.agent || "")) ? String(input?.agent) : "Erebus",
   };
 }
 

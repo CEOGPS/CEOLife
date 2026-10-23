@@ -2,7 +2,8 @@ import { doneAnswer, runPlannerLine, toolLine, type PlannerAct } from "@/compone
 import type { Memory } from "@/components/dash/memory";
 import { chatOllama } from "@/lib/lifeos/ollama";
 import { chatProvider, type ProviderId } from "@/lib/lifeos/providers";
-import { agentToolCatalog, runAgentAct } from "./agent-acts";
+import { agentActLine, agentToolCatalog, runAgentAct } from "./agent-acts";
+import { briefFor, kitLine, planKitLine, type AgentId } from "./kit";
 import { memoryBlock, pullErebusMemory, pushErebusMemory, rememberFailure, rememberOrder, type ErebusMemory } from "./memory";
 import { skillBlock, type Skill } from "./skills";
 import { toolList } from "./tools";
@@ -19,6 +20,7 @@ export type ErebusInput = {
   key: string;
   memory: Partial<Memory>;
   skills: Skill[];
+  agent?: string;
 };
 
 function boardOf(memory: Partial<Memory>): Memory {
@@ -53,36 +55,65 @@ function learn(mem: ErebusMemory, fact: string) {
   return mem;
 }
 
-function erebusPrompt(prompt: string) {
+function namedAgent(name: string): AgentId {
+  if (name === "Kranos" || name === "Hermes" || name === "Qwen") return name;
+  return "Erebus";
+}
+
+function agentPrompt(agent: AgentId, prompt: string) {
   const custom = prompt.replace(/use only the facts given\.?/gi, "").replace(/if a fact is missing, say it is not on the board\.?/gi, "").trim();
-  return [
-    "You are Erebus. You run this dashboard. Reason from the question and the tool results. Board facts are context. If a fact is missing, say it is unknown and answer the rest. Do not invent connection statuses, mail counts, balances, or people.",
-    "Kranos manages workers, agents, and Telegram. Hermes and Qwen stay separate tools.",
-    custom,
-  ].filter(Boolean).join("\n");
+  return [briefFor(agent), custom].filter(Boolean).join("\n");
 }
 
 function nextTool(text: string) {
-  const known = toolLine(text);
-  if (known) return known;
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (/^(BROWSER|SITE|SOCIAL|EMAIL|CODE|BLOG|IMAGE|VIDEO|MUSIC):/i.test(line)) return line;
+  return toolLine(text) || kitLine(text) || agentActLine(text);
+}
+
+async function applyServerKit(line: string): Promise<PlannerAct | null> {
+  const plan = planKitLine(line, false);
+  if (!plan) return null;
+  if (plan.search) return { text: `${plan.text} Emit SEARCH_WEB: ${plan.search}` };
+  if (plan.page) {
+    try {
+      const response = await fetch(plan.page, { headers: { "User-Agent": "LifeOS/1", Accept: "text/html" }, signal: AbortSignal.timeout(8000), redirect: "follow" });
+      const raw = await response.text();
+      const title = raw.match(/<title[^>]*>([^<]*)/i)?.[1]?.trim() || "";
+      return { text: `${plan.text} HTTP ${response.status}. ${title}`.slice(0, 500), hand: plan.hand, handPrompt: plan.handPrompt };
+    } catch (error) {
+      return { text: error instanceof Error ? error.message : "The page did not open." };
+    }
   }
-  return "";
+  if (plan.telegram) {
+    const token = process.env.TELEGRAM_BOT_TOKEN || "";
+    if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) return { text: "No Telegram bot token is on the server. Nothing was sent." };
+    try {
+      const sent = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: plan.telegram.chat, text: plan.telegram.text }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const body = await sent.json() as { ok?: boolean; description?: string };
+      return { text: body.ok ? `Telegram sent to ${plan.telegram.chat}.` : `Telegram did not send. ${body.description || `HTTP ${sent.status}`}` };
+    } catch (error) {
+      return { text: error instanceof Error ? error.message : "Telegram did not answer." };
+    }
+  }
+  return { text: plan.text, hand: plan.hand, handPrompt: plan.handPrompt, noteTitle: plan.noteTitle, noteBody: plan.noteBody };
 }
 
 export async function runErebus(data: ErebusInput) {
-  let mem = await pullErebusMemory("Erebus");
+  const agent = namedAgent(data.agent || "Erebus");
+  let mem = await pullErebusMemory(agent);
   const board = boardOf(data.memory);
   const acts: PlannerAct[] = [];
-  const system = [erebusPrompt(data.prompt || ""), memoryBlock(mem), skillBlock(data.skills || []), toolList(), agentToolCatalog()].filter(Boolean).join("\n\n");
+  const system = [agentPrompt(agent, data.prompt || ""), memoryBlock(mem), skillBlock(data.skills || []), toolList(), agentToolCatalog()].filter(Boolean).join("\n\n");
   let question = data.question;
   let facts = data.facts;
   let last = { ok: false, text: "", mind: data.mind };
   const finish = async (result: { ok: boolean; text: string; mind: string }) => {
     if (!result.ok) mem = rememberFailure(mem, result.text || "The model did not answer.");
-    await pushErebusMemory("Erebus", mem);
+    await pushErebusMemory(agent, mem);
     return { ...result, acts, memory: mem };
   };
   for (let step = 0; step < 3; step += 1) {
@@ -96,8 +127,9 @@ export async function runErebus(data: ErebusInput) {
     if (finished) return finish({ ok: true, text: finished, mind: last.mind });
     const line = nextTool(last.text);
     if (!line) return finish({ ok: last.ok, text: last.text.trim(), mind: last.mind });
-    const act = (await runAgentAct(line)) || await runPlannerLine(board, line);
+    const act = (await applyServerKit(line)) || (await runAgentAct(line)) || await runPlannerLine(board, line);
     acts.push(act);
+    if (act.hand) return finish({ ok: last.ok, text: act.text, mind: last.mind });
     if (act.fact) mem = learn(mem, act.fact);
     facts = `${data.facts}\n\nTool result:\n${act.text}`;
     question = "Continue from that tool result. Emit DONE: and the answer, or one more tool line.";

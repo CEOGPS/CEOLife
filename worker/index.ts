@@ -1,5 +1,5 @@
 import worker from "../attachments/working-worker.js";
-import { handleTruth, probeGreen } from "./truth";
+import { handleTruth, probeFeatures, probeGreen } from "./truth";
 
 function allowedOrigins(env: WorkerEnv) {
   const raw = String(env.CORS_ORIGINS || "https://lifeos.ceogps.com,https://lifeos1.ceogps.com");
@@ -30,6 +30,13 @@ export default {
     }).catch((error: unknown) => {
       console.error(error instanceof Error ? error.message : "nightly probe failed");
     }));
+    if (String(env.FEATURE_PROBE || "") === "1") {
+      ctx.waitUntil(probeFeatures(env).then((rows) => {
+        console.log(`feature probe ${rows.map((row) => `${row.feature}:${row.ok}`).join(" ")}`);
+      }).catch((error: unknown) => {
+        console.error(error instanceof Error ? error.message : "feature probe failed");
+      }));
+    }
   },
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext) {
     const url = new URL(request.url);

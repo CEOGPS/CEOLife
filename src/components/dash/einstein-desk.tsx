@@ -111,6 +111,7 @@ export function EinsteinDesk({ data, update }: { data: Memory; update: Update })
   const [shelf, setShelf] = useState<Shelf>("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  const [tracks, setTracks] = useState<{ title: string; artist: string; url: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [engine, setEngine] = useState<"eleven" | "ace">("eleven");
   const [job, setJob] = useState("");
@@ -191,6 +192,26 @@ export function EinsteinDesk({ data, update }: { data: Memory; update: Update })
     if (result.url) { patch(song.id, { video: result.url }); setVideoJob(""); setStatus("Music video saved. Play it with the song."); return; }
     if (result.id && result.state === "dreaming") { setVideoJob(result.id); setStatus("The picture is rendering. Press Make video again in a moment."); return; }
     setStatus(result.error || "The music video did not start.");
+  }
+
+  async function pullLibrary() {
+    setStatus("Pulling Spotify…");
+    try {
+      const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
+      const { pullSpotifyLibrary } = await import("@/lib/lifeos/sync");
+      const { logFeed } = await import("@/lib/lifeos/truth");
+      const token = readOauth().some((row) => row.provider === "spotify") ? await freshToken("spotify") : "";
+      const result = await pullSpotifyLibrary({ data: { token } });
+      setTracks(result.tracks);
+      const summary = result.note || `${result.tracks.length} tracks from Spotify.`;
+      setStatus(summary);
+      void logFeed("einstein", result.tracks.length ? "action" : "error", "Spotify pull", summary);
+    } catch (error) {
+      const summary = error instanceof Error ? error.message : "Spotify did not answer.";
+      setTracks([]);
+      setStatus(summary);
+      void import("@/lib/lifeos/truth").then(({ logFeed }) => logFeed("einstein", "error", "Spotify pull", summary));
+    }
   }
 
   async function create() {
@@ -370,6 +391,11 @@ export function EinsteinDesk({ data, update }: { data: Memory; update: Update })
         ) : null}
         {view === "library" || view === "search" ? (
           <section className="module-card p-3">
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <button type="button" className="quiet is-on" onClick={() => void pullLibrary()}>Pull Spotify</button>
+              <p className="text-sm text-white/50">{status}</p>
+            </div>
+            {tracks.length ? <ul className="mb-3 text-sm">{tracks.map((row) => <li key={row.url} className="py-1"><a className="text-blue-2" href={row.url} target="_blank" rel="noreferrer">{row.title}</a> <span className="text-white/40">{row.artist}</span></li>)}</ul> : null}
             <div className="mb-2 flex flex-wrap items-center gap-3">
               <input className="h-8 min-w-48 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" value={q} placeholder="Search by song, style, or lyrics" onChange={(event) => setQ(event.target.value)} />
               {(["all", "liked", "public"] as Shelf[]).map((name) => (

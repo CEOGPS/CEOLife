@@ -61,7 +61,16 @@ export type EmailDomain = {
   dmarc: boolean;
   checkedAt: string;
 };
-export type EmailHub = { accounts: EmailAccount[]; lists: EmailList[]; campaigns: EmailCampaign[]; domains: EmailDomain[] };
+export type EmailHub = {
+  accounts: EmailAccount[];
+  lists: EmailList[];
+  campaigns: EmailCampaign[];
+  domains: EmailDomain[];
+  /** Addresses the owner added to the list above Mailboxes. */
+  extraEmails: string[];
+  /** Addresses removed from that list. They stay off it after reload. */
+  hiddenEmails: string[];
+};
 export type ChatLine = { id: string; who: string; text: string; mine: boolean; platform?: string };
 export type SongIdea = { id: string; title: string; note: string; lyrics?: string; liked?: boolean; pub?: boolean; cover?: string; audio?: string; video?: string };
 export type Idea = {
@@ -158,7 +167,7 @@ export function seed(): Memory {
     keys: [],
     facts: [],
     query: "",
-    emailHub: { accounts: [], lists: [], campaigns: [], domains: [] },
+    emailHub: { accounts: [], lists: [], campaigns: [], domains: [], extraEmails: [], hiddenEmails: [] },
     socialAccounts: [],
     socialPosts: [],
     stats: [],
@@ -185,23 +194,54 @@ function mailItem(row: unknown): MailItem | null {
   return { ...base, folder, to: String(r.to || "").slice(0, 120), from: String(r.from || "").slice(0, 120), starred: Boolean(r.starred) };
 }
 
+/** A message the Email desk may show. Inbox rows must come from Nylas or Gmail. Drafts and sent stay. */
+export function keptMail(row: MailItem) {
+  if (row.id.startsWith("nylas:") || row.id.startsWith("gmail:")) return true;
+  return row.folder === "drafts" || row.folder === "sent";
+}
+
+export function addressBook(value: unknown) {
+  const rows = Array.isArray(value) ? value : [];
+  const out: string[] = [];
+  for (const item of rows) {
+    const email = String(item || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || out.includes(email)) continue;
+    out.push(email);
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
+function mergeAddresses(left: string[], right: string[]) {
+  return addressBook([...(left || []), ...(right || [])]);
+}
+
+function mentionsHidden(row: MailItem, hidden: Set<string>) {
+  if (!hidden.size) return false;
+  const blob = `${row.from} ${row.to}`.toLowerCase();
+  for (const email of hidden) if (blob.includes(email)) return true;
+  return false;
+}
+
 function emails(value: unknown) {
   return String(value || "").split(/[\s,;]+/).map((item) => item.trim().toLowerCase()).filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)).slice(0, 500);
 }
 
 function hub(value: unknown): EmailHub {
-  const raw = value && typeof value === "object" ? (value as EmailHub) : { accounts: [], lists: [], campaigns: [], domains: [] };
+  const raw = value && typeof value === "object" ? (value as EmailHub) : { accounts: [], lists: [], campaigns: [], domains: [], extraEmails: [], hiddenEmails: [] };
+  const hiddenEmails = addressBook(raw.hiddenEmails);
+  const hidden = new Set(hiddenEmails);
   const list = <T,>(rows: unknown, map: (row: unknown) => T | null) =>
     Array.isArray(rows) ? rows.map(map).filter((row): row is T => row !== null).slice(0, 100) : [];
   return {
-    accounts: list(raw.accounts, (row) => {
+    accounts: list(raw.accounts, (row): EmailAccount | null => {
       if (!row || typeof row !== "object") return null;
       const r = row as EmailAccount;
-      const provider = r.provider === "outlook" || r.provider === "yahoo" || r.provider === "imap" ? r.provider : "gmail";
+      const provider: EmailAccount["provider"] = r.provider === "outlook" || r.provider === "yahoo" || r.provider === "imap" ? r.provider : "gmail";
       const email = String(r.email || "").slice(0, 120);
       if (!email) return null;
       return { id: String(r.id || id()).slice(0, 40), provider, email, name: String(r.name || email).slice(0, 80) };
-    }),
+    }).filter((row) => !hidden.has(row.email.toLowerCase())),
     lists: list(raw.lists, (row) => {
       if (!row || typeof row !== "object") return null;
       const r = row as EmailList;
@@ -241,6 +281,8 @@ function hub(value: unknown): EmailHub {
       const policy = r.policy === "quarantine" || r.policy === "reject" ? r.policy : "none";
       return { id: String(r.id || id()).slice(0, 40), domain, selector: String(r.selector || "lifeos").slice(0, 40), policy, spf: Boolean(r.spf), dkim: Boolean(r.dkim), dmarc: Boolean(r.dmarc), checkedAt: String(r.checkedAt || "").slice(0, 40) };
     }),
+    extraEmails: addressBook(raw.extraEmails).filter((email) => !hidden.has(email)),
+    hiddenEmails,
   };
 }
 
@@ -253,6 +295,7 @@ export function sanitizeMemory(input: unknown): Memory {
     return keep === "tail" ? rows.slice(-max) : rows.slice(0, max);
   };
   const texts = (value: unknown, max = 12) => (Array.isArray(value) ? value : []).map((item) => String(item || "").trim().slice(0, 160)).slice(0, max);
+  const hiddenMail = new Set(addressBook(raw.emailHub && typeof raw.emailHub === "object" ? (raw.emailHub as EmailHub).hiddenEmails : []));
   return {
     ...board,
     contacts: list(raw.contacts, (row) => {
@@ -300,7 +343,7 @@ export function sanitizeMemory(input: unknown): Memory {
       if (!item) return null;
       return { ...item, body: String((row as Entry).body || "").slice(0, 100_000) };
     }, "head", 500),
-    mail: list(raw.mail, mailItem),
+    mail: list(raw.mail, mailItem).filter((row) => keptMail(row) && !mentionsHidden(row, hiddenMail)),
     thread: list(raw.thread, (row) => {
       if (!row || typeof row !== "object") return null;
       const r = row as ChatLine;
@@ -480,8 +523,18 @@ function unionNotes(local: { id: string; title: string; body: string }[], remote
 }
 
 function takeCloud(current: Memory, incoming: Memory): Memory {
+  const hiddenEmails = mergeAddresses(current.emailHub.hiddenEmails, incoming.emailHub.hiddenEmails);
+  const hidden = new Set(hiddenEmails);
+  const extraEmails = mergeAddresses(current.emailHub.extraEmails, incoming.emailHub.extraEmails).filter((email) => !hidden.has(email));
   return {
     ...incoming,
+    mail: incoming.mail.filter((row) => !mentionsHidden(row, hidden)),
+    emailHub: {
+      ...incoming.emailHub,
+      accounts: incoming.emailHub.accounts.filter((row) => !hidden.has(row.email.toLowerCase())),
+      extraEmails,
+      hiddenEmails,
+    },
     notes: unionNotes(current.notes, incoming.notes),
     jobs: unionById(current.jobs, incoming.jobs),
     keys: current.keys.length ? current.keys : incoming.keys,
@@ -501,6 +554,9 @@ function unionById<T extends { id: string }>(local: T[], remote: T[]) {
 
 function absorb(base: Memory, raw: unknown) {
   const incoming = sanitizeMemory(raw);
+  const hiddenEmails = mergeAddresses(base.emailHub.hiddenEmails, incoming.emailHub.hiddenEmails);
+  const hidden = new Set(hiddenEmails);
+  const extraEmails = mergeAddresses(base.emailHub.extraEmails, incoming.emailHub.extraEmails).filter((email) => !hidden.has(email));
   return {
     ...base,
     logo: base.logo || incoming.logo,
@@ -520,7 +576,7 @@ function absorb(base: Memory, raw: unknown) {
     marketing: unionById(base.marketing, incoming.marketing),
     contacts: unionById(base.contacts, incoming.contacts),
     journal: unionById(base.journal, incoming.journal),
-    mail: unionById(base.mail, incoming.mail),
+    mail: unionById(base.mail, incoming.mail).filter((row) => keptMail(row) && !mentionsHidden(row, hidden)),
     thread: unionById(base.thread, incoming.thread),
     projects: unionById(base.projects, incoming.projects),
     legal: unionById(base.legal, incoming.legal),
@@ -537,10 +593,12 @@ function absorb(base: Memory, raw: unknown) {
     fico: base.fico || incoming.fico,
     vantage: base.vantage || incoming.vantage,
     emailHub: {
-      accounts: unionById(base.emailHub.accounts, incoming.emailHub.accounts),
+      accounts: unionById(base.emailHub.accounts, incoming.emailHub.accounts).filter((row) => !hidden.has(row.email.toLowerCase())),
       lists: unionById(base.emailHub.lists, incoming.emailHub.lists),
       campaigns: unionById(base.emailHub.campaigns, incoming.emailHub.campaigns),
       domains: unionById(base.emailHub.domains, incoming.emailHub.domains),
+      extraEmails,
+      hiddenEmails,
     },
   };
 }

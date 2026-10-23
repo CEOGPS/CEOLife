@@ -4,7 +4,9 @@ import { hubNoteId, newId, useMemory, type Memory } from "./memory";
 import { soundPrefs } from "./sound";
 import { defaultVoice, readClones, VOICES } from "./voices";
 import { boardFacts } from "./facts";
-import { matchedSkill, runAgentTool, skillBrief } from "./agent-tools";
+import { matchedSkill, skillBrief } from "./agent-tools";
+import { hostPrompt } from "@/lib/agents/kit";
+import { runHand, runShared } from "@/lib/agents/kit-run";
 import { applyActs, askWithAbilities, coldLeadNotice } from "./erebus-abilities";
 import { YoutubeBox } from "./media-desk";
 
@@ -233,10 +235,34 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
     const tag = agent === "Kranos" ? "kranos" : "erebus";
     const mine = { id: newId(), who: "You", text, mine: true, platform: tag };
     update((prev) => ({ ...prev, thread: [...prev.thread, mine] }));
+    if (agent === "Erebus" && /^\/telegram\b/i.test(text)) {
+      update((prev) => ({
+        ...prev,
+        thread: [
+          ...prev.thread,
+          { id: newId(), who: "Erebus", text: "Kranos has that Telegram task. It sends only with chat=, text=, and approved=yes. Nothing ran.", mine: false, platform: "erebus" },
+          { id: newId(), who: "Erebus", text: `Telegram task: ${text}`, mine: false, platform: "kranos" },
+        ],
+      }));
+      say("Kranos has that Telegram task. Nothing ran.");
+      setStatus("With Kranos");
+      return;
+    }
     setStatus("Checking tools");
-    void runAgentTool(data, text).then(async (tool) => {
+    void runShared(data, text).then(async (tool) => {
+      if (tool?.hand) {
+        const hosted = await runHand(data, tool);
+        tool = { ...tool, text: [tool.text, hosted].filter(Boolean).join("\n\n") };
+      }
       if (tool?.task) update((prev) => ({ ...prev, tasks: [{ id: newId(), title: tool.task || "", done: false }, ...prev.tasks] }));
       if (tool?.noteTitle) update((prev) => ({ ...prev, notes: [{ id: newId(), title: tool.noteTitle || "Note", body: tool.noteBody || "" }, ...prev.notes] }));
+      const command = /^\/(plugins|plugin|telegram|skill|search|page|apify|contacts|finance|quote|youtube|task|note|csv|check|open)\b/i.test(text);
+      if (command && tool && !tool.play) {
+        update((prev) => ({ ...prev, thread: [...prev.thread, { id: newId(), who: agent, text: tool.text, mine: false, platform: tag }] }));
+        say(tool.spoken || tool.text);
+        setStatus("Tool");
+        return;
+      }
       if (tool?.play) {
         setMode("video");
         setClip(tool.play);
@@ -251,9 +277,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
       const turned = await askWithAbilities(data, text, packed, async (question, sheet) => {
         if (hand === "hermes" || hand === "qwen") {
           const { askHermes, askQwenChat } = await import("./local-agents");
-          const brief = hand === "hermes"
-            ? `You are Hermes on this computer, working for ${agent}. Do the file, browser, or terminal work, then answer.\n${sheet}\n\n${question}`
-            : `You are Qwen, working for ${agent}. Answer from the facts. If this is a picture or video, describe the file you made.\n${sheet}\n\n${question}`;
+          const brief = hostPrompt(hand === "hermes" ? "Hermes" : "Qwen", question, `Working for ${agent}.\n${sheet}`);
           const job = hand === "hermes" ? await askHermes(data, brief) : await askQwenChat(data, brief);
           return { ok: job.ok, text: job.text, mind: hand };
         }
@@ -264,7 +288,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
         }
         const result = await askNyx({ data: { question, facts: sheet, name: agent, ...mindCall(data, mind) } });
         return result;
-      });
+      }, agent);
       applyActs(update, turned.acts);
       const reply = [tool ? tool.text : "", turned.text].filter(Boolean).join("\n\n") || "None of the models answered. Switch intelligence and try again.";
       const via = HANDS.find((row) => row.id === turned.mind)?.label || MINDS.find((row) => row.id === turned.mind)?.label || used;
@@ -273,7 +297,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
       say(tool?.spoken || turned.text || tool?.text || reply);
       setStatus(turned.ok ? `Speaking · ${via}` : tool ? "Tool only" : "No model answered");
     }).catch(() => {
-      const reply = "I only answer from what is saved on the board.";
+      const reply = "No model answered. Nothing was filled in from the board.";
       update((prev) => ({ ...prev, thread: [...prev.thread, { id: newId(), who: agent, text: reply, mine: false, platform: tag }] }));
       say(reply);
     });
@@ -300,30 +324,27 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
           say("Qwen saved the image.");
           return;
         }
-        return import("@/lib/lifeos/sync").then(({ makePicture }) => makePicture({ data: { prompt: text, key: data.keys.find((row) => row.name === "xAI")?.value || "" } })).then((result) => {
-          update((prev) => ({
-            ...prev,
-            media: [{ id: newId(), title: `Image · ${text}`, body: result.url || text, at: new Date().toISOString() }, ...prev.media],
-            links: result.url ? [{ id: newId(), label: `Image · ${text.slice(0, 40)}`, href: result.url }, ...prev.links] : prev.links,
-          }));
-          setStatus(result.ok ? "Image saved to Media" : "Image brief saved");
-          say(result.ok ? "Image saved to Media." : "Image brief saved. The picture service did not return a file.");
-        });
-      }).catch(() => say("Image brief saved."));
+        setStatus("Qwen did not return a file");
+        say("Qwen did not return a file.");
+      }).catch(() => say("Qwen did not return a file."));
       return;
     }
     if (mode === "video") {
       void import("./local-agents").then(({ askQwen }) => askQwen(data, text, "video")).then((job) => {
-        const body = job.ok && job.url ? job.url : text;
+        if (!(job.ok && job.url)) {
+          setStatus("Qwen did not return a file");
+          say("Qwen did not return a file.");
+          return;
+        }
         update((prev) => ({
           ...prev,
-          media: [{ id: newId(), title: `Video · ${text.slice(0, 48)}`, body, at: new Date().toISOString() }, ...prev.media],
-          links: job.url ? [{ id: newId(), label: `Video · ${text.slice(0, 40)}`, href: job.url }, ...prev.links] : prev.links,
+          media: [{ id: newId(), title: `Video · ${text.slice(0, 48)}`, body: job.url, at: new Date().toISOString() }, ...prev.media],
+          links: [{ id: newId(), label: `Video · ${text.slice(0, 40)}`, href: job.url }, ...prev.links],
         }));
-        setClip(job.url || text);
-        setStatus(job.ok && job.url ? "Qwen saved the video" : job.ok ? "Qwen answered" : "Video search saved");
-        say(job.ok && job.url ? "Qwen saved the video." : "Video note saved to Media.");
-      }).catch(() => say("Video note saved."));
+        setClip(job.url);
+        setStatus("Qwen saved the video");
+        say("Qwen saved the video.");
+      }).catch(() => say("Qwen did not return a file."));
       return;
     }
     if (mode === "writer") {
@@ -339,7 +360,7 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
       });
       return;
     }
-    void import("./local-agents").then(({ askHermes }) => askHermes(data, text)).then((job) => {
+    void import("./local-agents").then(({ askHermes }) => askHermes(data, hostPrompt("Hermes", text, matchedSkill(text)))).then((job) => {
       const body = job.ok && job.text ? job.text : text;
       update((prev) => ({ ...prev, notes: [{ id: newId(), title: `Code · ${text.slice(0, 48)}`, body }, ...prev.notes] }));
       setStatus(job.ok ? "Hermes saved the note" : "Code note saved");

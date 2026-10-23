@@ -32,5 +32,9 @@
   "include": [
     "src",
     "server"
+  ],
+  "exclude": [
+    "src/lib/agents/Erebus",
+    "src/components/dash/skills"
   ]
 }

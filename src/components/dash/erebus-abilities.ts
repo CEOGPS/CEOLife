@@ -1,3 +1,6 @@
+import { agentActLine, agentToolCatalog, runAgentAct } from "@/lib/agents/agent-acts";
+import { executeKit, runHand } from "@/lib/agents/kit-run";
+import { kitLine, type AgentId } from "@/lib/agents/kit";
 import type { Lead } from "@/lib/lifeos/board";
 import type { Memory } from "./memory";
 
@@ -13,12 +16,16 @@ export type PlannerAct = {
   lead?: { name: string; status: string; note: string };
   draft?: { to: string; subject: string; body: string };
   notify?: string;
+  hand?: "hermes" | "qwen-image" | "qwen-video" | "qwen-chat";
+  handPrompt?: string;
 };
 
 export function erebusOrders() {
   return [
     "STANDING ORDERS: Dinner at 6:30pm is not moved. Address Chris by first name. Family time wins when it conflicts with a meeting. Do not invent leads, tasks, or numbers that are not on the board.",
     "When you need live data or a board change, emit exactly one tool line and nothing else. When you are finished, emit DONE: and the answer.",
+    "BROWSE_URL, SCRAPE_PAGE, and DRAFT_EMAIL do not run until the person's message contains approved=yes. Do not add approved=yes yourself.",
+    "Telegram tasks are issued by Kranos. Do not emit TELEGRAM.",
     "SEARCH_WEB: query",
     "BROWSE_URL: https://url",
     "READ_LIFEOS: crm | tasks | goals | calendar",
@@ -153,23 +160,35 @@ export function applyActs(update: (recipe: (prev: Memory) => Memory) => void, ac
 type ModelReply = { ok: boolean; text: string; mind?: string };
 
 /** One planner loop: the model may call a tool, then it answers. Stops at two tools. */
-export async function askWithAbilities(data: Memory, question: string, preface: string, call: (question: string, facts: string) => Promise<ModelReply>) {
+export async function askWithAbilities(data: Memory, question: string, preface: string, call: (question: string, facts: string) => Promise<ModelReply>, agent: AgentId = "Erebus") {
   const acts: PlannerAct[] = [];
   let board = data;
   let prompt = question;
-  let facts = `${preface}\n\n${erebusOrders()}`;
+  let facts = `${preface}\n\n${erebusOrders()}\n\n${agentToolCatalog()}`;
   let last: ModelReply = { ok: false, text: "" };
   for (let step = 0; step < 3; step += 1) {
     last = await call(prompt, facts);
     const finished = doneAnswer(last.text || "");
     if (finished) return { text: finished, ok: last.ok, mind: last.mind || "", acts };
-    const line = toolLine(last.text || "");
-    if (!line) return { text: (last.text || "").trim(), ok: last.ok, mind: last.mind || "", acts };
-    const act = await runPlannerLine(board, line);
+    const raw = last.text || "";
+    const line = toolLine(raw) || kitLine(raw) || agentActLine(raw);
+    if (!line) return { text: raw.trim(), ok: last.ok, mind: last.mind || "", acts };
+    const gated = line.match(/^(BROWSE_URL|SCRAPE_PAGE|DRAFT_EMAIL):/i);
+    if (gated && !/\bapproved=yes\b/i.test(question)) {
+      return { text: `Approval required before ${gated[1].toUpperCase()}. Reply approved=yes to run it. Nothing ran.`, ok: true, mind: last.mind || "", acts };
+    }
+    if (agent !== "Kranos" && /^TELEGRAM:/i.test(line)) {
+      return { text: "Kranos issues Telegram tasks. Nothing ran.", ok: true, mind: last.mind || "", acts };
+    }
+    const kit = kitLine(raw) ? await executeKit(data, line, false) : null;
+    const hosted = kit?.hand ? await runHand(data, kit) : "";
+    const act = kit
+      ? { text: [kit.text, hosted].filter(Boolean).join("\n\n"), noteTitle: kit.noteTitle, noteBody: kit.noteBody }
+      : (await runAgentAct(line)) || await runPlannerLine(board, line);
     acts.push(act);
     board = applyLocal(board, act);
     facts = `${preface}\n\nTool result:\n${act.text}`;
-    prompt = "Continue from that tool result. Emit DONE: and the answer, or one more tool line.";
+    prompt = `Continue as ${agent} from that tool result. Emit DONE: and the answer, or one more tool line.`;
   }
   return { text: acts.at(-1)?.text || last.text || "Stopped after two tools.", ok: last.ok, mind: last.mind || "", acts };
 }

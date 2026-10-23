@@ -65,14 +65,16 @@ export function DailyKind({ data, kind }: { data: Memory; kind: "money" | "hacks
 export function ActivityFeed() {
   const [events, setEvents] = useState<FeedRow[]>([]);
   const [error, setError] = useState("");
-  useEffect(() => {
+  function load() {
     void listFeed().then((result) => {
       setEvents(result.events);
       setError(result.error);
     });
-  }, []);
+  }
+  useEffect(() => { load(); }, []);
   return (
     <div>
+      <button type="button" className="quiet mb-2" onClick={load}>Refresh</button>
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}
       {events.map((row) => (
         <p key={row.id} className="min-h-11 text-sm">

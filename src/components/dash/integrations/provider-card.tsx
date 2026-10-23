@@ -10,7 +10,7 @@ const ACCENT: Record<string, string> = {
 };
 
 /** "Which account should this service use?" Shows the choice and lets the owner change it. */
-function ExpectedRow({ expected, busy, onSave, label }: { expected: string; busy: boolean; onSave: (email: string) => void; label: string }) {
+function ExpectedRow({ expected, busy, onSave, label, addresses }: { expected: string; busy: boolean; onSave: (email: string) => void; label: string; addresses: string[] }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(expected);
   const id = `expected-${label.replace(/[^a-z0-9]+/gi, "-")}`;
@@ -37,11 +37,11 @@ function ExpectedRow({ expected, busy, onSave, label }: { expected: string; busy
         placeholder="name@example.com"
         className="w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-sky-300"
       />
-      <div className="flex flex-wrap gap-1.5" aria-label="Your usual addresses">
-        {BOARD_EMAIL_LIST.map((email) => (
+      {addresses.length ? <div className="flex flex-wrap gap-1.5" aria-label="Your usual addresses">
+        {addresses.map((email) => (
           <button key={email} type="button" className="int-chip" aria-pressed={value.toLowerCase() === email} onClick={() => setValue(email)}><EmailText value={email} /></button>
         ))}
-      </div>
+      </div> : null}
       <div className="flex flex-wrap gap-2">
         <Button primary type="submit" busy={busy}>Save</Button>
         {expected ? <Button onClick={() => { onSave(""); setEditing(false); }}>Use any account</Button> : null}
@@ -120,13 +120,14 @@ export function AppFields({ idLabel, secretLabel, clientId, hasSecret, busy, onS
   );
 }
 
-export function ProviderCard({ meta, accounts, expected, configured, app, busy, onTest, onDisconnect, onMakePrimary, onSaveExpected, onSaveApp }: {
+export function ProviderCard({ meta, accounts, expected, configured, app, busy, addresses = BOARD_EMAIL_LIST, onTest, onDisconnect, onMakePrimary, onSaveExpected, onSaveApp }: {
   meta: ProviderMeta;
   accounts: AccountView[];
   expected: string;
   configured: boolean;
   app?: { clientId: string; hasSecret: boolean };
   busy: Record<string, boolean>;
+  addresses?: string[];
   onTest: (account: AccountView) => void;
   onDisconnect: (account: AccountView) => void;
   onMakePrimary: (account: AccountView) => void;
@@ -155,7 +156,7 @@ export function ProviderCard({ meta, accounts, expected, configured, app, busy, 
         <StatusPill tone={tone}>{label}</StatusPill>
       </header>
       <p className="text-sm text-white/65">{meta.blurb}</p>
-      <ExpectedRow expected={expected} busy={Boolean(busy[`expected:${meta.id}`])} onSave={onSaveExpected} label={meta.name} />
+      <ExpectedRow expected={expected} busy={Boolean(busy[`expected:${meta.id}`])} onSave={onSaveExpected} label={meta.name} addresses={addresses} />
       {!accounts.length ? (
         <ul className="flex flex-wrap gap-1.5" aria-label="What it unlocks">
           {meta.gives.map((item) => <li key={item} className="rounded-md bg-white/5 px-2 py-0.5 text-xs text-white/60">{item}</li>)}

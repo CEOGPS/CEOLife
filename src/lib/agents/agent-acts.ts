@@ -2,9 +2,17 @@ import type { PlannerAct } from "@/components/dash/erebus-abilities";
 
 const LINE = /^(BROWSER|SITE|SOCIAL|EMAIL|CODE|BLOG|IMAGE|VIDEO|MUSIC):\s*(.*)$/i;
 
+export function agentActLine(text: string) {
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (LINE.test(line)) return line;
+  }
+  return "";
+}
+
 export function agentToolCatalog() {
   return [
-    "Extra tools. Emit one line and nothing else. Browser, site, social, email, and code wait for approved=yes on that same line.",
+    "Extra tools. Emit one line and nothing else. Browser, site, social, email, code, and plugin sends wait for approved=yes on that same line.",
     "BROWSER: url=https://example.com approved=yes",
     "SITE: path=/panel/home note=what should change approved=yes",
     "SOCIAL: text=the post approved=yes",
@@ -14,7 +22,9 @@ export function agentToolCatalog() {
     "IMAGE: prompt=what to draw approved=yes",
     "VIDEO: prompt=the motion approved=yes",
     "MUSIC: prompt=the song approved=yes",
-    "Hermes is the files and terminal tool. Qwen is the local image and video tool. Name them when that is the right tool. Do not claim they ran unless a tool result says so.",
+    "PLUGIN: slack-platform approved=yes",
+    "TELEGRAM: chat=123 text=hello approved=yes",
+    "Hermes is the files and terminal tool. Qwen is the local image and video tool. Kranos owns Telegram. Name them when that is the right tool. Do not claim they ran unless a tool result says so.",
   ].join("\n");
 }
 

@@ -479,7 +479,7 @@ export function Dashboard() {
         </Card>
         <Card title="Browser" to="omnisearch">
           <Add label="Search the web" onAdd={(query) => update((prev) => ({ ...prev, query }))} />
-          {data.query ? <a className="mt-2 inline-flex min-h-11 items-center text-sm text-blue-2" href={`https://duckduckgo.com/?q=${encodeURIComponent(data.query)}`} target="_blank" rel="noreferrer">Open {data.query}</a> : <p className="text-sm text-muted">Search opens in the browser.</p>}
+          {data.query ? <a className="mt-2 inline-flex max-w-full min-h-11 items-center break-all text-sm text-blue-2" href={`https://duckduckgo.com/?q=${encodeURIComponent(data.query)}`} target="_blank" rel="noreferrer">Open {data.query}</a> : <p className="text-sm text-muted">Search opens in the browser.</p>}
         </Card>
       </div>
     </div>

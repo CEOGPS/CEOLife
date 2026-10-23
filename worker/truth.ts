@@ -256,6 +256,141 @@ export async function probeGreen(env: Env, user?: User) {
   return out;
 }
 
+async function readJson(url: string, headers?: Record<string, string>) {
+  const response = await fetch(url, { headers, signal: AbortSignal.timeout(12000) });
+  const body = await response.json().catch(() => null);
+  return { ok: response.ok, status: response.status, body };
+}
+
+export async function probeFeatures(env: Env) {
+  const listed = await rest(env, "integrations_credentials?status=eq.on&select=id,user_id,oauth_provider,email,oauth_access_token,oauth_refresh_token,oauth_expires_at");
+  if (!listed.ok) throw new Error(`Credentials could not be read (HTTP ${listed.status}).`);
+  const rows = await listed.json() as Cred[];
+  const creds = Array.isArray(rows) ? rows : [];
+  const userId = creds.find((row) => row.user_id)?.user_id || "lifeos-owner";
+  const out: { feature: string; ok: boolean; detail: string }[] = [];
+  const note = async (feature: string, ok: boolean, detail: string) => {
+    const text = clip(detail, 400);
+    out.push({ feature, ok, detail: text });
+    await logActivity(env, userId, feature, ok ? "action" : "error", `${feature} probe`, text);
+  };
+  const tokenFor = (provider: string) => creds.find((row) => String(row.oauth_provider || "").toLowerCase() === provider && row.oauth_access_token)?.oauth_access_token || "";
+
+  const github = tokenFor("github");
+  if (!github) await note("creator", false, "GitHub is not connected.");
+  else {
+    try {
+      const response = await readJson("https://api.github.com/user/repos?per_page=3&sort=updated", { Authorization: `Bearer ${github}`, "User-Agent": "LifeOS", Accept: "application/vnd.github+json" });
+      const body = response.body as { message?: string } | { full_name?: string }[] | null;
+      if (!response.ok) await note("creator", false, `GitHub HTTP ${response.status}: ${body && !Array.isArray(body) && body.message ? body.message : "refused the token."}`);
+      else {
+        const names = Array.isArray(body) ? body.map((row) => row.full_name).filter(Boolean).slice(0, 3) : [];
+        await note("creator", names.length > 0, names.length ? `GitHub repos: ${names.join(", ")}` : "GitHub returned no repositories.");
+      }
+    } catch (error) {
+      await note("creator", false, safeError(error));
+    }
+  }
+
+  const spotify = tokenFor("spotify");
+  if (!spotify) await note("einstein", false, "Spotify is not connected.");
+  else {
+    try {
+      const response = await readJson("https://api.spotify.com/v1/me/top/tracks?limit=5&time_range=short_term", { Authorization: `Bearer ${spotify}`, Accept: "application/json" });
+      const body = response.body as { items?: { name?: string }[]; error?: { message?: string } } | null;
+      if (!response.ok) await note("einstein", false, `Spotify refused the token. HTTP ${response.status}: ${body?.error?.message || "no message."}`);
+      else {
+        const names = (body?.items || []).map((row) => row.name).filter(Boolean).slice(0, 5);
+        await note("einstein", names.length > 0, names.length ? `Spotify tracks: ${names.join(", ")}` : "Spotify returned no tracks.");
+      }
+    } catch (error) {
+      await note("einstein", false, safeError(error));
+    }
+  }
+
+  const facebook = tokenFor("facebook");
+  if (!facebook) await note("social", false, "Facebook is not connected.");
+  else {
+    try {
+      const secret = String(env.FACEBOOK_CLIENT_SECRET || env.META_APP_SECRET || "").trim();
+      if (!secret) await note("social", false, "Facebook Graph requires appsecret_proof and META_APP_SECRET is not on the worker.");
+      else {
+        const proofValue = await proof(facebook, secret);
+        const response = await readJson(`https://graph.facebook.com/v26.0/me/accounts?fields=id,name,fan_count&access_token=${encodeURIComponent(facebook)}&appsecret_proof=${proofValue}`);
+        const body = response.body as { data?: { name?: string; fan_count?: number }[]; error?: { message?: string } } | null;
+        if (!response.ok) await note("social", false, body?.error?.message || `Facebook HTTP ${response.status}.`);
+        else {
+          const pages = body?.data || [];
+          await note("social", pages.length > 0, pages.length ? `Facebook pages: ${pages.map((row) => `${row.name || "page"} ${row.fan_count || 0}`).join(", ")}` : "Facebook returned no pages.");
+        }
+      }
+    } catch (error) {
+      await note("social", false, safeError(error));
+    }
+  }
+
+  const emails = [...new Set(creds.map((row) => String(row.email || "").trim().toLowerCase()).filter((row) => row.includes("@")))];
+  if (!emails.length) await note("omnisearch", false, "No connected email to reverse.");
+  else {
+    const found: string[] = [];
+    const misses: string[] = [];
+    for (const email of emails) {
+      try {
+        const response = await readJson(`https://api.github.com/search/users?q=${encodeURIComponent(`${email} in:email`)}&per_page=3`, { "User-Agent": "LifeOS", Accept: "application/vnd.github+json" });
+        const body = response.body as { items?: { login?: string; html_url?: string }[]; message?: string } | null;
+        if (!response.ok) misses.push(`${email} HTTP ${response.status}: ${body?.message || "GitHub refused the lookup."}`);
+        else {
+          const hits = (body?.items || []).filter((row) => row.html_url).map((row) => row.login).filter(Boolean);
+          if (hits.length) found.push(`${email}: ${hits.join(", ")}`);
+          else misses.push(`${email} returned no GitHub user`);
+        }
+      } catch (error) {
+        misses.push(safeError(error));
+      }
+    }
+    await note("omnisearch", found.length > 0, found.length ? `Reverse email hits: ${found.join(" | ")}` : `Reverse email: ${misses.join(" | ")}`);
+  }
+
+  try {
+    const response = await readJson("https://api.duckduckgo.com/?q=%222025550100%22&format=json&no_redirect=1&no_html=1");
+    const body = response.body as { RelatedTopics?: unknown[]; AbstractText?: string } | null;
+    const topics = Array.isArray(body?.RelatedTopics) ? body.RelatedTopics.length : 0;
+    const abstract = body?.AbstractText || "";
+    if (!response.ok) await note("omnisearch", false, `Reverse phone HTTP ${response.status}.`);
+    else if (topics || abstract) await note("omnisearch", true, `Reverse phone hits: ${topics} topics.${abstract ? ` ${abstract}` : ""}`);
+    else await note("omnisearch", false, "Reverse phone returned no DuckDuckGo hit for 2025550100.");
+  } catch (error) {
+    await note("omnisearch", false, safeError(error));
+  }
+
+  try {
+    const image = "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png";
+    const response = await readJson(`https://saucenao.com/search.php?output_type=2&numres=4&url=${encodeURIComponent(image)}`);
+    const body = response.body as { results?: { header?: { similarity?: string }; data?: { ext_urls?: string[] } }[]; header?: { message?: string } } | null;
+    if (!response.ok) await note("omnisearch", false, `Reverse image HTTP ${response.status}: ${body?.header?.message || "SauceNAO refused the lookup."}`);
+    else {
+      const hits = (body?.results || []).filter((row) => Number(row.header?.similarity || 0) >= 50 && row.data?.ext_urls?.[0]);
+      await note("omnisearch", hits.length > 0, hits.length ? `Reverse image hits: ${hits.length} SauceNAO matches.` : `Reverse image returned no SauceNAO match. ${body?.header?.message || ""}`.trim());
+    }
+  } catch (error) {
+    await note("omnisearch", false, safeError(error));
+  }
+
+  try {
+    const response = await readJson("https://hn.algolia.com/api/v1/search?query=side%20hustle&tags=story&hitsPerPage=5");
+    const body = response.body as { hits?: { title?: string }[] } | null;
+    if (!response.ok) await note("lucid", false, `Lucid search HTTP ${response.status}.`);
+    else {
+      const titles = (body?.hits || []).map((row) => row.title).filter(Boolean).slice(0, 3);
+      await note("lucid", titles.length > 0, titles.length ? `Lucid posts: ${titles.join(" | ")}` : "Lucid search returned no posts.");
+    }
+  } catch (error) {
+    await note("lucid", false, safeError(error));
+  }
+
+  return out;
+}
+
 async function probeNylas(env: Env, user: User) {
   const key = String(env.NYLAS_API_KEY || "").trim();
   const statuses: { email: string; ok: boolean; text: string; count: number }[] = [];
@@ -349,7 +484,7 @@ async function requireOwner(request: Request, env: Env) {
 export async function handleTruth(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/$/, "") || "/";
-  const owned = path.startsWith("/api/checks") || path.startsWith("/api/activity") || path === "/api/mail/probe" || path.startsWith("/api/briefs") || path.startsWith("/api/projects");
+  const owned = path.startsWith("/api/checks") || path.startsWith("/api/activity") || path === "/api/mail/probe" || path.startsWith("/api/briefs") || path.startsWith("/api/projects") || path === "/api/features/probe";
   if (!owned) return null;
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
   try {
@@ -363,6 +498,11 @@ export async function handleTruth(request: Request, env: Env): Promise<Response 
       if (!gate.user) return gate.error as Response;
       const checks = await probeGreen(env, gate.user);
       return json({ checks });
+    }
+    if (path === "/api/features/probe" && request.method === "POST") {
+      const gate = await requireOwner(request, env);
+      if (!gate.user) return gate.error as Response;
+      return json({ results: await probeFeatures(env) });
     }
     if (path === "/api/mail/probe" && request.method === "POST") {
       const gate = await requireOwner(request, env);

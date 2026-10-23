@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { sessionMiddleware } from "./session-middleware";
 import { getSql } from "@/lib/db";
+import { briefFor, type AgentId } from "@/lib/agents/kit";
 import { chatOllama, savedOllama } from "./ollama";
 import { chatProvider, providerFromKey, type ProviderId } from "./providers";
 
@@ -67,8 +68,9 @@ export const askNyx = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const kept = data.prompt.replace(/use only the facts given\.?/gi, "").replace(/if a fact is missing, say it is not on the board\.?/gi, "").trim();
-    const system = data.name === "Erebus"
-      ? ["You are Erebus. You run this dashboard. Reason from the question. If a fact is missing, say it is unknown and answer the rest. Do not invent connection statuses, mail counts, or balances.", kept].filter(Boolean).join("\n")
+    const shared = data.name === "Erebus" || data.name === "Kranos" || data.name === "Hermes" || data.name === "Qwen";
+    const system = shared
+      ? [briefFor(data.name as AgentId), kept].filter(Boolean).join("\n").slice(0, 6000)
       : (data.prompt || `You are ${data.name}, the LifeOS assistant. Use only the facts given. If a fact is missing, say it is not on the board. Never invent names, balances, times, or lead statuses.`);
     const messages = [
       { role: "system", content: system },
@@ -847,7 +849,6 @@ export const lookup = createServerFn({ method: "POST" })
     if (data.kind === "phone") {
       const pretty = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits.length > 10 ? digits.slice(-10) : digits;
       const shown = pretty.length === 10 ? `(${pretty.slice(0, 3)}) ${pretty.slice(3, 6)}-${pretty.slice(6)}` : query;
-      groups.unshift([{ title: shown, url: `tel:${pretty}`, snippet: "Number" }]);
       groups.push(await duckResults(`"${shown}"`, 3));
       groups.push(await duckResults(`"${pretty}" site:linkedin.com`, 2));
     }
@@ -950,12 +951,9 @@ export const reverseImage = createServerFn({ method: "POST" })
         visualMatches(`https://yandex.com/images/search?rpt=imageview&url=${encoded}`, "Yandex", data.url),
       ]);
       images.push(...bing, ...yandex);
-      hits.push(
-        { title: "Google Lens", url: `https://lens.google.com/uploadbyurl?url=${encoded}`, snippet: "Open reverse search" },
-        { title: "Bing", url: `https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:${encoded}`, snippet: "Open reverse search" },
-        { title: "Yandex", url: `https://yandex.com/images/search?rpt=imageview&url=${encoded}`, snippet: "Open reverse search" },
-        { title: "TinEye", url: `https://tineye.com/search?url=${encoded}`, snippet: "Open reverse search" },
-      );
+      for (const image of [...bing, ...yandex]) {
+        if (/^https:\/\//i.test(image.url)) hits.push({ title: image.title, url: image.url, snippet: `${image.title} visual match` });
+      }
     }
     const sauce = data.url
       ? await readJson<{ results?: { header?: { similarity?: string; thumbnail?: string }; data?: { title?: string; source?: string; ext_urls?: string[] } }[] }>(`https://saucenao.com/search.php?output_type=2&numres=6&url=${encodeURIComponent(data.url)}`)
@@ -989,7 +987,12 @@ export const reverseImage = createServerFn({ method: "POST" })
         if (row.image) images.push({ title: row.filename || "Scene", url: row.video, thumb: row.image });
       }
     }
-    return { hits, images, note: images.length ? "" : data.url ? "No matching pictures were returned. The Lens, Bing, Yandex, and TinEye links still open that image." : "No match on the upload. Paste a public image URL to also search Bing and Yandex." };
+    const note = hits.length
+      ? ""
+      : data.url
+        ? "No reverse-image hit came back from Bing, Yandex, SauceNAO, or trace.moe."
+        : "No reverse-image hit came back from SauceNAO for that upload.";
+    return { hits, images, note };
   });
 
 export const findIdeas = createServerFn({ method: "GET" })
@@ -1190,7 +1193,7 @@ export const pullChats = createServerFn({ method: "POST" })
 
     if (data.facebook) {
       const headers = { Authorization: `Bearer ${data.facebook}` };
-      const pages = await fetch("https://graph.facebook.com/v23.0/me/accounts?fields=id,name,access_token", { headers });
+      const pages = await fetch("https://graph.facebook.com/v26.0/me/accounts?fields=id,name,access_token", { headers });
       const listed = await pages.json() as { data?: { id: string; name?: string; access_token?: string }[]; error?: { message?: string } };
       if (!pages.ok) notes.push(listed.error?.message || "Reconnect Facebook so Messenger can be read.");
       else if (!listed.data?.length) notes.push("Facebook is connected, but no Page was returned.");
@@ -1199,7 +1202,7 @@ export const pullChats = createServerFn({ method: "POST" })
         for (const page of listed.data.slice(0, 3)) {
           if (!page.access_token) continue;
           for (const kind of ["messenger", "instagram"] as const) {
-            const url = `https://graph.facebook.com/v23.0/${page.id}/conversations?platform=${kind === "instagram" ? "instagram" : "messenger"}&fields=participants,messages.limit(8){id,message,from,created_time}&access_token=${encodeURIComponent(page.access_token)}`;
+            const url = `https://graph.facebook.com/v26.0/${page.id}/conversations?platform=${kind === "instagram" ? "instagram" : "messenger"}&fields=participants,messages.limit(8){id,message,from,created_time}&access_token=${encodeURIComponent(page.access_token)}`;
             const response = await fetch(url);
             const body = await response.json() as { data?: { participants?: { data?: { name?: string; id?: string }[] }; messages?: { data?: { id?: string; message?: string; from?: { name?: string; id?: string } }[] } }[]; error?: { message?: string } };
             if (!response.ok) { notes.push(body.error?.message || `${kind} refused the Page token.`); continue; }
@@ -1295,11 +1298,11 @@ export const sendChat = createServerFn({ method: "POST" })
     if (data.platform === "messenger" || data.platform === "instagram") {
       const [, pageId, recipient] = data.route.split(":");
       if (!data.facebook || !pageId || !recipient) return { ok: false as const, error: "Reconnect Facebook, then open a thread that already exists." };
-      const pages = await fetch("https://graph.facebook.com/v23.0/me/accounts?fields=id,access_token", { headers: { Authorization: `Bearer ${data.facebook}` } });
+      const pages = await fetch("https://graph.facebook.com/v26.0/me/accounts?fields=id,access_token", { headers: { Authorization: `Bearer ${data.facebook}` } });
       const listed = await pages.json() as { data?: { id: string; access_token?: string }[]; error?: { message?: string } };
       const page = listed.data?.find((row) => row.id === pageId);
       if (!page?.access_token) return { ok: false as const, error: listed.error?.message || "That Page token is missing." };
-      const sent = await fetch(`https://graph.facebook.com/v23.0/${page.id}/messages?access_token=${encodeURIComponent(page.access_token)}`, {
+      const sent = await fetch(`https://graph.facebook.com/v26.0/${page.id}/messages?access_token=${encodeURIComponent(page.access_token)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ recipient: { id: recipient }, message: { text: data.text }, messaging_type: "RESPONSE" }),
@@ -1415,6 +1418,101 @@ export const youtubeSearch = createServerFn({ method: "POST" })
     return { videos: [] as { id: string; title: string; author: string }[], error: "YouTube search did not answer." };
   });
 
+export const pullCreator = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
+  .validator((input: { facebook?: string; github?: string; youtube?: string; youtubeHandle?: string }) => ({
+    facebook: String(input?.facebook || "").slice(0, 4000),
+    github: String(input?.github || "").slice(0, 4000),
+    youtube: String(input?.youtube || "").slice(0, 200),
+    youtubeHandle: String(input?.youtubeHandle || "").replace(/^@/, "").slice(0, 60),
+  }))
+  .handler(async ({ data }) => {
+    const items: { title: string; url: string; source: string }[] = [];
+    const notes: string[] = [];
+    if (!data.github) notes.push("GitHub is not connected.");
+    else {
+      try {
+        const response = await fetch("https://api.github.com/user/repos?per_page=8&sort=updated", {
+          headers: { Authorization: `Bearer ${data.github}`, "User-Agent": "LifeOS", Accept: "application/vnd.github+json" },
+          signal: AbortSignal.timeout(8000),
+        });
+        const body = await response.json() as { message?: string } | { full_name?: string; html_url?: string }[];
+        if (!response.ok) notes.push(`GitHub HTTP ${response.status}: ${!Array.isArray(body) && body.message ? body.message : "refused the token."}`);
+        else if (Array.isArray(body)) {
+          for (const row of body) {
+            if (row.full_name && row.html_url) items.push({ title: row.full_name, url: row.html_url, source: "GitHub" });
+          }
+          if (!body.length) notes.push("GitHub returned no repositories.");
+        }
+      } catch {
+        notes.push("GitHub did not answer.");
+      }
+    }
+    if (!data.facebook) notes.push("Facebook is not connected.");
+    else {
+      try {
+        const pages = await fetch(`https://graph.facebook.com/v26.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(data.facebook)}`, { signal: AbortSignal.timeout(8000) });
+        const body = await pages.json() as { data?: { id?: string; name?: string; access_token?: string }[]; error?: { message?: string } };
+        if (!pages.ok) notes.push(body.error?.message || `Facebook HTTP ${pages.status}.`);
+        const page = body.data?.[0];
+        if (page?.id) {
+          const posts = await fetch(`https://graph.facebook.com/v26.0/${page.id}/posts?fields=message,permalink_url&limit=5&access_token=${encodeURIComponent(page.access_token || data.facebook)}`, { signal: AbortSignal.timeout(8000) });
+          const feed = await posts.json() as { data?: { message?: string; permalink_url?: string }[]; error?: { message?: string } };
+          if (!posts.ok) notes.push(feed.error?.message || `Facebook posts HTTP ${posts.status}.`);
+          for (const row of feed.data || []) {
+            if (row.permalink_url) items.push({ title: (row.message || page.name || "Facebook post").slice(0, 140), url: row.permalink_url, source: "Facebook" });
+          }
+        }
+      } catch {
+        notes.push("Facebook did not answer.");
+      }
+    }
+    const youtubeKey = data.youtube || process.env.YOUTUBE_DATA_V3_API_KEY || process.env.YOUTUBE_API_KEY || "";
+    if (youtubeKey && data.youtubeHandle && data.youtubeHandle !== "yourhandle") {
+      try {
+        const channel = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&forHandle=${encodeURIComponent(data.youtubeHandle)}&key=${encodeURIComponent(youtubeKey)}`, { signal: AbortSignal.timeout(8000) });
+        const found = await channel.json() as { items?: { contentDetails?: { relatedPlaylists?: { uploads?: string } } }[]; error?: { message?: string } };
+        const uploads = found.items?.[0]?.contentDetails?.relatedPlaylists?.uploads || "";
+        if (!channel.ok || !uploads) notes.push(found.error?.message || "YouTube channel was not found.");
+        else {
+          const listed = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=5&playlistId=${encodeURIComponent(uploads)}&key=${encodeURIComponent(youtubeKey)}`, { signal: AbortSignal.timeout(8000) });
+          const videos = await listed.json() as { items?: { snippet?: { title?: string; resourceId?: { videoId?: string } } }[]; error?: { message?: string } };
+          if (!listed.ok) notes.push(videos.error?.message || `YouTube HTTP ${listed.status}.`);
+          for (const row of videos.items || []) {
+            const id = row.snippet?.resourceId?.videoId || "";
+            if (id) items.push({ title: row.snippet?.title || "Video", url: `https://www.youtube.com/watch?v=${id}`, source: "YouTube" });
+          }
+        }
+      } catch {
+        notes.push("YouTube did not answer.");
+      }
+    }
+    return { items, note: items.length ? "" : notes.join(" ") || "No media came back from the connected accounts." };
+  });
+
+export const pullSpotifyLibrary = createServerFn({ method: "POST" })
+  .middleware([sessionMiddleware])
+  .validator((input: { token?: string }) => ({ token: String(input?.token || "").slice(0, 4000) }))
+  .handler(async ({ data }) => {
+    if (!data.token) return { tracks: [] as { title: string; artist: string; url: string }[], note: "Spotify is not connected." };
+    try {
+      const response = await fetch("https://api.spotify.com/v1/me/top/tracks?limit=8&time_range=short_term", {
+        headers: { Authorization: `Bearer ${data.token}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(8000),
+      });
+      const body = await response.json() as { items?: { name?: string; external_urls?: { spotify?: string }; artists?: { name?: string }[] }[]; error?: { message?: string; status?: number } };
+      if (!response.ok) return { tracks: [] as { title: string; artist: string; url: string }[], note: `Spotify refused the token. HTTP ${response.status}: ${body.error?.message || "no message."}` };
+      const tracks = (body.items || []).map((row) => ({
+        title: row.name || "Track",
+        artist: (row.artists || []).map((artist) => artist.name || "").filter(Boolean).join(", "),
+        url: row.external_urls?.spotify || "",
+      })).filter((row) => row.url);
+      return { tracks, note: tracks.length ? "" : "Spotify returned no tracks." };
+    } catch {
+      return { tracks: [] as { title: string; artist: string; url: string }[], note: "Spotify did not answer." };
+    }
+  });
+
 export const pullSocial = createServerFn({ method: "POST" })
   .middleware([sessionMiddleware])
   .validator((input: { facebook?: string; youtube?: string; youtubeHandle?: string; reddit?: string; x?: string; linkedin?: string; tiktok?: string }) => ({
@@ -1431,13 +1529,13 @@ export const pullSocial = createServerFn({ method: "POST" })
     const notes: string[] = [];
     if (data.facebook) {
       try {
-        const pages = await fetch(`https://graph.facebook.com/v23.0/me/accounts?fields=id,name,fan_count,followers_count,access_token&access_token=${encodeURIComponent(data.facebook)}`, { signal: AbortSignal.timeout(8000) });
+        const pages = await fetch(`https://graph.facebook.com/v26.0/me/accounts?fields=id,name,fan_count,followers_count,access_token&access_token=${encodeURIComponent(data.facebook)}`, { signal: AbortSignal.timeout(8000) });
         const body = await pages.json() as { data?: { id?: string; name?: string; fan_count?: number; followers_count?: number; access_token?: string }[]; error?: { message?: string } };
         if (!pages.ok) notes.push(body.error?.message || "Facebook did not return pages.");
         const page = body.data?.[0];
         if (page?.id) {
           rows.push({ id: "facebook", handle: page.name || "Facebook", followers: Number(page.followers_count || page.fan_count) || 0, following: 0, likes: Number(page.fan_count) || 0, comments: 0, views: 0 });
-          const ig = await fetch(`https://graph.facebook.com/v23.0/${page.id}?fields=instagram_business_account{username,followers_count,follows_count,media_count}&access_token=${encodeURIComponent(page.access_token || data.facebook)}`, { signal: AbortSignal.timeout(8000) });
+          const ig = await fetch(`https://graph.facebook.com/v26.0/${page.id}?fields=instagram_business_account{username,followers_count,follows_count,media_count}&access_token=${encodeURIComponent(page.access_token || data.facebook)}`, { signal: AbortSignal.timeout(8000) });
           const instagram = await ig.json() as { instagram_business_account?: { username?: string; followers_count?: number; follows_count?: number; media_count?: number } };
           const account = instagram.instagram_business_account;
           if (account) rows.push({ id: "instagram", handle: account.username ? `@${account.username}` : "Instagram", followers: Number(account.followers_count) || 0, following: Number(account.follows_count) || 0, likes: 0, comments: 0, views: Number(account.media_count) || 0 });
@@ -1527,13 +1625,13 @@ export const publishSocial = createServerFn({ method: "POST" })
     if ((want.has("facebook") || want.has("instagram")) && !data.facebook) notes.push("Reconnect Facebook in Integrations. Posting needs a fresh connect.");
     if ((want.has("facebook") || want.has("instagram")) && data.facebook) {
       try {
-        const pages = await fetch(`https://graph.facebook.com/v23.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(data.facebook)}`, { signal: AbortSignal.timeout(8000) });
+        const pages = await fetch(`https://graph.facebook.com/v26.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(data.facebook)}`, { signal: AbortSignal.timeout(8000) });
         const body = await pages.json() as { data?: { id?: string; name?: string; access_token?: string }[]; error?: { message?: string } };
         const page = body.data?.find((row) => row.id && row.access_token);
         if (!pages.ok || !page) notes.push(body.error?.message || "No Facebook page is on this login.");
         else {
           if (want.has("facebook")) {
-            const posted = await fetch(`https://graph.facebook.com/v23.0/${page.id}/feed`, {
+            const posted = await fetch(`https://graph.facebook.com/v26.0/${page.id}/feed`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ message: data.text, access_token: page.access_token }),
@@ -1544,13 +1642,13 @@ export const publishSocial = createServerFn({ method: "POST" })
             else notes.push(result.error?.message || "Facebook refused the post.");
           }
           if (want.has("instagram")) {
-            const lookup = await fetch(`https://graph.facebook.com/v23.0/${page.id}?fields=instagram_business_account&access_token=${encodeURIComponent(page.access_token || "")}`, { signal: AbortSignal.timeout(8000) });
+            const lookup = await fetch(`https://graph.facebook.com/v26.0/${page.id}?fields=instagram_business_account&access_token=${encodeURIComponent(page.access_token || "")}`, { signal: AbortSignal.timeout(8000) });
             const instagram = await lookup.json() as { instagram_business_account?: { id?: string }; error?: { message?: string } };
             const igId = instagram.instagram_business_account?.id;
             if (!igId) notes.push(instagram.error?.message || "That Facebook page has no Instagram account.");
             else if (!/^https?:\/\//i.test(data.image)) notes.push("Instagram needs a public image URL.");
             else {
-              const container = await fetch(`https://graph.facebook.com/v23.0/${igId}/media`, {
+              const container = await fetch(`https://graph.facebook.com/v26.0/${igId}/media`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ image_url: data.image, caption: data.text, access_token: page.access_token }),
@@ -1559,7 +1657,7 @@ export const publishSocial = createServerFn({ method: "POST" })
               const made = await container.json() as { id?: string; error?: { message?: string } };
               if (!container.ok || !made.id) notes.push(made.error?.message || "Instagram did not take the image.");
               else {
-                const live = await fetch(`https://graph.facebook.com/v23.0/${igId}/media_publish`, {
+                const live = await fetch(`https://graph.facebook.com/v26.0/${igId}/media_publish`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ creation_id: made.id, access_token: page.access_token }),
@@ -1725,25 +1823,25 @@ export const pullAnalytics = createServerFn({ method: "POST" })
     }
     if (data.facebook) {
       try {
-        const pages = await fetch(`https://graph.facebook.com/v23.0/me/accounts?fields=id,name,fan_count,followers_count,access_token&access_token=${encodeURIComponent(data.facebook)}`, { signal: AbortSignal.timeout(8000) });
+        const pages = await fetch(`https://graph.facebook.com/v26.0/me/accounts?fields=id,name,fan_count,followers_count,access_token&access_token=${encodeURIComponent(data.facebook)}`, { signal: AbortSignal.timeout(8000) });
         const body = await pages.json() as { data?: { id?: string; fan_count?: number; followers_count?: number; access_token?: string }[]; error?: { message?: string } };
         const page = body.data?.[0];
         if (!page?.id) notes.push(body.error?.message || "No Facebook page on this login.");
         else {
           rows.push({ id: "fb-followers", label: "Facebook followers", value: Number(page.followers_count || page.fan_count) || 0, points: [] });
-          const insight = await fetch(`https://graph.facebook.com/v23.0/${page.id}/insights?metric=page_impressions,page_post_engagements&period=day&access_token=${encodeURIComponent(page.access_token || data.facebook)}`, { signal: AbortSignal.timeout(8000) });
+          const insight = await fetch(`https://graph.facebook.com/v26.0/${page.id}/insights?metric=page_impressions,page_post_engagements&period=day&access_token=${encodeURIComponent(page.access_token || data.facebook)}`, { signal: AbortSignal.timeout(8000) });
           const stats = await insight.json() as { data?: { name?: string; values?: { value?: number }[] }[] };
           for (const metric of stats.data || []) {
             const points = (metric.values || []).map((item) => Number(item.value) || 0).slice(-7);
             if (!points.length) continue;
             rows.push({ id: metric.name === "page_post_engagements" ? "fb-engagement" : "fb-impressions", label: metric.name === "page_post_engagements" ? "Facebook engagement" : "Facebook impressions", value: points.at(-1) || 0, points });
           }
-          const ig = await fetch(`https://graph.facebook.com/v23.0/${page.id}?fields=instagram_business_account{followers_count,media_count}&access_token=${encodeURIComponent(page.access_token || data.facebook)}`, { signal: AbortSignal.timeout(8000) });
+          const ig = await fetch(`https://graph.facebook.com/v26.0/${page.id}?fields=instagram_business_account{followers_count,media_count}&access_token=${encodeURIComponent(page.access_token || data.facebook)}`, { signal: AbortSignal.timeout(8000) });
           const instagram = await ig.json() as { instagram_business_account?: { id?: string; followers_count?: number; media_count?: number } };
           const account = instagram.instagram_business_account;
           if (account?.id) {
             rows.push({ id: "ig-followers", label: "Instagram followers", value: Number(account.followers_count) || 0, points: [] });
-            const reach = await fetch(`https://graph.facebook.com/v23.0/${account.id}/insights?metric=reach&period=day&metric_type=total_value&access_token=${encodeURIComponent(page.access_token || data.facebook)}`, { signal: AbortSignal.timeout(8000) });
+            const reach = await fetch(`https://graph.facebook.com/v26.0/${account.id}/insights?metric=reach&period=day&metric_type=total_value&access_token=${encodeURIComponent(page.access_token || data.facebook)}`, { signal: AbortSignal.timeout(8000) });
             const reachBody = await reach.json() as { data?: { total_value?: { value?: number } }[] };
             const value = Number(reachBody.data?.[0]?.total_value?.value);
             if (Number.isFinite(value)) rows.push({ id: "ig-reach", label: "Instagram reach", value, points: [] });

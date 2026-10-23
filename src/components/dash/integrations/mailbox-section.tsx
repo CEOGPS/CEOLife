@@ -28,7 +28,7 @@ function BoxRow({ box, busy, onTest, onDisconnect, onReconnect }: {
       </div>
       {detail ? <p className={`mt-2 text-xs ${detail.startsWith("Checking") ? "text-amber-200" : /connected and valid/i.test(detail) ? "text-emerald-200" : "text-rose-300"}`}>{detail}</p> : <p className="mt-2 text-xs text-amber-200">Listed by Nylas. Press Test now to see if mail can actually be read.</p>}
       <div className="mt-2 flex flex-wrap gap-2">
-        {good ? <Button busy={busy} onClick={() => { setDetail("Checking Nylas…"); void onTest().then((text) => setDetail(text || "Nylas did not say what happened.")); }} label="Test this mailbox">Test now</Button> : <Button primary busy={busy} onClick={onReconnect} label="Reconnect this mailbox">Reconnect</Button>}
+        {good ? <Button busy={busy} onClick={() => { setDetail("Checking Nylas…"); void Promise.resolve(onTest()).then((text) => setDetail(text || "Nylas did not say what happened.")); }} label="Test this mailbox">Test now</Button> : <Button primary busy={busy} onClick={onReconnect} label="Reconnect this mailbox">Reconnect</Button>}
         {confirm ? (
           <>
             <Button danger busy={busy} onClick={onDisconnect}>Yes, disconnect</Button>
@@ -43,21 +43,22 @@ function BoxRow({ box, busy, onTest, onDisconnect, onReconnect }: {
 }
 
 /** Mailboxes the Email desk reads and sends from. Live from Nylas, so it matches what the Email desk will really use. */
-export function MailboxSection({ mailboxes, note, configured, expected, app, busy, onConnect, onTest, onDisconnect, onSaveApp }: {
+export function MailboxSection({ mailboxes, note, configured, expected, app, busy, addresses = BOARD_EMAIL_LIST, onConnect, onTest, onDisconnect, onSaveApp }: {
   mailboxes: MailboxView[];
   note: string;
   configured: boolean;
   expected: string;
   app?: { clientId: string; hasSecret: boolean };
   busy: Record<string, boolean>;
+  addresses?: string[];
   onConnect: (email: string) => void;
   onTest: (box: MailboxView) => Promise<string | void>;
   onDisconnect: (box: MailboxView) => void;
   onSaveApp: (clientId: string, clientSecret: string) => void;
 }) {
   const [email, setEmail] = useState(expected);
-  const have = new Set(mailboxes.map((row) => row.email));
-  const suggestions = BOARD_EMAIL_LIST.filter((row) => !have.has(row));
+  const have = new Set(mailboxes.map((row) => row.email.toLowerCase()));
+  const suggestions = addresses.filter((row) => !have.has(row.toLowerCase()));
   const connecting = Boolean(busy["connect:nylas"]);
   return (
     <section className="module-card space-y-3 p-4" aria-label="Mailboxes">
@@ -92,12 +93,12 @@ export function MailboxSection({ mailboxes, note, configured, expected, app, bus
             {suggestions.map((item) => <button key={item} type="button" className="int-chip" aria-pressed={email.toLowerCase() === item} onClick={() => setEmail(item)}><EmailText value={item} /></button>)}
           </div>
         ) : null}
-        {!configured ? (
-          <AppFields idLabel="Nylas application id" secretLabel="Nylas API key" clientId={app?.clientId || ""} hasSecret={Boolean(app?.hasSecret)} busy={Boolean(busy["app:nylas"])} onSave={onSaveApp} />
-        ) : (
-          <p className="text-xs text-white/45">iCloud asks for an app-specific password from appleid.apple.com. Nylas shows where to create it.</p>
-        )}
       </form>
+      {!configured ? (
+        <AppFields idLabel="Nylas application id" secretLabel="Nylas API key" clientId={app?.clientId || ""} hasSecret={Boolean(app?.hasSecret)} busy={Boolean(busy["app:nylas"])} onSave={onSaveApp} />
+      ) : (
+        <p className="text-xs text-white/45">iCloud asks for an app-specific password from appleid.apple.com. Nylas shows where to create it.</p>
+      )}
     </section>
   );
 }

@@ -1,19 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { EngineBar } from "./engine-bar";
 import { newId, type Memory, type SocialAccount, type SocialPost } from "./memory";
 
 type PlatformId = SocialAccount["id"];
 
-const START: SocialAccount[] = [
-  { id: "instagram", name: "Instagram", handle: "@yourhandle", bio: "", followers: 0, following: 0, likes: 0, comments: 0, views: 0, connected: false, history: [] },
-  { id: "facebook", name: "Facebook", handle: "Your page", bio: "", followers: 0, following: 0, likes: 0, comments: 0, views: 0, connected: false, history: [] },
-  { id: "x", name: "X", handle: "@yourhandle", bio: "", followers: 0, following: 0, likes: 0, comments: 0, views: 0, connected: false, history: [] },
-  { id: "tiktok", name: "TikTok", handle: "@yourhandle", bio: "", followers: 0, following: 0, likes: 0, comments: 0, views: 0, connected: false, history: [] },
-  { id: "linkedin", name: "LinkedIn", handle: "Chris Green", bio: "", followers: 0, following: 0, likes: 0, comments: 0, views: 0, connected: false, history: [] },
-  { id: "youtube", name: "YouTube", handle: "@yourhandle", bio: "", followers: 0, following: 0, likes: 0, comments: 0, views: 0, connected: false, history: [] },
-  { id: "reddit", name: "Reddit", handle: "u/yourhandle", bio: "", followers: 0, following: 0, likes: 0, comments: 0, views: 0, connected: false, history: [] },
-  { id: "snapchat", name: "Snapchat", handle: "@yourhandle", bio: "", followers: 0, following: 0, likes: 0, comments: 0, views: 0, connected: false, history: [] },
+const PLATFORMS: { id: PlatformId; name: string }[] = [
+  { id: "instagram", name: "Instagram" },
+  { id: "facebook", name: "Facebook" },
+  { id: "x", name: "X" },
+  { id: "tiktok", name: "TikTok" },
+  { id: "linkedin", name: "LinkedIn" },
+  { id: "youtube", name: "YouTube" },
+  { id: "reddit", name: "Reddit" },
+  { id: "snapchat", name: "Snapchat" },
 ];
+
+function blank(id: PlatformId, name: string): SocialAccount {
+  return { id, name, handle: "", bio: "", followers: 0, following: 0, likes: 0, comments: 0, views: 0, connected: false, history: [] };
+}
+
+function liveAccount(row: SocialAccount) {
+  return row.connected && !/yourhandle|your page/i.test(row.handle);
+}
 const LIMITS: Record<PlatformId, number> = { instagram: 2200, facebook: 63206, x: 280, tiktok: 2200, linkedin: 3000, youtube: 5000, reddit: 40000, snapchat: 250 };
 const TEMPLATES = [
   { label: "Launch", text: "Exciting news. We just launched [feature]. Here is what you need to know." },
@@ -35,18 +43,6 @@ const GROUPS = [
   ["LinkedIn Groups", "https://linkedin.com/groups"],
   ["Reddit", "https://reddit.com/subreddits"],
 ];
-const KEY = "lifeos_social_v1";
-
-function load() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || "null") as { platforms?: SocialAccount[]; posts?: SocialPost[]; profiles?: Record<string, { bio?: string }> } | null;
-    if (!raw?.platforms?.length) return { platforms: [] as SocialAccount[], posts: [] as SocialPost[], profiles: {} as Record<string, { bio?: string }> };
-    return { platforms: raw.platforms, posts: raw.posts || [], profiles: raw.profiles || {} };
-  } catch {
-    return { platforms: [] as SocialAccount[], posts: [] as SocialPost[], profiles: {} as Record<string, { bio?: string }> };
-  }
-}
-
 function seriesFrom(rows: SocialAccount[]) {
   return rows.filter((row) => row.followers || row.views).map((row) => ({ id: `soc-${row.id}`, label: row.name, points: row.history.length ? row.history : [row.followers] }));
 }
@@ -67,7 +63,10 @@ function Spark({ points }: { points: number[] }) {
 }
 
 export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (prev: Memory) => Memory) => void }) {
-  const accounts = data.socialAccounts.length ? data.socialAccounts : START;
+  const accounts = PLATFORMS.map((row) => {
+    const live = data.socialAccounts.find((item) => item.id === row.id && liveAccount(item));
+    return live ? { ...live, name: row.name } : blank(row.id, row.name);
+  });
   const posts = data.socialPosts;
   const [selected, setSelected] = useState<PlatformId>("facebook");
   const [text, setText] = useState("");
@@ -78,18 +77,6 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
   const [subreddit, setSubreddit] = useState("");
   const [note, setNote] = useState("");
   const [filter, setFilter] = useState<PlatformId | "all">("all");
-  const once = useRef(false);
-
-  useEffect(() => {
-    if (once.current || data.socialAccounts.length) return;
-    once.current = true;
-    const local = load();
-    const moved = (local.platforms.length ? local.platforms : START).map((row) => {
-      const base = START.find((item) => item.id === row.id) || START[0];
-      return { ...base, ...row, name: base.name, bio: row.bio || local.profiles[row.id]?.bio || "" };
-    });
-    update((prev) => prev.socialAccounts.length ? prev : { ...prev, socialAccounts: moved, socialPosts: local.posts, social: seriesFrom(moved) });
-  }, [data.socialAccounts.length, update]);
 
   function write(recipe: (prev: Memory) => { accounts: SocialAccount[]; posts?: SocialPost[] }) {
     update((prev) => {
@@ -100,23 +87,48 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
 
   async function sync() {
     setNote("Syncing accounts…");
-    const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
-    const facebook = readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "";
-    const youtube = data.keys.find((row) => row.name === "YouTube")?.value || "";
-    const youtubeHandle = accounts.find((row) => row.id === "youtube")?.handle || "";
-    const reddit = accounts.find((row) => row.id === "reddit")?.handle || "";
-    const { pullSocial } = await import("@/lib/lifeos/sync");
-    const result = await pullSocial({ data: { facebook, youtube, youtubeHandle, reddit, x: data.keys.find((row) => row.name === "X")?.value || "", linkedin: data.keys.find((row) => row.name === "LinkedIn")?.value || "", tiktok: data.keys.find((row) => row.name === "TikTok")?.value || "" } });
-    if (!result.rows.length) { setNote(result.note || "No account numbers came back."); return; }
-    write((prev) => ({
-      accounts: (prev.socialAccounts.length ? prev.socialAccounts : START).map((account) => {
-        const live = result.rows.find((row) => row.id === account.id);
-        if (!live) return account;
-        const followers = live.followers || account.followers;
-        return { ...account, handle: live.handle || account.handle, followers, following: live.following || account.following, likes: live.likes || account.likes, comments: live.comments || account.comments, views: live.views || account.views, connected: true, history: live.followers ? [...account.history, live.followers].slice(-12) : account.history };
-      }),
-    }));
-    setNote(result.note || "Synced to the board.");
+    try {
+      const { readOauth, freshToken } = await import("@/lib/lifeos/oauth");
+      const facebook = readOauth().some((row) => row.provider === "facebook") ? await freshToken("facebook") : "";
+      const youtube = data.keys.find((row) => row.name === "YouTube")?.value || "";
+      const youtubeHandle = accounts.find((row) => row.id === "youtube")?.handle || "";
+      const reddit = accounts.find((row) => row.id === "reddit")?.handle || "";
+      const { pullSocial } = await import("@/lib/lifeos/sync");
+      const { logFeed } = await import("@/lib/lifeos/truth");
+      const result = await pullSocial({ data: { facebook, youtube, youtubeHandle, reddit, x: data.keys.find((row) => row.name === "X")?.value || "", linkedin: data.keys.find((row) => row.name === "LinkedIn")?.value || "", tiktok: data.keys.find((row) => row.name === "TikTok")?.value || "" } });
+      if (!result.rows.length) {
+        const summary = result.note || "No account numbers came back.";
+        setNote(summary);
+        void logFeed("social", "error", "Social sync", summary);
+        return;
+      }
+      write((prev) => ({
+        accounts: PLATFORMS.flatMap((platform) => {
+          const live = result.rows.find((row) => row.id === platform.id);
+          const prior = prev.socialAccounts.find((row) => row.id === platform.id && liveAccount(row));
+          if (!live) return prior ? [prior] : [];
+          return [{
+            ...(prior || blank(platform.id, platform.name)),
+            name: platform.name,
+            handle: live.handle,
+            followers: live.followers,
+            following: live.following,
+            likes: live.likes,
+            comments: live.comments,
+            views: live.views,
+            connected: true,
+            history: [...(prior?.history || []), live.followers].slice(-12),
+          }];
+        }),
+      }));
+      const summary = result.note || `Synced ${result.rows.length} accounts.`;
+      setNote(summary);
+      void logFeed("social", "action", "Social sync", summary);
+    } catch (error) {
+      const summary = error instanceof Error ? error.message : "Social sync did not answer.";
+      setNote(summary);
+      void import("@/lib/lifeos/truth").then(({ logFeed }) => logFeed("social", "error", "Social sync", summary));
+    }
   }
 
   const platform = accounts.find((row) => row.id === selected) || accounts[0];
@@ -150,7 +162,7 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
     if (text.length > limit) { setNote(`Over the ${limit} character limit.`); return; }
     if (when) {
       const held: SocialPost = { id: newId(), text: text.trim(), platforms: chosen, at: new Date().toISOString(), scheduled: when, sent: "" };
-      write((prev) => ({ accounts: prev.socialAccounts.length ? prev.socialAccounts : START, posts: [held, ...prev.socialPosts] }));
+      write((prev) => ({ accounts: prev.socialAccounts.filter(liveAccount), posts: [held, ...prev.socialPosts] }));
       setText("");
       setWhen("");
       setNote("Held on the board. Clear the time and post again to send it.");
@@ -172,22 +184,14 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
       tiktok: data.keys.find((row) => row.name === "TikTok")?.value || "",
     } });
     const item: SocialPost = { id: newId(), text: text.trim(), platforms: chosen, at: new Date().toISOString(), scheduled: "", sent: result.sent.join(", ") };
-    write((prev) => ({ accounts: prev.socialAccounts.length ? prev.socialAccounts : START, posts: [item, ...prev.socialPosts] }));
+    write((prev) => ({ accounts: prev.socialAccounts.filter(liveAccount), posts: [item, ...prev.socialPosts] }));
     setText("");
     setImage("");
     setNote(result.note);
   }
 
-  function logMetric(key: "followers" | "following" | "likes" | "comments" | "views", value: string) {
-    const next = Number(value);
-    if (!Number.isFinite(next)) return;
-    write((prev) => ({
-      accounts: (prev.socialAccounts.length ? prev.socialAccounts : START).map((row) => row.id === selected ? { ...row, [key]: next, history: key === "followers" ? [...row.history, next].slice(-12) : row.history } : row),
-    }));
-  }
-
   function patch(change: Partial<SocialAccount>) {
-    write((prev) => ({ accounts: (prev.socialAccounts.length ? prev.socialAccounts : START).map((row) => row.id === selected ? { ...row, ...change } : row) }));
+    write((prev) => ({ accounts: prev.socialAccounts.filter(liveAccount).map((row) => row.id === selected ? { ...row, ...change } : row) }));
   }
 
   return (
@@ -205,7 +209,7 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
           {accounts.map((row) => (
             <button key={row.id} type="button" className={`menu ${selected === row.id ? "is-on" : ""}`} onClick={() => setSelected(row.id)}>
               <span className="flex w-full items-center justify-between gap-2">
-                <span>{row.name}<span className="block text-[10px] text-white/35">{row.connected ? "Synced" : row.handle}</span></span>
+                <span>{row.name}<span className="block text-[10px] text-white/35">{row.connected ? row.handle || "Synced" : "Not connected"}</span></span>
                 <span className="text-right text-[11px]">{fmt(row.followers)}<Spark points={row.history} /></span>
               </span>
             </button>
@@ -226,9 +230,9 @@ export function SocialDesk({ data, update }: { data: Memory; update: (recipe: (p
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
               {(["followers", "following", "likes", "comments", "views"] as const).map((key) => (
-                <label key={key} className="text-[10px] uppercase tracking-wider text-white/40">{key}
-                  <input className="mt-1 h-8 w-full rounded-full border border-line bg-black/40 px-2 text-sm normal-case" value={platform[key]} onChange={(event) => logMetric(key, event.target.value)} />
-                </label>
+                <p key={key} className="text-[10px] uppercase tracking-wider text-white/40">{key}
+                  <span className="mt-1 block text-sm normal-case text-white">{platform.connected ? fmt(platform[key]) : "—"}</span>
+                </p>
               ))}
             </div>
           </div>

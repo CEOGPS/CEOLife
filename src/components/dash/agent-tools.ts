@@ -75,7 +75,16 @@ export function matchedSkill(text: string) {
   return `Loaded skill ${hit.name}. Follow it. Do not store tokens in the browser, do not run a shell, and do not claim a tool ran if it is off.\n${body}`;
 }
 
-export type ToolHit = { text: string; task?: string; noteTitle?: string; noteBody?: string; play?: string; spoken?: string };
+export type ToolHit = {
+  text: string;
+  task?: string;
+  noteTitle?: string;
+  noteBody?: string;
+  play?: string;
+  spoken?: string;
+  hand?: "hermes" | "qwen-image" | "qwen-video" | "qwen-chat";
+  handPrompt?: string;
+};
 
 function youtubeAsk(text: string) {
   if (!/you\s*tube|\byt\b|pull up (?:a |the )?(?:song|video|track)|play (?:a |the )?(?:song|video|track|music)/i.test(text)) return "";
@@ -89,7 +98,7 @@ function youtubeAsk(text: string) {
 }
 
 export function skillBrief() {
-  return "Live commands: /search, /page, /apify, /contacts, /finance, /quote, /youtube, /task, /note, /csv, /check, /open, /skill. /check calls the key service for every saved key and reports the real result. /open moves to a dashboard panel. A loaded skill is guidance. Never claim a shell, browser driver, SSH session, deploy, or send action ran unless a live command returned it.";
+  return "Live commands: /search, /page, /apify, /contacts, /finance, /quote, /youtube, /task, /note, /csv, /check, /open, /skill, /plugin, /plugins, /telegram. /check calls the key service for every saved key and reports the real result. /open moves to a dashboard panel. /plugins lists the pack and which of Erebus, Kranos, Hermes, or Qwen owns each one. A loaded skill is guidance. Never claim a shell, browser driver, SSH session, deploy, or send action ran unless a live command returned it.";
 }
 
 function csvSummary(text: string) {

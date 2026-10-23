@@ -6,6 +6,7 @@ import { sheetKeys } from "@/lib/lifeos/sheet-keys";
 import { newId, type Memory } from "../memory";
 import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, PUBLIC_TEST, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
 import { paintChecked } from "@/lib/integrations/worker-account";
+import { logFeed } from "@/lib/lifeos/truth";
 
 export type Update = (recipe: (prev: Memory) => Memory) => void;
 export type Notice = { tone: "ok" | "error" | "info"; text: string } | null;
@@ -200,9 +201,17 @@ export function useIntegrations(args: {
     setResultsOpen(true);
   }, []);
 
-  const accounts = useMemo(() => payload?.accounts ?? [], [payload]);
+  const hiddenList = args.data.emailHub.hiddenEmails || [];
+  const extraEmails = args.data.emailHub.extraEmails || [];
+  const accounts = useMemo(() => {
+    const hidden = new Set(hiddenList.map((item) => item.toLowerCase()));
+    return (payload?.accounts ?? []).filter((row) => !hidden.has((row.email || "").toLowerCase()));
+  }, [payload, hiddenList]);
   const checks = useMemo(() => payload?.checks ?? {}, [payload]);
-  const mailboxes = useMemo<MailboxView[]>(() => payload?.mailboxes ?? [], [payload]);
+  const mailboxes = useMemo<MailboxView[]>(() => {
+    const hidden = new Set(hiddenList.map((item) => item.toLowerCase()));
+    return (payload?.mailboxes ?? []).filter((row) => !hidden.has(row.email.toLowerCase()));
+  }, [payload, hiddenList]);
   const expected = useMemo(() => payload?.expected ?? {}, [payload]);
   // The primary Google account (listed first) is the one Google-family checks use.
   const googleEmail = accounts.find((row) => row.provider === "google" && row.status === "ok")?.email || "";
@@ -228,7 +237,13 @@ export function useIntegrations(args: {
     for (const row of mailboxes) {
       push(row.email, { label: row.provider === "icloud" ? "iCloud Mail" : `${row.provider || "Mailbox"} mail`, ok: row.status === "valid", primary: false });
     }
-    const emails = [...new Set([...BOARD_EMAIL_LIST, ...map.keys()])];
+    const hidden = new Set(hiddenList.map((item) => item.toLowerCase()));
+    const extra = extraEmails.map((item) => item.toLowerCase()).filter((item) => !hidden.has(item));
+    const emails = [...new Set([
+      ...extra,
+      ...BOARD_EMAIL_LIST.filter((item) => !hidden.has(item)),
+      ...[...map.keys()].filter((item) => !hidden.has(item.toLowerCase())),
+    ])];
     const rows = emails.map((email) => ({ email, items: map.get(email) || [], board: BOARD_EMAIL_LIST.includes(email) }));
     const misses: string[] = [];
     for (const [provider, email] of Object.entries(expected) as [ProviderId, string][]) {
@@ -238,7 +253,7 @@ export function useIntegrations(args: {
       if (!linked && any) misses.push(`${providerMeta(provider).name} is set to use ${email}, but is connected with a different account.`);
     }
     return { rows, misses };
-  }, [accounts, mailboxes, expected]);
+  }, [accounts, mailboxes, expected, extraEmails, hiddenList]);
 
   const connect = useCallback(async (provider: ProviderId, hint?: string, app?: { clientId?: string; clientSecret?: string }) => {
     flag(`connect:${provider}`, true);
@@ -256,6 +271,7 @@ export function useIntegrations(args: {
         if (!url.startsWith("http")) throw new Error("The login page did not come back.");
         href = url;
       }
+      await logFeed("integrations", "action", `Connect ${providerMeta(provider).name}`, hint || provider);
       const framed = window.self !== window.top;
       if (framed) {
         const popup = window.open(href, "_blank", "noopener,noreferrer");
@@ -266,7 +282,9 @@ export function useIntegrations(args: {
       }
       window.location.assign(href);
     } catch (error) {
-      say("error", message(error, `${providerMeta(provider).name} could not start.`));
+      const text = message(error, `${providerMeta(provider).name} could not start.`);
+      void logFeed("integrations", "error", `Connect ${providerMeta(provider).name}`, text);
+      say("error", text);
       flag(`connect:${provider}`, false);
     }
   }, [say]);
@@ -277,7 +295,9 @@ export function useIntegrations(args: {
       const result = await integrationsApi.testAccount(account.id);
       const check = { state: result.ok ? "ok" as const : "error" as const, text: result.text, checkedAt: new Date().toISOString() };
       putCheck(`account:${account.id}`, check, account.id);
-      say(result.ok ? "ok" : "error", `${providerMeta(account.provider).name}${account.email ? ` (${account.email})` : ""}: ${result.text}`);
+      const label = `${providerMeta(account.provider).name}${account.email ? ` (${account.email})` : ""}`;
+      void logFeed("integrations", result.ok ? "action" : "error", `Test ${label}`, result.text);
+      say(result.ok ? "ok" : "error", `${label}: ${result.text}`);
     } catch (error) {
       const text = message(error, "The check could not run.");
       putCheck(`account:${account.id}`, { state: "error", text, checkedAt: new Date().toISOString() }, account.id);
@@ -317,6 +337,13 @@ export function useIntegrations(args: {
   const applyPlan = useCallback(async () => {
     flag("plan", true);
     try {
+      update((prev) => ({
+        ...prev,
+        emailHub: {
+          ...prev.emailHub,
+          hiddenEmails: (prev.emailHub.hiddenEmails || []).filter((item) => !BOARD_EMAIL_LIST.includes(item)),
+        },
+      }));
       await integrationsApi.setExpectedMany(recommendedPlan());
       say("ok", "Account plan applied: Google → Gmail, the iCloud mailbox → iCloud, every other platform → your work address.");
     } catch (error) {
@@ -325,7 +352,7 @@ export function useIntegrations(args: {
       await refresh();
       flag("plan", false);
     }
-  }, [refresh, say]);
+  }, [refresh, say, update]);
 
   const makePrimary = useCallback(async (account: AccountView) => {
     flag(account.id, true);
@@ -345,6 +372,7 @@ export function useIntegrations(args: {
     try {
       const result = await integrationsApi.testMailbox(box.id);
       putCheck(`mailbox:${box.id}`, { state: result.ok ? "ok" : "error", text: result.text, checkedAt: new Date().toISOString() });
+      void logFeed("integrations", result.ok ? "action" : "error", `Test mailbox ${box.email}`, result.text);
       say(result.ok ? "ok" : "error", result.text);
       return result.text;
     } catch (error) {
@@ -354,6 +382,61 @@ export function useIntegrations(args: {
       flag(box.id, false);
     }
   }, [putCheck, refresh, say]);
+
+  const removeAddress = useCallback(async (email: string) => {
+    const key = email.trim().toLowerCase();
+    if (!key.includes("@")) return;
+    flag(`remove:${key}`, true);
+    try {
+      const failures: string[] = [];
+      const linkedAccounts = (payload?.accounts ?? []).filter((row) => (row.email || "").toLowerCase() === key);
+      const linkedBoxes = (payload?.mailboxes ?? []).filter((row) => row.email.toLowerCase() === key);
+      for (const account of linkedAccounts) {
+        try { await integrationsApi.disconnectAccount(account.id); }
+        catch (error) { failures.push(message(error, `${providerMeta(account.provider).name} stayed connected.`)); }
+      }
+      for (const box of linkedBoxes) {
+        try { await integrationsApi.disconnectMailbox(box.id); }
+        catch (error) { failures.push(message(error, `${box.email} stayed connected.`)); }
+      }
+      for (const [provider, value] of Object.entries(payload?.expected ?? {}) as [ProviderId, string][]) {
+        if ((value || "").toLowerCase() !== key) continue;
+        try { await integrationsApi.setExpected(provider, ""); }
+        catch (error) { failures.push(message(error, "The saved address could not be cleared.")); }
+      }
+      update((prev) => ({
+        ...prev,
+        mail: prev.mail.filter((row) => !`${row.from} ${row.to}`.toLowerCase().includes(key)),
+        emailHub: {
+          ...prev.emailHub,
+          accounts: prev.emailHub.accounts.filter((row) => row.email.toLowerCase() !== key),
+          extraEmails: (prev.emailHub.extraEmails || []).filter((item) => item !== key),
+          hiddenEmails: [...new Set([...(prev.emailHub.hiddenEmails || []), key])].slice(0, 40),
+        },
+      }));
+      say(failures.length ? "error" : "info", failures.length ? `${key} was removed from the list. ${failures[0]}` : `${key} was removed.`);
+      await refresh();
+    } finally {
+      flag(`remove:${key}`, false);
+    }
+  }, [payload, refresh, say, update]);
+
+  const addAddress = useCallback((email: string) => {
+    const key = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(key)) {
+      say("error", "Enter a full email address.");
+      return;
+    }
+    update((prev) => ({
+      ...prev,
+      emailHub: {
+        ...prev.emailHub,
+        hiddenEmails: (prev.emailHub.hiddenEmails || []).filter((item) => item !== key),
+        extraEmails: [...new Set([key, ...(prev.emailHub.extraEmails || [])])].slice(0, 40),
+      },
+    }));
+    say("ok", `${key} is on the list. Connect it under Mailboxes.`);
+  }, [say, update]);
 
   const disconnectMailbox = useCallback(async (box: MailboxView) => {
     flag(box.id, true);
@@ -523,7 +606,7 @@ export function useIntegrations(args: {
   return {
     payload, loading, loadError, busy, notice, resultsOpen, dismiss: () => setNotice(null),
     byProvider, keyRows, stats, googleEmail,
-    mailboxes, expected, inUse, setExpected, applyPlan, makePrimary, testMailbox, disconnectMailbox,
+    mailboxes, expected, inUse, setExpected, applyPlan, makePrimary, testMailbox, disconnectMailbox, removeAddress, addAddress,
     refresh, connect, testAccount, disconnect, saveKey, removeKey, testKey, testAll, importSheet, saveApp,
   };
 }

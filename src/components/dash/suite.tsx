@@ -279,16 +279,25 @@ export function SearchDesk({ data, update }: { data: Memory; update: Update }) {
         setNote("Searching…");
         const base = data.keys.find((row) => row.name === "SearXNG")?.value || "http://127.0.0.1:8888";
         void import("@/lib/lifeos/sync").then(async ({ lookup, reverseImage }) => {
+          const { logFeed } = await import("@/lib/lifeos/truth");
           if (kind === "image") {
             const reversed = await reverseImage({ data: { url: query } });
             setLive(reversed.hits);
-            setNote(reversed.note || (reversed.hits.length ? `${reversed.images.length} image matches.` : "No reverse-image match came back."));
+            const summary = reversed.note || (reversed.hits.length ? `${reversed.hits.length} reverse-image hits.` : "No reverse-image hit came back.");
+            setNote(summary);
+            void logFeed("omnisearch", reversed.hits.length ? "action" : "error", "Reverse image", summary);
             return;
           }
           const result = await lookup({ data: { query, kind, key: data.keys.find((row) => row.name === "Dogpile")?.value || "", base } });
           setLive(result.hits);
-          setNote(result.note || (result.hits.length ? "" : "No live results."));
-        }).catch((error) => setNote(error instanceof Error ? error.message : "Search did not answer."));
+          const summary = result.note || (result.hits.length ? `${result.hits.length} hits.` : "No live results.");
+          setNote(summary);
+          void logFeed("omnisearch", result.hits.length ? "action" : "error", `Search ${kind}`, summary);
+        }).catch((error) => {
+          const summary = error instanceof Error ? error.message : "Search did not answer.";
+          setNote(summary);
+          void import("@/lib/lifeos/truth").then(({ logFeed }) => logFeed("omnisearch", "error", `Search ${kind}`, summary));
+        });
       }}>
         <input className={field} value={q} placeholder={kind === "image" ? "Image URL" : kind === "phone" ? "Phone" : kind === "email" ? "Email" : "Search"} onChange={(event) => setQ(kind === "phone" ? fmtPhone(event.target.value) : event.target.value)} />
         <button type="submit" className={`bg-blue ${note === "Searching…" ? "is-busy" : ""}`} aria-busy={note === "Searching…"} disabled={note === "Searching…"}>Search</button>
@@ -299,9 +308,9 @@ export function SearchDesk({ data, update }: { data: Memory; update: Update }) {
       <ul className="mt-3">{hits.map((row) => <li key={row} className="py-1 text-sm">{row}</li>)}</ul>
       <ul className="mt-2">{live.map((row) => <li key={row.url} className="py-1 text-sm"><a className="text-blue-2" href={row.url} target="_blank" rel="noreferrer">{row.title}</a>{row.snippet ? <span className="block text-xs text-white/45">{row.snippet}</span> : null}</li>)}</ul>
       {note ? <p className="mt-2 text-sm text-white/60">{note}</p> : null}
-      <div className="mt-3 flex flex-wrap gap-2">
+      {kind === "web" ? <div className="mt-3 flex flex-wrap gap-2">
         {links.map(([label, href]) => <a key={label} className="text-sm text-blue-2" href={href} target="_blank" rel="noreferrer">{label}</a>)}
-      </div>
+      </div> : null}
       <p className="mt-3 text-xs text-white/40">SearXNG on port 8888. Brave is off. The dashboard already uses port 8080.</p>
     </Box>
   );

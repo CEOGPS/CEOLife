@@ -4,7 +4,9 @@ import { hubNoteId, newId, type Memory } from "./memory";
 import { deleteAgent, pullAgents, pushAgent, readAgentCache, writeAgentCache, type AgentSettings } from "@/lib/lifeos/agent-store";
 import { defaultVoice, readClones, voiceId, VOICES } from "./voices";
 import { VoiceClone } from "./dock";
-import { AGENT_SKILLS, matchedSkill, runAgentTool, skillBrief } from "./agent-tools";
+import { briefFor, hostPrompt, PLUGINS, type AgentId } from "@/lib/agents/kit";
+import { hostFromActs, runHand, runShared } from "@/lib/agents/kit-run";
+import { AGENT_SKILLS, matchedSkill, skillBrief } from "./agent-tools";
 import { applyActs, askWithAbilities } from "./erebus-abilities";
 import { askHermes, askQwen, askQwenChat, pingGateway } from "./local-agents";
 import { boardFacts } from "./facts";
@@ -277,21 +279,36 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
     setText("");
     setNote("Thinking");
     const history = next.slice(-6).map((line) => `${line.role === "user" ? "User" : name}: ${line.text}`).join("\n");
-    const tool = await runAgentTool(data, question);
-    if (tool?.task) update((prev) => ({ ...prev, tasks: [{ id: newId(), title: tool.task || "", done: false }, ...prev.tasks] }));
-    if (tool?.noteTitle) update((prev) => ({ ...prev, notes: [{ id: newId(), title: tool.noteTitle || "Note", body: tool.noteBody || "" }, ...prev.notes] }));
+    let tool = await runShared(data, question);
+    if (tool?.hand) {
+      const hosted = await runHand(data, tool);
+      tool = { ...tool, text: [tool.text, hosted].filter(Boolean).join("\n\n") };
+    }
+    if (tool?.task) update((prev) => ({ ...prev, tasks: [{ id: newId(), title: tool?.task || "", done: false }, ...prev.tasks] }));
+    if (tool?.noteTitle) update((prev) => ({ ...prev, notes: [{ id: newId(), title: tool?.noteTitle || "Note", body: tool?.noteBody || "" }, ...prev.notes] }));
+    const command = /^\/(plugins|plugin|telegram|skill|search|page|apify|contacts|finance|quote|youtube|task|note|csv|check|open)\b/i.test(question);
+    if (command && tool) {
+      const done = [...next, { role: "ai" as const, text: tool.text }];
+      setLines(done);
+      setNote(name);
+      saveChat(update, name, done);
+      return;
+    }
     const { askNyx } = await import("@/lib/lifeos/sync");
     const row = CATALOG.find((item) => item.id === model);
-    const preface = [boardFacts(data, question), history, skillBrief(), matchedSkill(question), prompt, tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
+    const named = name === "Erebus" || name === "Kranos" || name === "Hermes" || name === "Qwen";
+    const preface = [named ? briefFor(name as AgentId) : "", boardFacts(data, question), history, skillBrief(), matchedSkill(question), prompt, tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
     const call = (nextQuestion: string, sheet: string) => askNyx({ data: { question: nextQuestion, facts: sheet, name, prompt, model, key: keyFor(data, model), mind: mindOf(row?.key || ""), endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "" } });
     if (name === "Hermes" || name === "Qwen") {
+      const picture = /\b(image|picture|photo|draw)\b/i.test(question);
+      const clip = /\b(video|clip|animate)\b/i.test(question);
       const job = name === "Hermes"
-        ? await askHermes(data, question)
-        : /\b(video|clip|animate)\b/i.test(question)
+        ? await askHermes(data, hostPrompt("Hermes", question, preface))
+        : clip
           ? await askQwen(data, question, "video")
-          : /\b(image|picture|photo|draw)\b/i.test(question)
+          : picture
             ? await askQwen(data, question, "image")
-            : await askQwenChat(data, question);
+            : await askQwenChat(data, hostPrompt("Qwen", question, preface));
       const reply = [tool?.text, job.text].filter(Boolean).join("\n\n") || "No reply.";
       const done = [...next, { role: "ai" as const, text: reply }];
       setLines(done);
@@ -299,7 +316,7 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
       saveChat(update, name, done);
       return;
     }
-    if (name === "Erebus") {
+    if (name === "Erebus" || name === "Kranos") {
       try {
         const { askErebus } = await import("@/routes/api/agents/erebus");
         const skill = matchedSkill(question);
@@ -314,10 +331,12 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
             key: keyFor(data, model),
             memory: { leads: data.leads, tasks: data.tasks, ideas: data.ideas, events: data.events, facts: data.facts },
             skills: skill ? [{ id: "matched", name: "Matched skill", text: skill }] : [],
+            agent: name,
           },
         });
         applyActs(update, turned.acts || []);
-        const reply = [tool?.text, turned.text].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
+        const hosted = await hostFromActs(data, turned.acts || []);
+        const reply = [tool?.text, turned.text, hosted].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
         const done = [...next, { role: "ai" as const, text: reply }];
         setLines(done);
         setNote(turned.ok ? turned.mind : "Offline");
@@ -325,7 +344,7 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
         return;
       } catch { /* no session: the browser loop below still answers */ }
     }
-    const turned = await askWithAbilities(data, question, preface, call);
+    const turned = await askWithAbilities(data, question, preface, call, named ? name as AgentId : "Erebus");
     applyActs(update, turned.acts);
     const reply = [tool?.text, turned.text].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
     const done = [...next, { role: "ai" as const, text: reply }];
@@ -448,7 +467,8 @@ function LocalLink({ name, urlName, fallback, data, update, cli }: { name: strin
           const line = prompt.trim();
           setPrompt("");
           setNote("Sending…");
-          void (cli === "qwen" ? askQwenChat(data, line) : askHermes(data, line)).then((job) => setNote(job.text || "No reply."));
+          const ask = cli === "qwen" ? askQwenChat(data, hostPrompt("Qwen", line)) : askHermes(data, hostPrompt("Hermes", line));
+          void ask.then((job) => setNote(job.text || "No reply."));
         }}>Send</button>
       </div>
       {note ? <p className="mt-2 text-sm text-white/70">{note}</p> : null}
@@ -613,7 +633,7 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
         {section === "skills" ? (
           <div>
             <h1 className="text-2xl">Skills</h1>
-            <p className="text-sm text-white/50">Live tools run from the dock and from any agent chat. The rest are listed so an agent cannot pretend they ran.</p>
+            <p className="text-sm text-white/50">Erebus, Kranos, Hermes, and Qwen share these skills. Live tools run from the dock and from any of their chats. /plugin runs a plugin through its owner.</p>
             {["LifeApp", "Loaded", "Browser", "Code", "Data", "Finance", "Comms", "Workflow", "Media", "Sales", "Social", "Marketing", "Reasoning", "Content", "App skills"].map((group) => {
               const rows = AGENT_SKILLS.filter((row) => row.group === group);
               if (!rows.length) return null;
@@ -626,6 +646,12 @@ export function HubDesk({ data, update }: { data: Memory; update: Update }) {
                 </div>
               );
             })}
+            <div className="mt-4">
+              <p className="text-[10px] tracking-widest text-white/35">Plugins</p>
+              {PLUGINS.map((card) => (
+                <p key={card.id} className="mt-2 text-sm"><span className="text-white/70">{card.owner}</span> · {card.id}<span className="block text-[11px] text-white/40">{card.runner} · {card.note}</span></p>
+              ))}
+            </div>
           </div>
         ) : null}
         {section === "hierarchy" ? (

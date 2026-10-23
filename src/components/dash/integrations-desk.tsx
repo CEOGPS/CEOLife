@@ -170,7 +170,20 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
       </div>
 
       {!needle && filter === "all" && category === "All" && !hub.loadError ? (
-        <AccountsInUse rows={hub.inUse.rows} misses={hub.inUse.misses} busy={Boolean(hub.busy.plan)} onApplyPlan={() => void hub.applyPlan()} onConnect={(email) => void hub.connect(email.toLowerCase().endsWith("@icloud.com") ? "nylas" : "google", email)} />
+        <AccountsInUse
+          rows={hub.inUse.rows}
+          misses={hub.inUse.misses}
+          busy={Boolean(hub.busy.plan)}
+          removing={Object.keys(hub.busy).find((key) => key.startsWith("remove:") && hub.busy[key])?.slice(7) || ""}
+          onApplyPlan={() => void hub.applyPlan()}
+          onConnect={(email) => {
+            const key = email.toLowerCase();
+            const google = key === "chrisgr33ninc@gmail.com" || key === "chris@ceogps.com";
+            void hub.connect(google ? "google" : "nylas", email);
+          }}
+          onRemove={(email) => void hub.removeAddress(email)}
+          onAdd={hub.addAddress}
+        />
       ) : null}
 
       {providers.length ? (
@@ -191,6 +204,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
                 onMakePrimary={(account) => void hub.makePrimary(account)}
                 onSaveExpected={(email) => void hub.setExpected(meta.id, email)}
                 onSaveApp={(clientId, clientSecret) => void hub.saveApp(meta.id, clientId, clientSecret)}
+                addresses={hub.inUse.rows.map((row) => row.email)}
               />
             ))}
           </div>
@@ -205,8 +219,9 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
           expected={hub.expected.nylas || ""}
           app={hub.payload?.apps?.nylas}
           busy={hub.busy}
+          addresses={hub.inUse.rows.map((row) => row.email)}
           onConnect={(email) => void hub.connect("nylas", email)}
-          onTest={(box) => void hub.testMailbox(box)}
+          onTest={(box) => hub.testMailbox(box)}
           onDisconnect={(box) => void hub.disconnectMailbox(box)}
           onSaveApp={(clientId, clientSecret) => void hub.saveApp("nylas", clientId, clientSecret)}
         />

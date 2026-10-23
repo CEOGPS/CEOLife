@@ -1,14 +1,30 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { newId, type EmailCampaign, type EmailDomain, type MailFolder, type MailItem, type Memory } from "./memory";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { keptMail, newId, type EmailAccount, type EmailCampaign, type EmailDomain, type MailFolder, type MailItem, type Memory } from "./memory";
 import { fmtDate } from "./format";
+import { oauthStartHref } from "./integrations/catalog";
+import { logFeed } from "@/lib/lifeos/truth";
 
+
+function decodeText(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&apos;|&#39;/g, "'")
+    .replace(/&quot;/g, "\"")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
 
 function plain(value: string) {
-  return value.replace(/<[^>]+>/g, " ").replace(/&/g, "&").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  return decodeText(value).replace(/\s+/g, " ").trim();
 }
 
 function mailText(value: string) {
-  const text = value.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "");
+  const text = decodeText(value);
   return text.split(/(https?:\/\/[^\s<>"]+)/g).map((part, index) => (
     /^https?:\/\//.test(part)
       ? <a key={index} className="break-all text-orange-300 underline decoration-orange-300/40" href={part} target="_blank" rel="noreferrer">{part.replace(/^https?:\/\//, "")}</a>
@@ -74,20 +90,33 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
   const [compose, setCompose] = useState(false);
 
   const account = hub.accounts.find((row) => row.id === accountId) || null;
-  const rows = useMemo(() => data.mail.filter((row) => {
+  const deskAccounts = useMemo(() => {
+    const seen = new Set<string>();
+    const out: EmailAccount[] = [];
+    for (const row of hub.accounts) {
+      const key = row.email.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(row);
+    }
+    return out;
+  }, [hub.accounts]);
+  const [dropId, setDropId] = useState("");
+  const liveMail = useMemo(() => data.mail.filter(keptMail), [data.mail]);
+  const rows = useMemo(() => liveMail.filter((row) => {
     const inFolder = folder === "starred" ? row.starred && row.folder !== "trash" : row.folder === folder;
     const q = search.toLowerCase();
     return inFolder && (!q || `${row.title} ${row.body} ${row.to} ${row.from}`.toLowerCase().includes(q));
-  }), [data.mail, folder, search]);
+  }), [liveMail, folder, search]);
   const counts = useMemo(() => {
     const map: Record<Folder, number> = { inbox: 0, starred: 0, sent: 0, drafts: 0, spam: 0, archive: 0, trash: 0 };
-    for (const row of data.mail) {
+    for (const row of liveMail) {
       map[row.folder] += 1;
       if (row.starred && row.folder !== "trash") map.starred += 1;
     }
     return map;
-  }, [data.mail]);
-  const open = data.mail.find((row) => row.id === openId) || null;
+  }, [liveMail]);
+  const open = liveMail.find((row) => row.id === openId) || null;
   const domain = hub.domains.find((row) => row.id === domainId) || hub.domains[0] || null;
   const totals = useMemo(() => hub.campaigns.reduce((sum, row) => ({
     sent: sum.sent + row.sent,
@@ -135,7 +164,8 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
       const result = await pullInbox({ data: { nylasKey: key, googleToken: tokens[0] || "", googleTokens: tokens } });
       const incoming = Array.isArray(result.messages) ? result.messages : [];
       update((prev) => {
-        const have = new Set(prev.mail.map((row) => row.id));
+        const kept = prev.mail.filter(keptMail);
+        const have = new Set(kept.map((row) => row.id));
         const fresh = incoming.filter((row) => !have.has(row.id)).map((row) => ({
           id: row.id,
           title: row.title,
@@ -155,7 +185,7 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
         }));
         return {
           ...prev,
-          mail: fresh.length ? [...fresh, ...prev.mail] : prev.mail,
+          mail: [...fresh, ...kept],
           emailHub: accounts.length ? { ...prev.emailHub, accounts: [...accounts, ...prev.emailHub.accounts] } : prev.emailHub,
         };
       });
@@ -164,13 +194,24 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
       const probed = await probeMail();
       setBoxes(probed.statuses.length ? probed.statuses : pulledBoxes);
       const saved = probed.error ? ` Saved status did not stick: ${probed.error}` : "";
-      setNote((probed.statuses[0]?.text || result.text || (incoming.length ? "Mail pulled." : "No mail came back.")) + saved);
-    } catch {
-      setNote("Could not pull mail.");
+      const summary = (probed.statuses[0]?.text || result.text || (incoming.length ? "Mail pulled." : "No mail came back.")) + saved;
+      void logFeed("mail", incoming.length ? "action" : "error", "Email pull", summary.slice(0, 500));
+      setNote(summary);
+    } catch (error) {
+      const summary = error instanceof Error && error.message ? error.message : "Could not pull mail.";
+      void logFeed("mail", "error", "Email pull", summary);
+      setNote(summary);
     } finally { setBusy(""); }
   }
 
   const pulled = useRef(false);
+  useEffect(() => {
+    update((prev) => {
+      const mail = prev.mail.filter(keptMail);
+      if (mail.length === prev.mail.length) return prev;
+      return { ...prev, mail };
+    });
+  }, [update]);
   useEffect(() => {
     if (pulled.current) return;
     pulled.current = true;
@@ -188,6 +229,59 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
 
   function setHub(recipe: (prev: Memory["emailHub"]) => Memory["emailHub"]) {
     update((prev) => ({ ...prev, emailHub: recipe(prev.emailHub) }));
+  }
+
+  function removeDeskAccount(row: EmailAccount) {
+    const key = row.email.toLowerCase();
+    update((prev) => ({
+      ...prev,
+      mail: prev.mail.filter((item) => {
+        if (item.id.startsWith("nylas:") || item.id.startsWith("gmail:")) return !`${item.from} ${item.to}`.toLowerCase().includes(key);
+        return keptMail(item) && !`${item.from} ${item.to}`.toLowerCase().includes(key);
+      }),
+      emailHub: {
+        ...prev.emailHub,
+        accounts: prev.emailHub.accounts.filter((item) => item.email.toLowerCase() !== key),
+        extraEmails: (prev.emailHub.extraEmails || []).filter((item) => item !== key),
+        hiddenEmails: [...new Set([...(prev.emailHub.hiddenEmails || []), key])].slice(0, 40),
+      },
+    }));
+    if (accountId === row.id) setAccountId("");
+    setNote(`${row.email} was removed.`);
+  }
+
+  async function connectAccount(event: FormEvent) {
+    event.preventDefault();
+    const email = accountForm.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setNote("Enter a full email address."); return; }
+    update((prev) => ({
+      ...prev,
+      emailHub: {
+        ...prev.emailHub,
+        hiddenEmails: (prev.emailHub.hiddenEmails || []).filter((item) => item !== email),
+        extraEmails: [...new Set([email, ...(prev.emailHub.extraEmails || [])])].slice(0, 40),
+        accounts: prev.emailHub.accounts.some((row) => row.email.toLowerCase() === email)
+          ? prev.emailHub.accounts
+          : [{ id: newId(), email, name: accountForm.name.trim() || email, provider: accountForm.provider }, ...prev.emailHub.accounts],
+      },
+    }));
+    setAccountForm({ email: "", name: "", provider: "gmail" });
+    const google = email === "chrisgr33ninc@gmail.com" || email === "chris@ceogps.com";
+    void logFeed("mail", "action", "Connect mailbox", email);
+    if (accountForm.provider === "gmail" && google) {
+      window.location.assign(oauthStartHref("google", email));
+      return;
+    }
+    setBusy("add");
+    try {
+      const { integrationsApi } = await import("@/lib/integrations/client");
+      const { url } = await integrationsApi.start("nylas", email);
+      if (!url.startsWith("http")) throw new Error("The login page did not come back.");
+      window.location.assign(url);
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "The mailbox login did not start.");
+      setBusy("");
+    }
   }
 
   async function writeSubject() {
@@ -286,31 +380,33 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
                 {row.email || "Nylas"}: {row.text}
               </p>
             ))}
-            {!boxes.length && busy !== "pull" ? <p className="mt-2 text-sm text-white/50">Press Pull all three. Each mailbox shows whether Nylas connected.</p> : null}
+            {!boxes.length && busy !== "pull" ? <p className="mt-2 text-sm text-white/50">Pull mail. Each connected mailbox reports its own status here.</p> : null}
           </section>
         <div className="grid min-h-[36rem] gap-3 lg:grid-cols-[12rem_24rem_1fr]">
           <section className="module-card h-fit p-3">
             <p className="text-sm">Accounts</p>
-            {hub.accounts.map((row) => (
-              <button key={row.id} type="button" className={`menu ${accountId === row.id ? "is-on" : ""}`} onClick={() => setAccountId(row.id)}>{row.name}</button>
+            {deskAccounts.map((row) => (
+              <div key={row.id} className="flex items-center gap-1">
+                <button type="button" className={`menu min-w-0 flex-1 ${accountId === row.id ? "is-on" : ""}`} onClick={() => setAccountId(row.id)}><span className="block truncate">{row.email}</span></button>
+                {dropId === row.id ? (
+                  <>
+                    <button type="button" className="link-remove shrink-0" onClick={() => { removeDeskAccount(row); setDropId(""); }}>Yes</button>
+                    <button type="button" className="quiet shrink-0" onClick={() => setDropId("")}>Keep</button>
+                  </>
+                ) : (
+                  <button type="button" className="link-remove shrink-0" onClick={() => setDropId(row.id)}>Remove</button>
+                )}
+              </div>
             ))}
-            <form className="mt-3 grid gap-2" onSubmit={(event) => {
-              event.preventDefault();
-              const email = accountForm.email.trim();
-              if (!email.includes("@")) return;
-              const row = { id: newId(), email, name: accountForm.name.trim() || email, provider: accountForm.provider };
-              setHub((prev) => ({ ...prev, accounts: [row, ...prev.accounts] }));
-              setAccountId(row.id);
-              setAccountForm({ email: "", name: "", provider: "gmail" });
-            }}>
+            <form className="mt-3 grid gap-2" onSubmit={(event) => void connectAccount(event)}>
               <input className={field} placeholder="name@mail.com" value={accountForm.email} onChange={(event) => setAccountForm({ ...accountForm, email: event.target.value })} />
               <select className={field} value={accountForm.provider} onChange={(event) => setAccountForm({ ...accountForm, provider: event.target.value as typeof accountForm.provider })}>
                 <option value="gmail">Gmail</option>
                 <option value="outlook">Outlook</option>
                 <option value="yahoo">Yahoo</option>
-                <option value="imap">IMAP</option>
+                <option value="imap">IMAP / iCloud</option>
               </select>
-              <button type="submit" className="quiet is-on">Add account</button>
+              <button type="submit" className={`quiet is-on ${busy === "add" ? "is-busy" : ""}`} disabled={busy === "add"}>Connect this email</button>
             </form>
             <div className="mt-4">
               {FOLDERS.map((item) => (
@@ -321,7 +417,7 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
           <section className="module-card h-fit p-3">
             <div className="mb-2 flex gap-3">
               <button type="button" className="quiet is-on" onClick={() => { setCompose(true); setOpenId(null); }}>Compose</button>
-              <button type="button" className={`quiet ${busy === "pull" ? "is-busy" : ""}`} aria-busy={busy === "pull"} disabled={busy === "pull"} onClick={() => void pullMail()}>{busy === "pull" ? "Pulling" : "Pull all three"}</button>
+              <button type="button" className={`quiet ${busy === "pull" ? "is-busy" : ""}`} aria-busy={busy === "pull"} disabled={busy === "pull"} onClick={() => void pullMail()}>{busy === "pull" ? "Pulling" : "Pull mail"}</button>
             </div>
             <input className={field} placeholder="Search mail" value={search} onChange={(event) => setSearch(event.target.value)} />
             <ul className="mt-2 max-h-[34rem] overflow-y-auto">
@@ -337,7 +433,7 @@ export function EmailDesk({ data, update }: { data: Memory; update: Update }) {
                   </button>
                 </li>
               ))}
-              {rows.length === 0 ? <li className="px-1 py-2 text-sm text-white/40">Nothing in {folder}.</li> : null}
+              {rows.length === 0 ? <li className="px-1 py-2 text-sm text-white/40">{folder === "inbox" ? "No messages from a connected mailbox." : `Nothing in ${folder}.`}</li> : null}
             </ul>
           </section>
           <section className="module-card p-4">

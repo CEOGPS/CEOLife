@@ -24,37 +24,6 @@ const TOOLS: { id: ToolId; label: string; does: string }[] = [
 ];
 const TABS: [Tab, string][] = [["find", "Find"], ["projects", "Projects"], ["runs", "Runs"], ["tools", "Tool access"], ["accounts", "Accounts"], ["log", "Activity"]];
 
-function ideaSet(niche: string, hours: string, face: boolean): Idea[] {
-  const topic = niche.trim() || "a subject you can explain without research";
-  const all: Idea[] = [
-    { id: "pack", name: `A $12 download about ${topic}`, summary: "One short checklist. Lucid writes it and the shop page. You create the shop and upload the file.", effort: "Low. One sitting after the copy is written.", range: "Usually slow. A few sales, not a salary.", tools: ["content", "listings"], account: "New Gumroad or PayPal shop", risks: "No shop approval, no sales. Crowded topics sit at zero.", steps: [
-      { id: "write", label: "Write the file and the sales page", owner: "lucid", done: false, output: `Title: ${topic} — the short checklist\nPrice to test: $12\nBuyer gets a 1–2 page file they can use the same day.\nNo income claim on the page.` },
-      { id: "shop", label: "Open the shop and upload the file", owner: "you", done: false, output: "" },
-    ] },
-    { id: "clips", name: `Ten answer clips about ${topic}`, summary: "Short scripts for a new channel. No face required. You post them on the channel you create.", effort: "Low if you record voice only, or use text on screen.", range: "Most new channels earn nothing for months.", tools: ["content", "social"], account: "New YouTube channel", risks: "Reused footage and copied scripts get limited. One topic only.", steps: [
-      { id: "scripts", label: "Write 10 short scripts", owner: "lucid", done: false, output: Array.from({ length: 10 }, (_, index) => `${index + 1}. One question about ${topic}. Answer in under 40 seconds.`).join("\n") },
-      { id: "channel", label: "Create the channel and post the first three", owner: "you", done: false, output: "" },
-    ] },
-    { id: "compare", name: `One comparison page for ${topic}`, summary: "A page that compares two or three options you have actually used. You publish it where you can add a link later.", effort: "Low. One page, not a blog.", range: "Pays only if a program has already approved you and someone buys.", tools: ["content"], account: "New page on a site you control", risks: "Do not review products you have not used. No link, no payout.", steps: [
-      { id: "draft", label: "Draft the comparison", owner: "lucid", done: false, output: `Page: ${topic}, two or three options\nFor each: what it is for, what it is bad at, what it costs.\nLeave the link blank until the program approves the account.` },
-      { id: "publish", label: "Publish the page", owner: "you", done: false, output: "" },
-    ] },
-    { id: "etsy", name: `A template pack for ${topic}`, summary: "Three simple templates. Lucid writes the titles and tags. You export them and list them.", effort: "Low if the templates are plain documents.", range: "Often a few dollars a sale, if they sell.", tools: ["content", "assets", "listings"], account: "New Etsy or Creative Market shop", risks: "Do not list files you do not own. New shops can take days to clear.", steps: [
-      { id: "copy", label: "Write three listings", owner: "lucid", done: false, output: `1. ${topic} checklist\n2. ${topic} tracker\n3. ${topic} first-week plan\nSay the format and that the buyer edits it.` },
-      { id: "list", label: "Open the shop and publish the three files", owner: "you", done: false, output: "" },
-    ] },
-    { id: "replies", name: `Answer people already asking about ${topic}`, summary: "Lucid writes the searches and a short reply. You post it only where someone asked.", effort: "Low. A few replies, not a content calendar.", range: "One paid job if the reply is specific. Most threads pay nothing.", tools: ["leads", "social"], account: "The profile you post from", risks: "Copied ads get removed. Reply only to a real request.", steps: [
-      { id: "pack", label: "Write the searches and the reply", owner: "lucid", done: false, output: `Search: "looking for" ${topic}\nSearch: "anyone know" ${topic}\n\nReply: I can help with ${topic}. Tell me the deadline and what done looks like. I will answer with a price before any work.` },
-      { id: "post", label: "Send that reply on a thread that asked", owner: "you", done: false, output: "" },
-    ] },
-  ];
-  return all.filter((idea) => {
-    if (!face && idea.id === "clips") return hours !== "1";
-    if (hours === "1") return idea.id === "pack" || idea.id === "replies" || idea.id === "compare";
-    return true;
-  });
-}
-
 function empty(): Store {
   return { tools: [], ideas: [], runs: [], accounts: [], log: [] };
 }
@@ -76,42 +45,51 @@ function load(board: Memory["ideas"]): Store {
 export function LucidDesk({ data, update }: { data: Memory; update: Update }) {
   const [tab, setTab] = useState<Tab>("find");
   const [store, setStore] = useState<Store>(() => load(data.ideas));
-  const [draft, setDraft] = useState<Record<string, string>>({ hours: "3", face: "no" });
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [searching, setSearching] = useState(false);
+  const [note, setNote] = useState("");
   const logged = store.runs.reduce((sum, run) => sum + (Number(String(run.earned).replace(/[^0-9.]/g, "")) || 0), 0);
 
   useEffect(() => { localStorage.setItem(KEY, JSON.stringify(store)); }, [store]);
 
-  useEffect(() => {
-    const run = store.runs.find((item) => item.status === "running");
-    if (!run) return;
-    const step = run.steps.find((item) => !item.done && item.owner === "lucid");
-    const timer = window.setTimeout(() => {
-      setStore((current) => ({
-        ...current,
-        runs: current.runs.map((item) => {
-          if (item.id !== run.id || item.status !== "running") return item;
-          if (!step) {
-            const waiting = item.steps.some((row) => !row.done && row.owner === "you");
-            return { ...item, status: waiting ? "waiting" : "done", updated: new Date().toISOString() };
-          }
-          const steps = item.steps.map((row) => row.id === step.id ? { ...row, done: true } : row);
-          const lucidLeft = steps.some((row) => !row.done && row.owner === "lucid");
-          const youLeft = steps.some((row) => !row.done && row.owner === "you");
-          return { ...item, steps, status: !lucidLeft && youLeft ? "waiting" : "running", updated: new Date().toISOString() };
-        }),
-        log: [{ id: newId(), at: new Date().toISOString(), text: step ? `Lucid finished “${step.label}” for ${run.name}` : `${run.name} is waiting on you` }, ...current.log].slice(0, 80),
-      }));
-    }, 1200);
-    return () => window.clearTimeout(timer);
-  }, [store.runs]);
-
   const set = (key: string, value: string) => setDraft((prev) => ({ ...prev, [key]: value }));
   const missing = (tools: ToolId[]) => tools.filter((tool) => !store.tools.includes(tool));
 
-  function find() {
-    const ideas = ideaSet(draft.niche || "", draft.hours || "3", draft.face === "yes").map((idea) => ({ ...idea, id: newId(), steps: idea.steps.map((step) => ({ ...step })) }));
-    setStore((current) => ({ ...current, ideas, log: [{ id: newId(), at: new Date().toISOString(), text: `Lucid found ${ideas.length} low-effort ideas${draft.niche ? ` around ${draft.niche}` : ""}.` }, ...current.log].slice(0, 80) }));
-    update((prev) => ({ ...prev, notifs: [{ id: newId(), text: `${ideas.length} Lucid ideas to review`, source: "Lucid", seen: false }, ...prev.notifs] }));
+  async function find() {
+    if (searching) return;
+    setSearching(true);
+    const subject = (draft.niche || "").trim().toLowerCase();
+    try {
+      const { findIdeas } = await import("@/lib/lifeos/sync");
+      const { logFeed } = await import("@/lib/lifeos/truth");
+      const result = await findIdeas();
+      const found = (result.ideas || []).filter((row) => !subject || `${row.title} ${row.source}`.toLowerCase().includes(subject));
+      const ideas: Idea[] = found.map((row) => ({
+        id: newId(),
+        name: row.title,
+        summary: `Public post from ${row.source}.`,
+        effort: row.effort === "low" ? "Low" : "Medium",
+        range: "No payout is known until you read the post.",
+        tools: ["leads"],
+        account: row.url,
+        risks: "This is someone else's post. It is not an offer and it is not income.",
+        steps: [
+          { id: "read", label: "Open the post and read it", owner: "you", done: false, output: "" },
+          { id: "decide", label: "Decide whether it fits", owner: "you", done: false, output: "" },
+        ],
+      }));
+      const summary = ideas.length ? `${ideas.length} public posts.` : subject ? `No public posts matched ${draft.niche}.` : "The public sources returned no posts.";
+      setNote(summary);
+      setStore((current) => ({ ...current, ideas, log: [{ id: newId(), at: new Date().toISOString(), text: summary }, ...current.log].slice(0, 80) }));
+      void logFeed("lucid", ideas.length ? "action" : "error", "Lucid search", summary);
+    } catch (error) {
+      const summary = error instanceof Error ? error.message : "Lucid search did not answer.";
+      setNote(summary);
+      setStore((current) => ({ ...current, ideas: [], log: [{ id: newId(), at: new Date().toISOString(), text: summary }, ...current.log].slice(0, 80) }));
+      void import("@/lib/lifeos/truth").then(({ logFeed }) => logFeed("lucid", "error", "Lucid search", summary));
+    } finally {
+      setSearching(false);
+    }
   }
 
   function approve(idea: Idea) {
@@ -134,7 +112,7 @@ export function LucidDesk({ data, update }: { data: Memory; update: Update }) {
 
   return (
     <div className="grid gap-3">
-      <p className="max-w-3xl text-sm text-white/50">Lucid looks for low-effort ways to make money online. You approve one, set up the email and the deposit account, then Lucid runs the project. It writes the work. It does not open the email or the bank account.</p>
+      <p className="max-w-3xl text-sm text-white/50">Find lists public posts from Hacker News and Reddit. Projects and budget lines are the ones stored for this account. Nothing here is a generated offer.</p>
       <EngineBar panel="Lucid" data={data} update={update} />
       <div className="flex flex-wrap gap-3">
         {TABS.map(([id, label]) => <button key={id} type="button" className={`quiet ${tab === id ? "is-on" : ""}`} onClick={() => setTab(id)}>{label}</button>)}
@@ -143,18 +121,10 @@ export function LucidDesk({ data, update }: { data: Memory; update: Update }) {
       {tab === "find" ? (
         <section className="grid gap-3">
           <div className="flex flex-wrap gap-2">
-            <input className="h-8 min-w-56 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder="What can you explain?" value={draft.niche || ""} onChange={(event) => set("niche", event.target.value)} />
-            <select className="h-8 rounded-full border border-line bg-black/40 px-3 text-sm" value={draft.hours || "3"} onChange={(event) => set("hours", event.target.value)}>
-              <option value="1">About 1 hour a week</option>
-              <option value="3">A few hours a week</option>
-              <option value="5">More time than that</option>
-            </select>
-            <select className="h-8 rounded-full border border-line bg-black/40 px-3 text-sm" value={draft.face || "no"} onChange={(event) => set("face", event.target.value)}>
-              <option value="no">No face on camera</option>
-              <option value="yes">Face on camera is fine</option>
-            </select>
-            <button type="button" className="quiet is-on" onClick={find}>Find ideas</button>
+            <input className="h-8 min-w-56 flex-1 rounded-full border border-line bg-black/40 px-3 text-sm" placeholder="Filter the public posts" value={draft.niche || ""} onChange={(event) => set("niche", event.target.value)} />
+            <button type="button" className="quiet is-on" disabled={searching} onClick={() => void find()}>{searching ? "Searching" : "Find posts"}</button>
           </div>
+          {note ? <p className="text-sm text-white/60">{note}</p> : null}
           <div className="grid gap-3 md:grid-cols-2">
             {store.ideas.map((idea) => {
               const need = missing(idea.tools);
@@ -164,7 +134,7 @@ export function LucidDesk({ data, update }: { data: Memory; update: Update }) {
                   <p className="mt-1 text-white/70">{idea.summary}</p>
                   <p className="mt-2 text-white/45">{idea.effort}</p>
                   <p className="text-white/45">{idea.range}</p>
-                  <p className="mt-2">You set up: {idea.account}.</p>
+                  <p className="mt-2">{idea.account.startsWith("http") ? <a className="text-blue-2" href={idea.account} target="_blank" rel="noreferrer">Open the post</a> : idea.account}</p>
                   <p>Tools: {idea.tools.join(", ")}</p>
                   <p className="text-orange-200/80">Risk: {idea.risks}</p>
                   {need.length ? <p className="mt-2 text-orange-200">Turn on {need.join(", ")} in Tool access first.</p> : null}
@@ -176,7 +146,7 @@ export function LucidDesk({ data, update }: { data: Memory; update: Update }) {
               );
             })}
           </div>
-          {!store.ideas.length ? <p className="text-sm text-white/40">No ideas on screen. Run a search.</p> : null}
+          {!store.ideas.length && !note ? <p className="text-sm text-white/40">No public posts on screen. Run a search.</p> : null}
         </section>
       ) : null}
       {tab === "runs" ? (
