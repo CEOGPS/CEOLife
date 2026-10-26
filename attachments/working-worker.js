@@ -427,7 +427,7 @@ async function startOauth(request, env) {
     microsoft: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     github: "https://github.com/login/oauth/authorize",
     slack: "https://slack.com/oauth/v2/authorize",
-    facebook: "https://www.facebook.com/dialog/oauth",
+    facebook: "https://www.facebook.com/v26.0/dialog/oauth",
     instagram: "https://api.instagram.com/oauth/authorize",
     twitter: "https://twitter.com/i/oauth2/authorize",
     linkedin: "https://www.linkedin.com/oauth/v2/authorization",
