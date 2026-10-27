@@ -46,6 +46,8 @@ export default {
       if (url.pathname.startsWith("/api/")) return cors(owned, request, allowed);
       return owned;
     }
+    const linkedin = await linkedinWebhook(request, env);
+    if (linkedin) return linkedin;
     // Client ids live on lifeos1-oauth. This worker only forwards those paths.
     // The browser still returns to https://lifeos1-api.ceogps.workers.dev/oauth/callback.
     if (OAUTH_PATHS.has(url.pathname) && env.OAUTH) {
@@ -72,6 +74,59 @@ export default {
     return response;
   },
 };
+
+async function hmacHex(secret: string, value: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  return [...new Uint8Array(mac)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function sameHex(left: string, right: string) {
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  return diff === 0;
+}
+
+/** LinkedIn calls this with no LifeOS session. GET answers the challenge. POST stores a signed event. */
+async function linkedinWebhook(request: Request, env: WorkerEnv): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (url.pathname !== "/api/webhooks/linkedin") return null;
+  const secret = String(env.LINKEDIN_CLIENT_SECRET || "");
+  if (request.method === "GET") {
+    const challengeCode = url.searchParams.get("challengeCode") || "";
+    if (!challengeCode) return Response.json({ ok: true });
+    if (!secret) return Response.json({ error: "LINKEDIN_CLIENT_SECRET is not set" }, { status: 503 });
+    return Response.json({ challengeCode, challengeResponse: await hmacHex(secret, challengeCode) });
+  }
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  const raw = await request.text();
+  let posted = "";
+  if (raw) {
+    try { posted = String((JSON.parse(raw) as { challengeCode?: string }).challengeCode || ""); } catch { posted = ""; }
+  }
+  const challengeCode = url.searchParams.get("challengeCode") || posted;
+  if (challengeCode) {
+    if (!secret) return Response.json({ error: "LINKEDIN_CLIENT_SECRET is not set" }, { status: 503 });
+    return Response.json({ challengeCode, challengeResponse: await hmacHex(secret, challengeCode) });
+  }
+  if (!secret) return Response.json({ error: "LINKEDIN_CLIENT_SECRET is not set" }, { status: 503 });
+  const header = (request.headers.get("X-LI-Signature") || "").trim().toLowerCase();
+  const expected = await hmacHex(secret, `hmacsha256=${raw}`);
+  const hex = header.startsWith("hmacsha256=") ? header.slice("hmacsha256=".length) : header;
+  if (!header || (!sameHex(header, expected) && !sameHex(hex, expected))) return new Response("Forbidden", { status: 403 });
+  const kv = env.LIFEOS_KV as { get(key: string): Promise<string | null>; put(key: string, value: string): Promise<unknown> } | undefined;
+  if (kv) {
+    const key = "linkedin:webhook:recent";
+    const prev = await kv.get(key);
+    let rows: unknown[] = [];
+    try { rows = prev ? JSON.parse(prev) : []; } catch { rows = []; }
+    if (!Array.isArray(rows)) rows = [];
+    rows.unshift({ at: new Date().toISOString(), body: raw.slice(0, 8000) });
+    await kv.put(key, JSON.stringify(rows.slice(0, 20)));
+  }
+  return Response.json({ ok: true });
+}
 
 function cors(response: Response, request: Request, allowed: Set<string>) {
   const origin = request.headers.get("Origin") || "";
