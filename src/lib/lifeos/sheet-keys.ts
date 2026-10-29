@@ -93,6 +93,16 @@ export const SERVICE_ENV: Record<string, string[]> = {
   Xiaomi: ["XIAOMI_API_KEY"],
   Zoom: ["ZOOM_CLIENT_SECRET", "ZOOM_CLIENT_ID"],
   "D-ID (avatar)": ["DID_API_KEY"],
+  // APILayer (same key works for all of these free-tier endpoints)
+  Numverify: ["NUMVERIFY_API_KEY", "APILAYER_KEY"],
+  Serpstack: ["SERPSTACK_API_KEY", "APILAYER_KEY"],
+  "Mailbox Layer": ["MAILBOX_LAYER_API_KEY", "APILAYER_KEY"],
+  Scrapestack: ["SCRAPESTACK_API_KEY", "APILAYER_KEY"],
+  Mediastack: ["MEDIASTACK_API_KEY", "APILAYER_KEY"],
+  IPstack: ["IPSTACK_API_KEY", "APILAYER_KEY"],
+  Positionstack: ["POSITIONSTACK_API_KEY", "APILAYER_KEY"],
+  Weatherstack: ["WEATHERSTACK_API_KEY", "APILAYER_KEY"],
+  Fixer: ["FIXER_API_KEY", "APILAYER_KEY"],
 };
 
 function normKey(value: string) {
