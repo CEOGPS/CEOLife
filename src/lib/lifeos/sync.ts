@@ -572,7 +572,7 @@ async function lumaFetch(key: string, path: string, init?: RequestInit) {
 
 export const makeClip = createServerFn({ method: "POST" })
   .middleware([sessionMiddleware])
-  .validator((input: { prompt: string; key?: string; id?: string; image?: string; aspect?: string; model?: string; duration?: string }) => ({
+  .validator((input: { prompt: string; key?: string; id?: string; image?: string; aspect?: string; model?: string; duration?: string; refs?: string[] }) => ({
     prompt: String(input?.prompt || "").trim().slice(0, 800),
     key: String(input?.key || "").trim().slice(0, 400),
     id: String(input?.id || "").trim().slice(0, 80),
@@ -580,6 +580,7 @@ export const makeClip = createServerFn({ method: "POST" })
     aspect: ["16:9", "9:16", "1:1", "4:3", "3:4"].includes(String(input?.aspect || "")) ? String(input?.aspect) : "16:9",
     model: String(input?.model || "") === "ray-flash-2" ? "ray-flash-2" : "ray-2",
     duration: String(input?.duration || "") === "5s" ? "5s" : "9s",
+    refs: Array.isArray(input?.refs) ? input.refs.filter((url) => /^https:\/\//.test(String(url || ""))).slice(0, 6) : [],
   }))
   .handler(async ({ data }) => {
     const key = data.key || await secret("LUMA_API_KEY", "VITE_LUMA_API_KEY");
@@ -587,7 +588,7 @@ export const makeClip = createServerFn({ method: "POST" })
     let id = data.id;
     if (!id) {
       if (!data.prompt && !data.image) return { ok: false as const, url: "", id: "", state: "failed", error: "Prompt required." };
-      const frame = /^https:\/\//.test(data.image) ? { keyframes: { frame0: { type: "image", url: data.image } } } : {};
+      const frame = /^https:\/\//.test(data.image) ? { keyframes: { frame0: { type: "image", url: data.image } } } : (data.refs?.[0] ? { keyframes: { frame0: { type: "image", url: data.refs[0] } } } : {});
       const started = await lumaFetch(key, "/generations", {
         method: "POST",
         body: JSON.stringify({ prompt: data.prompt || "Cinematic motion, sharp detail, natural light.", model: data.model, resolution: "720p", duration: data.duration, aspect_ratio: data.aspect, ...frame }),

@@ -219,6 +219,7 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
   const [form, setForm] = useState("Script");
   const [voice, setVoice] = useState<string>(VOICES[0].id);
   const [still, setStill] = useState("");
+  const [refs, setRefs] = useState<string[]>([]);
   const [audience, setAudience] = useState("");
   const [points, setPoints] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
@@ -332,7 +333,7 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
       if (studio === "animate" && still && !/^https:\/\//.test(still)) { setNote("Animate needs an https image. Paste a link or pick one already saved."); return; }
       setNote(studio === "animate" ? "Animating the still…" : "Starting the video…");
       const { makeClip } = await import("@/lib/lifeos/sync");
-      const result = await makeClip({ data: { prompt: `Cinematic, sharp detail, natural motion. ${prompt}`, key: luma, aspect, image: studio === "animate" ? still : "", model: "ray-2", duration: "9s" } });
+      const result = await makeClip({ data: { prompt: `Cinematic, sharp detail, natural motion. ${prompt}`, key: luma, aspect, image: studio === "animate" ? still : (refs[0] || ""), refs, model: "ray-2", duration: "9s" } });
       const label = `${studio === "animate" ? "Animate" : "Video"} · ${name}`;
       if (result.url) { savePiece(label, result.url); setJob(""); setNote("Video saved."); return; }
       if (result.id && result.state === "dreaming") { setJob(result.id); setEngine("luma"); setNote("Luma is still rendering. Check again in a moment."); return; }
@@ -392,6 +393,34 @@ docker compose up -d
             <label className="mt-3 block text-[11px] text-white/45">Image
               <input className="mt-1 h-8 w-full rounded-full border border-line bg-black/40 px-3 text-sm" value={still} placeholder="https:// image" onChange={(event) => setStill(event.target.value)} />
             </label>
+          ) : null}
+          {studio === "video" ? (
+            <div className="mt-3">
+              <p className="text-[11px] text-white/45">Reference images (up to 6)</p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {refs.map((url, i) => (
+                  <div key={url + i} className="relative">
+                    <img src={url} alt="" className="h-14 w-14 rounded object-cover" />
+                    <button type="button" className="absolute -right-1 -top-1 rounded-full bg-black/70 px-1 text-[10px]" onClick={() => setRefs((rows) => rows.filter((_, j) => j !== i))}>×</button>
+                  </div>
+                ))}
+                {refs.length < 6 ? (
+                  <label className="quiet inline-flex h-14 w-14 items-center justify-center">
+                    +
+                    <input className="hidden" type="file" accept="image/*" multiple onChange={(event) => {
+                      const files = Array.from(event.target.files || []).slice(0, 6 - refs.length);
+                      event.target.value = "";
+                      if (!files.length) return;
+                      setNote("Uploading references…");
+                      void Promise.all(files.map((file) => uploadMedia(file))).then((urls) => {
+                        setRefs((rows) => [...rows, ...urls].slice(0, 6));
+                        setNote("References ready.");
+                      }).catch(() => setNote("Reference upload failed."));
+                    }} />
+                  </label>
+                ) : null}
+              </div>
+            </div>
           ) : null}
           {studio === "animate" || studio === "wan" || studio === "image" ? (
             <label className="mt-2 inline-flex">
