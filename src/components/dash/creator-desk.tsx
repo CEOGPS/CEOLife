@@ -348,9 +348,12 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl">Creator</h1>
-          <p className="text-sm text-white/50">Pull lists media from the connected GitHub, Facebook, and YouTube accounts.</p>
+          <p className="text-sm text-white/50">Pull lists media from the connected GitHub, Facebook, and YouTube accounts. Open Design sits beside the studios.</p>
         </div>
-        <button type="button" className="quiet is-on" onClick={() => void pullLibrary()}>Pull connected accounts</button>
+        <div className="flex gap-3">
+          <button type="button" className="quiet is-on" onClick={() => void pullLibrary()}>Pull connected accounts</button>
+          <a className="quiet" href="https://open-design.ai" target="_blank" rel="noreferrer">Open Design</a>
+        </div>
         <div className="flex gap-4">
           {(["image", "video", "animate", "wan", "audio", "write"] as Studio[]).map((name) => (
             <button key={name} type="button" className={`quiet ${studio === name ? "is-on" : ""}`} onClick={() => setStudio(name)}>{name === "wan" ? "Wan" : name[0].toUpperCase() + name.slice(1)}</button>
