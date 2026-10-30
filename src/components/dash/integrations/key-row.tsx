@@ -4,6 +4,29 @@ import type { KeyRowModel } from "./use-integrations";
 import { mask, timeAgo, type Tone } from "./format";
 import { Button, EmailText, StatusPill } from "./ui";
 
+const KEY_USES: Record<string, string> = {
+  Anthropic: "AI Hub",
+  OpenAI: "AI Hub, Creator",
+  xAI: "AI Hub, Creator",
+  "Grok (xAI)": "AI Hub, Creator",
+  ElevenLabs: "Creator (audio)",
+  Luma: "Creator (video)",
+  Replicate: "Creator (Wan)",
+  Spotify: "Music Einstein",
+  YouTube: "Creator, Analytics",
+  NewsAPI: "Pulse",
+  OpenWeather: "Pulse",
+  "Google Maps": "Maps",
+  Stripe: "Finance",
+  Nylas: "Email",
+  GitHub: "Creator",
+  Cloudflare: "Deploy, AI",
+  Brevo: "Marketing",
+  SendGrid: "Marketing",
+  Notion: "Productivity",
+  Slack: "Social",
+};
+
 const LOOK: Record<KeyRowModel["state"], { tone: Tone; label: string }> = {
   ok: { tone: "ok", label: "Working" },
   error: { tone: "error", label: "Not working" },
@@ -120,6 +143,7 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
           )}
         </div>
       )}
+      <p className="mt-2 text-[11px] text-white/40">Used by: {KEY_USES[row.name] || "—"}</p>
     </li>
   );
 }

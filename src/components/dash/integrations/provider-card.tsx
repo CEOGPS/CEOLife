@@ -192,6 +192,7 @@ export function ProviderCard({ meta, accounts, expected, configured, app, busy, 
         <a className="int-btn int-btn--primary" href={href} target="_top" rel="noopener">
           {failed ? "Reconnect" : accounts.length ? "Add another account" : `Connect ${meta.name}`}
         </a>
+        <p className="text-[11px] text-white/40">Used by: {USES[meta.id] || "—"}</p>
       </div>
     </article>
   );
