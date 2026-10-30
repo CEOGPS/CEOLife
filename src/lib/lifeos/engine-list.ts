@@ -22,7 +22,7 @@ export const ENGINES: Engine[] = [
   { id: "ltx", name: "LTX-2", panels: ["Creator"], mode: "http", url: "http://127.0.0.1:8093", health: "/health", note: "Video with sound. Needs the LTX service on a larger GPU." },
   { id: "musetalk", name: "MuseTalk", panels: ["Creator"], mode: "http", url: "http://127.0.0.1:8094", health: "/health", note: "Still plus a voice file. Needs MuseTalk running locally." },
   { id: "liveportrait", name: "LivePortrait", panels: ["Creator"], mode: "http", url: "http://127.0.0.1:8095", health: "/health", note: "Moves a portrait. It does not write the words." },
-  { id: "open-design", name: "Open Design", panels: ["Creator"], mode: "http", url: "https://open-design.ai", health: "/", note: "Collaborative AI design workspace. Opens beside the studios. Local-first option is on GitHub." },
+  { id: "open-design", name: "Open Design", panels: ["Creator"], mode: "http", url: "http://127.0.0.1:7456", health: "/", note: "Local Open Design daemon. Start with docker compose in deploy/ or pnpm tools-dev. Studio tab embeds it." },
   { id: "postiz", name: "Postiz", panels: ["Social"], mode: "http", url: "http://127.0.0.1:5000", health: "/", note: "Scheduler beside Social. This button does not publish." },
   { id: "seonaut", name: "SEOnaut", panels: ["Marketing"], mode: "http", url: "http://127.0.0.1:9000", health: "/", note: "Full-site audit. The page check in Marketing still runs without it." },
   { id: "umami", name: "Umami", panels: ["Marketing"], mode: "http", url: "http://127.0.0.1:3100", health: "/api/heartbeat", note: "Site stats on 3100 so it does not take the dashboard port." },

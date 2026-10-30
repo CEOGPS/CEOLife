@@ -5,14 +5,14 @@ import { downloadFile, downloadText } from "./format";
 import { VOICES } from "./voices";
 
 type Update = (recipe: (prev: Memory) => Memory) => void;
-type Studio = "image" | "video" | "animate" | "wan" | "write" | "audio";
+type Studio = "image" | "video" | "animate" | "wan" | "write" | "audio" | "design";
 type Filter = "all" | Studio;
-type Piece = "Image" | "Video" | "Animate" | "Wan" | "Script" | "Audio";
+type Piece = "Image" | "Video" | "Animate" | "Wan" | "Script" | "Audio" | "Design";
 
 const LOOKS = ["Photo", "Poster", "Product", "Portrait", "Wide"];
 const ASPECTS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
 const FORMS = ["Script", "Post", "Blog", "Caption"];
-const PREFIX: Record<Studio, Piece> = { image: "Image", video: "Video", animate: "Animate", wan: "Wan", write: "Script", audio: "Audio" };
+const PREFIX: Record<Studio, Piece> = { image: "Image", video: "Video", animate: "Animate", wan: "Wan", write: "Script", audio: "Audio", design: "Design" };
 
 function studioOf(title: string): Studio | null {
   if (title.startsWith("Image ·")) return "image";
@@ -21,6 +21,7 @@ function studioOf(title: string): Studio | null {
   if (title.startsWith("Wan ·")) return "wan";
   if (title.startsWith("Script ·")) return "write";
   if (title.startsWith("Audio ·")) return "audio";
+  if (title.startsWith("Design ·")) return "design";
   return null;
 }
 
@@ -348,19 +349,22 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl">Creator</h1>
-          <p className="text-sm text-white/50">Pull lists media from the connected GitHub, Facebook, and YouTube accounts. Open Design sits beside the studios.</p>
+          <p className="text-sm text-white/50">Pull lists media from the connected GitHub, Facebook, and YouTube accounts. Design tab loads the local Open Design daemon.</p>
         </div>
-        <div className="flex gap-3">
-          <button type="button" className="quiet is-on" onClick={() => void pullLibrary()}>Pull connected accounts</button>
-          <a className="quiet" href="https://open-design.ai" target="_blank" rel="noreferrer">Open Design</a>
-        </div>
+        <button type="button" className="quiet is-on" onClick={() => void pullLibrary()}>Pull connected accounts</button>
         <div className="flex gap-4">
-          {(["image", "video", "animate", "wan", "audio", "write"] as Studio[]).map((name) => (
-            <button key={name} type="button" className={`quiet ${studio === name ? "is-on" : ""}`} onClick={() => setStudio(name)}>{name === "wan" ? "Wan" : name[0].toUpperCase() + name.slice(1)}</button>
+          {(["image", "video", "animate", "wan", "audio", "write", "design"] as Studio[]).map((name) => (
+            <button key={name} type="button" className={`quiet ${studio === name ? "is-on" : ""}`} onClick={() => setStudio(name)}>{name === "wan" ? "Wan" : name === "design" ? "Design" : name[0].toUpperCase() + name.slice(1)}</button>
           ))}
         </div>
       </div>
       {library.length ? <ul className="module-card p-4 text-sm">{library.map((row) => <li key={row.url} className="py-1"><a className="text-blue-2" href={row.url} target="_blank" rel="noreferrer">{row.title}</a> <span className="text-white/40">{row.source}</span></li>)}</ul> : null}
+      {studio === "design" ? (
+        <section className="module-card p-3">
+          <iframe title="Open Design" src="http://127.0.0.1:7456" className="h-[70vh] w-full rounded border border-line bg-black" />
+          <p className="mt-2 text-sm text-white/45">Needs the Open Design daemon on port 7456. From the open-design repo: cd deploy && docker compose up -d, then open this tab.</p>
+        </section>
+      ) : (
       <div className="grid gap-3 xl:grid-cols-[22rem_1fr]">
         <section className="module-card p-4">
           <label className="block text-[11px] text-white/45">Title
@@ -423,7 +427,7 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
           <div className="module-card p-3">
             <div className="mb-3 flex flex-wrap gap-4">
               {(["all", "image", "video", "animate", "wan", "audio", "write"] as Filter[]).map((name) => (
-                <button key={name} type="button" className={`quiet ${filter === name ? "is-on" : ""}`} onClick={() => setFilter(name)}>{name === "wan" ? "Wan" : name[0].toUpperCase() + name.slice(1)} {name === "all" ? pieces.length : pieces.filter((row) => studioOf(row.title) === name).length}</button>
+                <button key={name} type="button" className={`quiet ${filter === name ? "is-on" : ""}`} onClick={() => setFilter(name)}>{name === "wan" ? "Wan" : name === "design" ? "Design" : name[0].toUpperCase() + name.slice(1)} {name === "all" ? pieces.length : pieces.filter((row) => studioOf(row.title) === name).length}</button>
               ))}
             </div>
             {!shown.length ? <p className="text-sm text-white/40">Nothing in this library yet.</p> : null}
@@ -491,6 +495,7 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
           ) : null}
         </section>
       </div>
+      )}
     </div>
   );
 }
