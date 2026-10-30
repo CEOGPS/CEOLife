@@ -360,9 +360,27 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
       </div>
       {library.length ? <ul className="module-card p-4 text-sm">{library.map((row) => <li key={row.url} className="py-1"><a className="text-blue-2" href={row.url} target="_blank" rel="noreferrer">{row.title}</a> <span className="text-white/40">{row.source}</span></li>)}</ul> : null}
       {studio === "design" ? (
-        <section className="module-card p-3">
-          <iframe title="Open Design" src="http://127.0.0.1:7456" className="h-[70vh] w-full rounded border border-line bg-black" />
-          <p className="mt-2 text-sm text-white/45">Needs the Open Design daemon on port 7456. From the open-design repo: cd deploy && docker compose up -d, then open this tab.</p>
+        <section className="module-card p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg">Open Design</h2>
+            <a className="quiet is-on" href="https://open-design.ai" target="_blank" rel="noreferrer">Desktop app</a>
+            <a className="quiet" href="http://127.0.0.1:7456" target="_blank" rel="noreferrer">Open local UI</a>
+          </div>
+          <p className="mt-2 text-sm text-white/55">Desktop app or CLI. Both talk to the same local daemon.</p>
+          <pre className="mt-3 overflow-auto rounded border border-line bg-black/40 p-3 text-xs text-white/70">{`# CLI (once)
+npm install -g @open-design/cli
+od --version
+
+# Or from the repo
+cd open-design
+pnpm tools-dev
+
+# Docker
+cd open-design/deploy
+docker compose up -d
+# then open http://127.0.0.1:7456`}</pre>
+          <iframe title="Open Design" src="http://127.0.0.1:7456" className="mt-3 h-[60vh] w-full rounded border border-line bg-black" />
+          <p className="mt-2 text-sm text-white/45">If the frame is blank, start the desktop app or the CLI above, then refresh this tab.</p>
         </section>
       ) : (
       <div className="grid gap-3 xl:grid-cols-[22rem_1fr]">
