@@ -1,32 +1,60 @@
 import { ANON, SUPABASE } from "./supabase-public";
+import { pullCloudflareDoc, pushCloudflareDoc } from "./cf-store";
 
 const headers = { apikey: ANON, Authorization: `Bearer ${ANON}` };
 
+// Storage fallback chain: Supabase (primary) -> Cloudflare KV (fallback) -> local (handled by
+// the caller: memory.ts already keeps IndexedDB/localStorage current and treats a failure here
+// as "stay on this browser", which is the final tier). The Cloudflare tier itself lives in
+// cf-store.ts and is shared with agent-store.ts and lib/agents/memory.ts.
+
 export async function pullCloud(device: string): Promise<{ doc: unknown; at: number } | null> {
-  const response = await fetch(`${SUPABASE}/rest/v1/lifeos_board?device=eq.${encodeURIComponent(device)}&select=doc,updated_at`, { headers });
-  if (!response.ok) return null;
-  const rows = await response.json() as { doc?: unknown; updated_at?: string }[];
-  const row = rows?.[0];
-  if (!row?.doc) return { doc: null, at: 0 };
-  return { doc: row.doc, at: row.updated_at ? new Date(row.updated_at).getTime() : 0 };
+  try {
+    const response = await fetch(`${SUPABASE}/rest/v1/lifeos_board?device=eq.${encodeURIComponent(device)}&select=doc,updated_at`, { headers });
+    if (response.ok) {
+      const rows = await response.json() as { doc?: unknown; updated_at?: string }[];
+      const row = rows?.[0];
+      if (row?.doc) return { doc: row.doc, at: row.updated_at ? new Date(row.updated_at).getTime() : 0 };
+      if (rows) return { doc: null, at: 0 };
+    }
+  } catch { /* Supabase unreachable, fall through to Cloudflare */ }
+  try {
+    return await pullCloudflareDoc(device);
+  } catch {
+    return null;
+  }
+}
+
+// Generic writer for the brand/marks/keys side-docs (each keyed by its own "device" slug).
+// Unlike pushCloud below, this never strips fields — the stripping there is specific to the
+// main board doc (where keys/vault are deliberately kept out of shared storage).
+async function writeDoc(device: string, doc: Record<string, unknown>) {
+  try {
+    const response = await fetch(`${SUPABASE}/rest/v1/lifeos_board?on_conflict=device`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({ device, doc, updated_at: new Date().toISOString() }),
+    });
+    if (response.ok) return true;
+  } catch { /* Supabase unreachable, fall through to Cloudflare */ }
+  try {
+    return await pushCloudflareDoc(device, doc);
+  } catch {
+    return false;
+  }
 }
 
 export async function pushCloud(device: string, doc: Record<string, unknown>) {
   const copy = { ...doc };
   delete copy.keys;
   delete copy.vault;
-  let packed = JSON.stringify(copy);
-  if (packed.length > 700_000) {
+  let packed = copy;
+  if (JSON.stringify(packed).length > 700_000) {
     delete copy.banner;
     delete copy.logo;
-    packed = JSON.stringify(copy);
+    packed = copy;
   }
-  const response = await fetch(`${SUPABASE}/rest/v1/lifeos_board?on_conflict=device`, {
-    method: "POST",
-    headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify({ device, doc: JSON.parse(packed), updated_at: new Date().toISOString() }),
-  });
-  return response.ok;
+  return await writeDoc(device, packed);
 }
 
 const BRAND = "lifeos-brand";
@@ -40,12 +68,7 @@ export async function pullBrand(): Promise<{ banner: string; logo: string } | nu
 }
 
 export async function pushBrand(banner: string, logo: string) {
-  const response = await fetch(`${SUPABASE}/rest/v1/lifeos_board?on_conflict=device`, {
-    method: "POST",
-    headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify({ device: BRAND, doc: { banner, logo }, updated_at: new Date().toISOString() }),
-  });
-  return response.ok;
+  return await writeDoc(BRAND, { banner, logo });
 }
 
 const MARKS = "lifeos-marks";
@@ -60,12 +83,7 @@ export async function pullMarks(): Promise<Record<string, { state: "connected" |
 }
 
 export async function pushMarks(marks: Record<string, { state: string; text: string }>) {
-  const response = await fetch(`${SUPABASE}/rest/v1/lifeos_board?on_conflict=device`, {
-    method: "POST",
-    headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify({ device: MARKS, doc: { marks }, updated_at: new Date().toISOString() }),
-  });
-  return response.ok;
+  return await writeDoc(MARKS, { marks });
 }
 
 const KEYS = "lifeos-keys";
@@ -83,10 +101,5 @@ export async function pullKeys(): Promise<{ id: string; name: string; value: str
 }
 
 export async function pushKeys(keys: { id: string; name: string; value: string }[]) {
-  const response = await fetch(`${SUPABASE}/rest/v1/lifeos_board?on_conflict=device`, {
-    method: "POST",
-    headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify({ device: KEYS, doc: { keys }, updated_at: new Date().toISOString() }),
-  });
-  return response.ok;
+  return await writeDoc(KEYS, { keys });
 }
