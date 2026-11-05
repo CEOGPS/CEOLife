@@ -180,6 +180,48 @@ export async function probeExtra(name: string, key: string): Promise<Result | nu
       const pro = await call("https://pro-api.coingecko.com/api/v3/ping", { headers: { "x-cg-pro-api-key": key, Accept: "application/json" } }, LIVE);
       return pro.ok ? pro : demo;
     }
+    case "Anyscale":
+      return call("https://api.endpoints.anyscale.com/v1/models", { headers: bearer(key) }, LIVE);
+    case "Firebase": {
+      // The signUp call fails on purpose (no email/password sent) so nothing is ever created.
+      // Google still validates the key first: an invalid key fails with API_KEY_INVALID before
+      // it gets to the missing fields, which is what tells a bad key from a good one, for free.
+      const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(key)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnSecureToken: true }),
+        signal: AbortSignal.timeout(MS),
+      });
+      const raw = await response.text();
+      let body: { error?: { message?: string } } = {};
+      try { body = JSON.parse(raw); } catch { /* not json */ }
+      const message = body.error?.message || "";
+      if (/api key not valid|api_key_invalid/i.test(message)) {
+        return { ok: false, checked: true, text: "Key refused: Firebase says this API key is not valid." };
+      }
+      return { ok: true, checked: true, text: "Connected. Firebase recognizes this API key." };
+    }
+    case "Zoominfo": {
+      const [clientId, clientSecret] = pair(key);
+      if (!clientSecret) return { ok: false, checked: true, text: "Save it as clientId:clientSecret. ZoomInfo needs both." };
+      return call("https://api.zoominfo.com/gtm/oauth/v1/token", {
+        method: "POST",
+        headers: { Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: "grant_type=client_credentials",
+      }, LIVE);
+    }
+    case "Plaid": {
+      const [clientId, secret] = pair(key);
+      if (!secret) return { ok: false, checked: true, text: "Save it as client_id:secret. Plaid needs both." };
+      const body = JSON.stringify({ client_id: clientId, secret, country_codes: ["US"], count: 1 });
+      const init = { method: "POST", headers: { "Content-Type": "application/json" }, body };
+      // Plaid secrets are environment-specific (sandbox vs production); try both rather than
+      // guessing wrong and calling a sandbox-only key "invalid".
+      const sandbox = await call("https://sandbox.plaid.com/institutions/get", init, LIVE);
+      if (sandbox.ok) return sandbox;
+      const production = await call("https://production.plaid.com/institutions/get", init, LIVE);
+      return production.ok ? production : sandbox;
+    }
     default:
       return null;
   }
@@ -196,6 +238,6 @@ export const NO_API = new Set([
 
 /** Services that have an API, but no free read-only call that proves a key (each call costs credits or needs signing). */
 export const NO_CHECK = new Set([
-  "Azure AI", "Exa", "Firebase", "Facebook App ID", "GLM", "Kling", "Meta LLaMA", "Moondream2", "Parallel",
-  "Gemma", "Wan-AI", "Krea", "Gumloop", "Zoominfo", "MOZ", "Plaid", "Anyscale", "AWS S3", "Azure Storage",
+  "Azure AI", "Exa", "Facebook App ID", "GLM", "Kling", "Meta LLaMA", "Moondream2", "Parallel",
+  "Gemma", "Wan-AI", "Krea", "Gumloop", "MOZ", "AWS S3", "Azure Storage",
 ]);
