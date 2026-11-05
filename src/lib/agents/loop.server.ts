@@ -1,14 +1,11 @@
 import { doneAnswer, runPlannerLine, toolLine, type PlannerAct } from "@/components/dash/erebus-abilities";
 import type { Memory } from "@/components/dash/memory";
-import { chatOllama } from "@/lib/lifeos/ollama";
-import { chatProvider, type ProviderId } from "@/lib/lifeos/providers";
+import { askMindCascade } from "@/lib/lifeos/sync";
 import { agentActLine, agentToolCatalog, runAgentAct } from "./agent-acts";
 import { briefFor, kitLine, planKitLine, type AgentId } from "./kit";
 import { memoryBlock, pullErebusMemory, pushErebusMemory, rememberFailure, rememberOrder, type ErebusMemory } from "./memory";
 import { skillBlock, type Skill } from "./skills";
 import { toolList } from "./tools";
-
-const HOSTED = new Set<string>(["openai", "openrouter", "huggingface", "nvidia"]);
 
 export type ErebusInput = {
   question: string;
@@ -33,14 +30,13 @@ function boardOf(memory: Partial<Memory>): Memory {
   } as Memory;
 }
 
+/**
+ * Runs the owner's full offline-first fallback (Ollama first, then every other
+ * configured provider in order) instead of trying a single mind and giving up —
+ * same cascade the UI's askNyx call uses, so Erebus degrades the same way.
+ */
 async function reply(input: ErebusInput, messages: { role: string; content: string }[]) {
-  if (HOSTED.has(input.mind)) {
-    const direct = await chatProvider(input.mind as ProviderId, messages, input.key, input.model);
-    return { ok: Boolean(direct.text), text: direct.text || direct.error || "", mind: input.mind };
-  }
-  const text = await chatOllama(messages, input.endpoint);
-  if (text) return { ok: true, text, mind: "ollama" };
-  return { ok: false, text: "", mind: input.mind || "ollama" };
+  return askMindCascade({ mind: input.mind, key: input.key, model: input.model, endpoint: input.endpoint }, messages);
 }
 
 function learn(mem: ErebusMemory, fact: string) {

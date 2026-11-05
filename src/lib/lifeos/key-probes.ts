@@ -182,6 +182,9 @@ export async function probeExtra(name: string, key: string): Promise<Result | nu
     }
     case "Anyscale":
       return call("https://api.endpoints.anyscale.com/v1/models", { headers: bearer(key) }, LIVE);
+    case "Gemma":
+      // Google serves Gemma through the same Gemini API infrastructure and key as Google AI (Gemini).
+      return call(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, {}, LIVE);
     case "Firebase": {
       // The signUp call fails on purpose (no email/password sent) so nothing is ever created.
       // Google still validates the key first: an invalid key fails with API_KEY_INVALID before
@@ -239,5 +242,5 @@ export const NO_API = new Set([
 /** Services that have an API, but no free read-only call that proves a key (each call costs credits or needs signing). */
 export const NO_CHECK = new Set([
   "Azure AI", "Exa", "Facebook App ID", "GLM", "Kling", "Meta LLaMA", "Moondream2", "Parallel",
-  "Gemma", "Wan-AI", "Krea", "Gumloop", "MOZ", "AWS S3", "Azure Storage",
+  "Wan-AI", "Krea", "Gumloop", "MOZ", "AWS S3", "Azure Storage",
 ]);

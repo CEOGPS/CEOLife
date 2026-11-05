@@ -77,31 +77,42 @@ export const askNyx = createServerFn({ method: "POST" })
       { role: "system", content: system },
       { role: "user", content: data.facts ? `Facts:\n${data.facts}\n\nQuestion: ${data.question}` : data.question },
     ];
-    const hosted: ProviderId[] = ["openai", "openrouter", "huggingface", "nvidia"];
-    if (hosted.includes(data.mind as ProviderId)) {
-      const direct = await chatProvider(data.mind as ProviderId, messages, data.key, data.model);
-      if (direct.text) return { ok: true as const, text: direct.text.slice(0, 6000), mind: data.mind };
-      return { ok: false as const, text: direct.error || `${data.mind} did not answer.`, mind: data.mind };
-    }
-    if (data.key && data.model) {
-      const routed = providerFromKey(data.key, data.model);
-      if (routed) {
-        const direct = await chatProvider(routed, messages, data.key, data.model);
-        if (direct.text) return { ok: true as const, text: direct.text.slice(0, 6000), mind: routed };
-        return { ok: false as const, text: direct.error || "That model did not answer.", mind: routed };
-      }
-      const keyed = await askKeyed(data.model, data.key, messages);
-      if (keyed) return { ok: true as const, text: keyed.slice(0, 6000), mind: data.model };
-    }
-    // Owner's standing fallback order: local Ollama, Ollama Cloud, NVIDIA, HuggingFace,
-    // Anthropic, Grok, Groq, then any other open model (OpenAI/OpenRouter) last.
-    const order = [data.mind, "ollama", "ollama-cloud", "nvidia", "huggingface", "anthropic", "grok", "groq", "openai", "openrouter"].filter((mind, index, list) => list.indexOf(mind) === index);
-    for (const mind of order) {
-      const text = await askMind(mind, messages, { endpoint: data.endpoint, key: mind === data.mind ? data.key : "", model: mind === data.mind ? data.model : "" });
-      if (text) return { ok: true as const, text: text.slice(0, 6000), mind };
-    }
-    return { ok: false as const, text: "", mind: data.mind };
+    return askMindCascade({ mind: data.mind, key: data.key, model: data.model, endpoint: data.endpoint }, messages);
   });
+
+/**
+ * One place that runs the owner's standing provider order so every agent entry point
+ * (the UI's askNyx call and the Erebus tool-loop) gets the same offline-first fallback
+ * instead of each reimplementing it: local Ollama, Ollama Cloud, NVIDIA, HuggingFace,
+ * Anthropic, Grok, Groq, then any other open model (OpenAI/OpenRouter) last.
+ */
+export async function askMindCascade(
+  input: { mind: string; key?: string; model?: string; endpoint?: string },
+  messages: { role: string; content: string }[],
+): Promise<{ ok: boolean; text: string; mind: string }> {
+  const hosted: ProviderId[] = ["openai", "openrouter", "huggingface", "nvidia"];
+  if (hosted.includes(input.mind as ProviderId)) {
+    const direct = await chatProvider(input.mind as ProviderId, messages, input.key || "", input.model || "");
+    if (direct.text) return { ok: true, text: direct.text.slice(0, 6000), mind: input.mind };
+    return { ok: false, text: direct.error || `${input.mind} did not answer.`, mind: input.mind };
+  }
+  if (input.key && input.model) {
+    const routed = providerFromKey(input.key, input.model);
+    if (routed) {
+      const direct = await chatProvider(routed, messages, input.key, input.model);
+      if (direct.text) return { ok: true, text: direct.text.slice(0, 6000), mind: routed };
+      return { ok: false, text: direct.error || "That model did not answer.", mind: routed };
+    }
+    const keyed = await askKeyed(input.model, input.key, messages);
+    if (keyed) return { ok: true, text: keyed.slice(0, 6000), mind: input.model };
+  }
+  const order = [input.mind, "ollama", "ollama-cloud", "nvidia", "huggingface", "anthropic", "grok", "groq", "openai", "openrouter"].filter((mind, index, list) => list.indexOf(mind) === index);
+  for (const mind of order) {
+    const text = await askMind(mind, messages, { endpoint: input.endpoint, key: mind === input.mind ? input.key : "", model: mind === input.mind ? input.model : "" });
+    if (text) return { ok: true, text: text.slice(0, 6000), mind };
+  }
+  return { ok: false, text: "", mind: input.mind };
+}
 
 async function complete(url: string, headers: Record<string, string>, body: unknown) {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
