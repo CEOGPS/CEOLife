@@ -3,6 +3,7 @@ import { EngineBar } from "./engine-bar";
 import { newId, type Memory } from "./memory";
 import { downloadFile, downloadText } from "./format";
 import { VOICES } from "./voices";
+import { DesignStudio } from "./design-studio";
 
 type Update = (recipe: (prev: Memory) => Memory) => void;
 type Studio = "image" | "video" | "animate" | "wan" | "write" | "audio" | "design";
@@ -359,6 +360,7 @@ export function CreatorDesk({ data, update }: { data: Memory; update: Update }) 
           ))}
         </div>
       </div>
+      <DesignStudio data={data} update={update} />
       {library.length ? <ul className="module-card p-4 text-sm">{library.map((row) => <li key={row.url} className="py-1"><a className="text-blue-2" href={row.url} target="_blank" rel="noreferrer">{row.title}</a> <span className="text-white/40">{row.source}</span></li>)}</ul> : null}
       {studio === "design" ? (
         <section className="module-card p-4">

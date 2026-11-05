@@ -40,7 +40,7 @@ function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin || "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Id, X-Lifeos-Board",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Id",
     "Access-Control-Allow-Credentials": "true"
   };
 }
@@ -157,7 +157,30 @@ async function refreshAccessToken(provider, refreshToken, env) {
   const tokenUrl = TOKEN_URLS[provider];
   const { clientId, clientSecret } = clientCreds(provider, env);
   if (!tokenUrl || !clientId || !clientSecret) throw new Error(`Missing ${provider} client credentials`);
-  const params = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
+    if (provider === "notion") {
+    const response = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (provider === "slack" && data.ok === false) {
+    throw new Error(data.error || "Slack refused the refresh");
+  }
+  if (!response.ok || !data.access_token) {
+      throw new Error(data.error_description || data.error || `Refresh failed: ${response.status}`);
+    }
+    return {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token || refreshToken,
+      expires_in: data.expires_in ?? null
+    };
+  }
+const params = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
   const headers = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
   if (provider === "spotify" || provider === "twitter") {
     headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
@@ -205,19 +228,22 @@ async function sessionUserId(request, env) {
   if (id) request.userId = id;
   return id;
 }
-function isBoardRequest(request) {
-  const url = new URL(request.url);
-  if (url.searchParams.get("board") === "1") return true;
-  if (request.headers.get("x-lifeos-board") === "1") return true;
-  return false;
+function boardKeyMatches(given, expected) {
+  if (!expected || expected.length < 32 || given.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= given.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
 }
-function isBoardOauth(request) {
-  if (!isBoardRequest(request)) return false;
+function isBoardRequest(request, env) {
+  return boardKeyMatches(request.headers.get("x-lifeos-board-key") || "", String(env?.BOARD_SECRET || ""));
+}
+function isBoardOauth(request, env) {
+  if (!isBoardRequest(request, env)) return false;
   const path = new URL(request.url).pathname;
-  return path === "/api/oauth/start" || path === "/api/oauth/linked" || path === "/api/oauth/status" || path === "/api/oauth/token/fresh" || path === "/api/oauth/disconnect";
+  return path === "/api/oauth/start" || path === "/api/oauth/linked" || path === "/api/oauth/status" || path === "/api/oauth/token/fresh" || path === "/api/oauth/disconnect" || path === "/api/oauth/facebook/check";
 }
 async function actorId(request, env) {
-  return await sessionUserId(request, env) || (isBoardRequest(request) ? "lifeos-owner" : "");
+  return await sessionUserId(request, env) || (isBoardRequest(request, env) ? "lifeos-owner" : "");
 }
 function isPublicApi(request) {
   if (request.method === "OPTIONS") return true;
@@ -483,7 +509,7 @@ router.post("/start", startOauth);
 function escapeHtml(value) {
   return String(value).replace(/&/g, "&" + "amp;").replace(/</g, "&" + "lt;").replace(/>/g, "&" + "gt;").replace(/"/g, "&" + "quot;");
 }
-const SPOTIFY_ERROR_SCRIPT = "<script>(function(){var h=new URLSearchParams(String(location.hash||\"\").replace(/^#/,\"\"));var s=new URLSearchParams(location.search);var spotify=/accounts\\.spotify\\.com/i.test(document.referrer||\"\")||s.get(\"provider\")===\"spotify\"||h.get(\"provider\")===\"spotify\";if(!spotify)return;var msg=h.get(\"error_description\")||s.get(\"error_description\")||h.get(\"error\")||s.get(\"error\")||\"\";var p=document.querySelector(\"main p\");if(!p)return;if(msg)p.textContent=msg;else if(p.textContent===\"Missing code or state\"||p.textContent===\"The provider came back without a code. Press Connect again.\")p.textContent=\"Spotify returned no code and no error. Press Connect again.\";})();</script>";
+const SPOTIFY_ERROR_SCRIPT = "<script>(function(){var names={spotify:'Spotify',discord:'Discord',slack:'Slack',notion:'Notion',linkedin:'LinkedIn',twitter:'X'};var h=new URLSearchParams(String(location.hash||'').replace(/^#/,''));var s=new URLSearchParams(location.search);var id=s.get('provider')||h.get('provider')||'';if(id==='x')id='twitter';if(!names[id]){var ref=document.referrer||'';var rules=[[/accounts\\.spotify\\.com/i,'spotify'],[/discord\\.com/i,'discord'],[/slack\\.com/i,'slack'],[/notion\\.so|api\\.notion\\.com/i,'notion'],[/linkedin\\.com/i,'linkedin'],[/twitter\\.com|\\/\\/x\\.com|\\.x\\.com/i,'twitter']];for(var i=0;i<rules.length;i++){if(rules[i][0].test(ref)){id=rules[i][1];break;}}}if(!names[id])return;var msg=h.get('error_description')||s.get('error_description')||h.get('error')||s.get('error')||'';var p=document.querySelector('main p');if(!p)return;if(msg)p.textContent=msg;else if(p.textContent==='Missing code or state'||p.textContent==='The provider came back without a code. Press Connect again.')p.textContent=names[id]+' returned no code and no error. Press Connect again.';})();</script>";
 function resultPage(origin, title, message, saved, detail) {
   const back = `${origin}/panel/integrations`;
   const stay = saved ? "<p style=\"margin:0 0 20px\">This connection stays on the account. You do not sign in again to use it.</p>" : "";
@@ -514,6 +540,21 @@ async function providerEmail(provider, accessToken) {
   const body = await response.json().catch(() => ({}));
   return String(body.email || body.mail || body.userPrincipalName || "").trim().toLowerCase();
 }
+function detailProvider(hinted, referer) {
+  const names = { spotify: "Spotify", discord: "Discord", slack: "Slack", notion: "Notion", linkedin: "LinkedIn", twitter: "X", x: "X" };
+  const key = hinted === "x" ? "twitter" : hinted;
+  if (names[key]) return { label: names[key] };
+  const rules = [
+    [/accounts\.spotify\.com/i, "Spotify"],
+    [/discord\.com/i, "Discord"],
+    [/slack\.com/i, "Slack"],
+    [/notion\.so|api\.notion\.com/i, "Notion"],
+    [/linkedin\.com/i, "LinkedIn"],
+    [/twitter\.com|\/\/x\.com|\.x\.com/i, "X"]
+  ];
+  for (const [rule, label] of rules) if (rule.test(referer || "")) return { label };
+  return null;
+}
 router.get("/callback", async (request, env) => {
   const url = new URL(request.url);
   const code = rawParam(url.search, "code");
@@ -525,9 +566,9 @@ router.get("/callback", async (request, env) => {
   if (error) return done("Not connected", url.searchParams.get("error_description") || error, false);
   if (!code || !state.includes("|")) {
     const referer = request.headers.get("referer") || "";
-    const spotify = hinted === "spotify" || /accounts\.spotify\.com/i.test(referer);
-    if (spotify) {
-      const described = rawParam(url.search, "error_description") || rawParam(url.search, "error") || "Spotify returned no code and no error. Press Connect again.";
+    const named = detailProvider(hinted, referer);
+    if (named) {
+      const described = rawParam(url.search, "error_description") || rawParam(url.search, "error") || named.label + " returned no code and no error. Press Connect again.";
       return done("Not connected", described, false, SPOTIFY_ERROR_SCRIPT);
     }
     return done("Not connected", "The provider came back without a code. Press Connect again.", false, SPOTIFY_ERROR_SCRIPT);
@@ -1773,7 +1814,7 @@ var working_worker_default = {
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin") || void 0;
     try {
-      if (!isPublicApi(request) && !isBoardOauth(request)) {
+      if (!isPublicApi(request) && !isBoardOauth(request, env)) {
         const denied = await requireUser(request, env);
         if (denied) return withCors(denied, origin);
       }

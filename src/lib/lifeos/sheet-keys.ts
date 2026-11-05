@@ -72,7 +72,6 @@ export const SERVICE_ENV: Record<string, string[]> = {
   Jotform: ["JOTFORM_API_KEY"],
   Kling: ["KLING_API_KEY", "KLINGAI_API_KEY"],
   Linear: ["LINEAR_API_KEY"],
-  LunarCrush: ["LUNAR_CRUSH_API_KEY"],
   "Make (Integromat)": ["MAKE_COM_API_KEY"],
   "Meta LLaMA": ["METALLAMA_API_KEY"],
   Notion: ["NOTION_API_KEY"],
@@ -93,6 +92,7 @@ export const SERVICE_ENV: Record<string, string[]> = {
   Xiaomi: ["XIAOMI_API_KEY"],
   Zoom: ["ZOOM_CLIENT_SECRET", "ZOOM_CLIENT_ID"],
   "D-ID (avatar)": ["DID_API_KEY"],
+  "Ollama Cloud": ["OLLAMA_CLOUD_API_KEY"],
   // APILayer (same key works for all of these free-tier endpoints)
   Numverify: ["NUMVERIFY_API_KEY", "APILAYER_KEY"],
   Serpstack: ["SERPSTACK_API_KEY", "APILAYER_KEY"],
@@ -213,8 +213,6 @@ export const SERVICE_ENV: Record<string, string[]> = {
   "Universities List": ["UNIVERSITIES_API_KEY"],
   "URL Scan": ["URLSCAN_API_KEY"],
   "VAT Validation": ["VAT_API_KEY"],
-  "Whois": ["WHOIS_API_KEY"],
-
   "Whois": ["WHOIS_API_KEY"],
   // free-for.dev useful free tiers
   "Better Uptime": ["BETTERUPTIME_API_KEY"],

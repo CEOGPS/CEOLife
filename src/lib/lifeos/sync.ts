@@ -4,6 +4,7 @@ import { getSql } from "@/lib/db";
 import { briefFor, type AgentId } from "@/lib/agents/kit";
 import { chatOllama, savedOllama } from "./ollama";
 import { chatProvider, providerFromKey, type ProviderId } from "./providers";
+import { chatOllamaCloud } from "./ollama-cloud";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -53,7 +54,7 @@ export const askNyx = createServerFn({ method: "POST" })
     const question = String(input?.question || "").trim().slice(0, 4000);
     const facts = String(input?.facts || "").slice(0, 96_000);
     if (!question) throw new Error("question required");
-    const allowed = ["ollama", "nvidia", "huggingface", "openai", "openrouter", "grok"];
+    const allowed = ["ollama", "ollama-cloud", "nvidia", "huggingface", "anthropic", "grok", "groq", "openai", "openrouter"];
     const mind = allowed.includes(String(input?.mind || "")) ? String(input.mind) : "ollama";
     return {
       question,
@@ -92,7 +93,9 @@ export const askNyx = createServerFn({ method: "POST" })
       const keyed = await askKeyed(data.model, data.key, messages);
       if (keyed) return { ok: true as const, text: keyed.slice(0, 6000), mind: data.model };
     }
-    const order = [data.mind, "ollama", "nvidia", "huggingface", "grok"].filter((mind, index, list) => list.indexOf(mind) === index);
+    // Owner's standing fallback order: local Ollama, Ollama Cloud, NVIDIA, HuggingFace,
+    // Anthropic, Grok, Groq, then any other open model (OpenAI/OpenRouter) last.
+    const order = [data.mind, "ollama", "ollama-cloud", "nvidia", "huggingface", "anthropic", "grok", "groq", "openai", "openrouter"].filter((mind, index, list) => list.indexOf(mind) === index);
     for (const mind of order) {
       const text = await askMind(mind, messages, { endpoint: data.endpoint, key: mind === data.mind ? data.key : "", model: mind === data.mind ? data.model : "" });
       if (text) return { ok: true as const, text: text.slice(0, 6000), mind };
@@ -167,9 +170,27 @@ async function askMind(mind: string, messages: { role: string; content: string }
       const saved = opts.endpoint || await savedOllama();
       return await chatOllama(messages, saved);
     }
+    if (mind === "ollama-cloud") {
+      const reply = await chatOllamaCloud(messages, { key: opts.key || "", model: opts.model || "", maxTokens: 1200, timeoutMs: 60_000 });
+      return reply.text;
+    }
     if (mind === "nvidia" || mind === "huggingface" || mind === "openai" || mind === "openrouter") {
       const result = await chatProvider(mind, messages, opts.key || "", opts.model || "");
       return result.text;
+    }
+    if (mind === "anthropic") {
+      const key = opts.key || process.env.ANTHROPIC_API_KEY || "";
+      if (!key) return "";
+      const system = messages.find((row) => row.role === "system")?.content || "";
+      const rest = messages.filter((row) => row.role !== "system");
+      const model = opts.model || process.env.DESIGN_MODEL_ANTHROPIC || "claude-sonnet-5";
+      return await complete("https://api.anthropic.com/v1/messages", { "x-api-key": key, "anthropic-version": "2023-06-01" }, { model, max_tokens: 1200, system, messages: rest });
+    }
+    if (mind === "groq") {
+      const key = opts.key || process.env.GROQ_API_KEY || "";
+      if (!key) return "";
+      const model = opts.model || process.env.DESIGN_MODEL_GROQ || "llama-3.3-70b-versatile";
+      return await complete("https://api.groq.com/openai/v1/chat/completions", { Authorization: `Bearer ${key}` }, { model, max_tokens: 1200, temperature: 0.4, messages });
     }
     if (mind !== "grok") return "";
     const viaGateway = await askGrok2Api(messages);

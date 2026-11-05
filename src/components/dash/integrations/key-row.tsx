@@ -3,47 +3,26 @@ import { EXTRA_FIELD, KEY_LABEL, NO_KEY_NEEDED, PUBLIC_TEST, SERVER_HELD, oauthS
 import type { KeyRowModel } from "./use-integrations";
 import { mask, timeAgo, type Tone } from "./format";
 import { Button, EmailText, StatusPill } from "./ui";
-
-const KEY_USES: Record<string, string> = {
-  Anthropic: "AI Hub",
-  OpenAI: "AI Hub, Creator",
-  xAI: "AI Hub, Creator",
-  "Grok (xAI)": "AI Hub, Creator",
-  ElevenLabs: "Creator (audio)",
-  Luma: "Creator (video)",
-  Replicate: "Creator (Wan)",
-  Spotify: "Music Einstein",
-  YouTube: "Creator, Analytics",
-  NewsAPI: "Pulse",
-  OpenWeather: "Pulse",
-  "Google Maps": "Maps",
-  Stripe: "Finance",
-  Nylas: "Email",
-  GitHub: "Creator",
-  Cloudflare: "Deploy, AI",
-  Brevo: "Marketing",
-  SendGrid: "Marketing",
-  Notion: "Productivity",
-  Slack: "Social",
-};
+import { UsedBy, usedByKey } from "./used-by";
 
 const LOOK: Record<KeyRowModel["state"], { tone: Tone; label: string }> = {
   ok: { tone: "ok", label: "Working" },
   error: { tone: "error", label: "Not working" },
-  saved: { tone: "warn", label: "Not tested" },
+  saved: { tone: "idle", label: "Stored only" },
   untested: { tone: "warn", label: "Not tested" },
   empty: { tone: "idle", label: "Not added" },
 };
 
 const PLAIN_TEXT = new Set(["grok2api URL", "Google Analytics"]);
 
-export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
+export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove, onRemoveCard }: {
   row: KeyRowModel;
   busy: boolean;
   extraSaved: string;
   onSave: (name: string, value: string, extras: Record<string, string>) => void;
   onTest: (name: string) => void;
   onRemove: (name: string) => void;
+  onRemoveCard?: (name: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -70,12 +49,14 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
   }
 
   return (
-    <li className="rounded-xl border border-white/10 bg-black/20 p-3">
+    <li className="flex flex-col gap-2 rounded-xl border border-white/10 bg-black/20 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-white">{row.name}</p>
+          <p className="truncate text-sm font-medium text-white">
+            {row.custom && row.url && /^https?:\/\//i.test(row.url) ? <a href={row.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{row.name}</a> : row.name}
+          </p>
           <p className="text-xs text-white/50">
-            {row.value && !loginOnly ? mask(row.value) : workGoogle ? <>Uses <EmailText value="chris@ceogps.com" /></> : loginOnly ? "Uses your connected Google login" : SERVER_HELD.has(row.name) ? "Uses the server's credential, or add your own" : PUBLIC_TEST.has(row.name) ? "Public endpoint. Not your account." : "No key yet"}
+            {row.value && !loginOnly ? mask(row.value) : workGoogle ? "Uses your connected Google accounts" : loginOnly ? "Uses your connected Google login" : SERVER_HELD.has(row.name) ? "Uses the server's credential, or add your own" : PUBLIC_TEST.has(row.name) ? "Public endpoint. Not your account." : "No key yet"}
             {row.check ? ` · checked ${timeAgo(row.check.checkedAt)}` : ""}
           </p>
         </div>
@@ -119,13 +100,14 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
         </form>
       ) : (
         <div className="mt-2 flex flex-wrap gap-2">
-          {workGoogle ? <a className="int-btn int-btn--primary" href={oauthStartHref("google", "chris@ceogps.com")} target="_top" rel="noopener">Connect work Google</a> : null}
+          {workGoogle && row.state !== "ok" ? <a className="int-btn" href={oauthStartHref("google", "ceogps.marketinggod@gmail.com")} target="_top" rel="noopener">Connect Google</a> : null}
           {loginOnly ? (
             <Button busy={busy} onClick={() => onTest(row.name)}>Test with Google</Button>
           ) : row.state === "empty" ? (
             <>
               {SERVER_HELD.has(row.name) || PUBLIC_TEST.has(row.name) ? <Button primary busy={busy} onClick={() => onTest(row.name)} label={`Test ${row.name}`}>Test</Button> : null}
               <Button primary={!SERVER_HELD.has(row.name) && !PUBLIC_TEST.has(row.name)} onClick={open}>Add key</Button>
+              {row.custom && onRemoveCard ? <Button danger onClick={() => onRemoveCard(row.name)} label={`Remove the ${row.name} card`}>Remove card</Button> : null}
             </>
           ) : (
             <>
@@ -133,7 +115,7 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
               <Button onClick={open} label={`Edit ${row.name}`}>Edit</Button>
               {confirm ? (
                 <>
-                  <Button danger onClick={() => { setConfirm(false); onRemove(row.name); }}>Yes, remove</Button>
+                  <Button danger onClick={() => { setConfirm(false); if (row.custom && onRemoveCard) onRemoveCard(row.name); else onRemove(row.name); }}>Yes, remove</Button>
                   <Button onClick={() => setConfirm(false)}>Keep</Button>
                 </>
               ) : (
@@ -143,7 +125,7 @@ export function KeyRow({ row, busy, extraSaved, onSave, onTest, onRemove }: {
           )}
         </div>
       )}
-      <p className="mt-2 text-[11px] text-white/40">Used by: {KEY_USES[row.name] || "—"}</p>
+      <UsedBy places={usedByKey(row.name)} />
     </li>
   );
 }

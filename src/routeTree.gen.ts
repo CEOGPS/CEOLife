@@ -14,8 +14,11 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PanelSlugRouteImport } from './routes/panel/$slug'
 import { Route as ApiAgentsErebusRouteImport } from './routes/api/agents/erebus'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiBoardDiagRouteImport } from './routes/api/board/diag'
+import { Route as ApiBoardOauthRouteImport } from './routes/api/board/oauth'
 import { Route as ApiIntegrationsIndexRouteImport } from './routes/api/integrations/index'
 import { Route as ApiIntegrationsDisconnectRouteImport } from './routes/api/integrations/disconnect'
+import { Route as ApiIntegrationsMailboxesRouteImport } from './routes/api/integrations/mailboxes'
 import { Route as ApiIntegrationsSettingsRouteImport } from './routes/api/integrations/settings'
 import { Route as ApiIntegrationsStartRouteImport } from './routes/api/integrations/start'
 import { Route as ApiIntegrationsTestRouteImport } from './routes/api/integrations/test'
@@ -23,9 +26,9 @@ import { Route as ApiIntegrationsTokenRouteImport } from './routes/api/integrati
 import { Route as ApiKeysAccountRouteImport } from './routes/api/keys/account'
 import { Route as ApiKeysCheckRouteImport } from './routes/api/keys/check'
 import { Route as ApiKeysMachineRouteImport } from './routes/api/keys/machine'
+import { Route as ApiOauthCallbackRouteImport } from './routes/api/oauth/callback'
 import { Route as ApiOauthExchangeRouteImport } from './routes/api/oauth/exchange'
 import { Route as ApiOauthStartRouteImport } from './routes/api/oauth/start'
-import { Route as ApiOauthCallbackRouteImport } from './routes/api/oauth/callback'
 import { Route as ApiWebhooksFacebookRouteImport } from './routes/api/webhooks/facebook'
 import { Route as ApiIntegrationsCallbackProviderRouteImport } from './routes/api/integrations/callback/$provider'
 
@@ -54,6 +57,16 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBoardDiagRoute = ApiBoardDiagRouteImport.update({
+  id: '/api/board/diag',
+  path: '/api/board/diag',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBoardOauthRoute = ApiBoardOauthRouteImport.update({
+  id: '/api/board/oauth',
+  path: '/api/board/oauth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiIntegrationsIndexRoute = ApiIntegrationsIndexRouteImport.update({
   id: '/api/integrations/',
   path: '/api/integrations/',
@@ -63,6 +76,12 @@ const ApiIntegrationsDisconnectRoute =
   ApiIntegrationsDisconnectRouteImport.update({
     id: '/api/integrations/disconnect',
     path: '/api/integrations/disconnect',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiIntegrationsMailboxesRoute =
+  ApiIntegrationsMailboxesRouteImport.update({
+    id: '/api/integrations/mailboxes',
+    path: '/api/integrations/mailboxes',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiIntegrationsSettingsRoute = ApiIntegrationsSettingsRouteImport.update({
@@ -100,6 +119,11 @@ const ApiKeysMachineRoute = ApiKeysMachineRouteImport.update({
   path: '/api/keys/machine',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOauthCallbackRoute = ApiOauthCallbackRouteImport.update({
+  id: '/api/oauth/callback',
+  path: '/api/oauth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOauthExchangeRoute = ApiOauthExchangeRouteImport.update({
   id: '/api/oauth/exchange',
   path: '/api/oauth/exchange',
@@ -108,11 +132,6 @@ const ApiOauthExchangeRoute = ApiOauthExchangeRouteImport.update({
 const ApiOauthStartRoute = ApiOauthStartRouteImport.update({
   id: '/api/oauth/start',
   path: '/api/oauth/start',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiOauthCallbackRoute = ApiOauthCallbackRouteImport.update({
-  id: '/api/oauth/callback',
-  path: '/api/oauth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiWebhooksFacebookRoute = ApiWebhooksFacebookRouteImport.update({
@@ -133,7 +152,10 @@ export interface FileRoutesByFullPath {
   '/panel/$slug': typeof PanelSlugRoute
   '/api/agents/erebus': typeof ApiAgentsErebusRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/board/diag': typeof ApiBoardDiagRoute
+  '/api/board/oauth': typeof ApiBoardOauthRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
+  '/api/integrations/mailboxes': typeof ApiIntegrationsMailboxesRoute
   '/api/integrations/settings': typeof ApiIntegrationsSettingsRoute
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
   '/api/integrations/test': typeof ApiIntegrationsTestRoute
@@ -141,9 +163,9 @@ export interface FileRoutesByFullPath {
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
+  '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/oauth/exchange': typeof ApiOauthExchangeRoute
   '/api/oauth/start': typeof ApiOauthStartRoute
-  '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
   '/api/integrations/': typeof ApiIntegrationsIndexRoute
   '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
@@ -154,7 +176,10 @@ export interface FileRoutesByTo {
   '/panel/$slug': typeof PanelSlugRoute
   '/api/agents/erebus': typeof ApiAgentsErebusRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/board/diag': typeof ApiBoardDiagRoute
+  '/api/board/oauth': typeof ApiBoardOauthRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
+  '/api/integrations/mailboxes': typeof ApiIntegrationsMailboxesRoute
   '/api/integrations/settings': typeof ApiIntegrationsSettingsRoute
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
   '/api/integrations/test': typeof ApiIntegrationsTestRoute
@@ -162,9 +187,9 @@ export interface FileRoutesByTo {
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
+  '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/oauth/exchange': typeof ApiOauthExchangeRoute
   '/api/oauth/start': typeof ApiOauthStartRoute
-  '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
   '/api/integrations': typeof ApiIntegrationsIndexRoute
   '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
@@ -176,7 +201,10 @@ export interface FileRoutesById {
   '/panel/$slug': typeof PanelSlugRoute
   '/api/agents/erebus': typeof ApiAgentsErebusRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/board/diag': typeof ApiBoardDiagRoute
+  '/api/board/oauth': typeof ApiBoardOauthRoute
   '/api/integrations/disconnect': typeof ApiIntegrationsDisconnectRoute
+  '/api/integrations/mailboxes': typeof ApiIntegrationsMailboxesRoute
   '/api/integrations/settings': typeof ApiIntegrationsSettingsRoute
   '/api/integrations/start': typeof ApiIntegrationsStartRoute
   '/api/integrations/test': typeof ApiIntegrationsTestRoute
@@ -184,9 +212,9 @@ export interface FileRoutesById {
   '/api/keys/account': typeof ApiKeysAccountRoute
   '/api/keys/check': typeof ApiKeysCheckRoute
   '/api/keys/machine': typeof ApiKeysMachineRoute
+  '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/oauth/exchange': typeof ApiOauthExchangeRoute
   '/api/oauth/start': typeof ApiOauthStartRoute
-  '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/webhooks/facebook': typeof ApiWebhooksFacebookRoute
   '/api/integrations/': typeof ApiIntegrationsIndexRoute
   '/api/integrations/callback/$provider': typeof ApiIntegrationsCallbackProviderRoute
@@ -199,7 +227,10 @@ export interface FileRouteTypes {
     | '/panel/$slug'
     | '/api/agents/erebus'
     | '/api/auth/$'
+    | '/api/board/diag'
+    | '/api/board/oauth'
     | '/api/integrations/disconnect'
+    | '/api/integrations/mailboxes'
     | '/api/integrations/settings'
     | '/api/integrations/start'
     | '/api/integrations/test'
@@ -207,9 +238,9 @@ export interface FileRouteTypes {
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
+    | '/api/oauth/callback'
     | '/api/oauth/exchange'
     | '/api/oauth/start'
-    | '/api/oauth/callback'
     | '/api/webhooks/facebook'
     | '/api/integrations/'
     | '/api/integrations/callback/$provider'
@@ -220,7 +251,10 @@ export interface FileRouteTypes {
     | '/panel/$slug'
     | '/api/agents/erebus'
     | '/api/auth/$'
+    | '/api/board/diag'
+    | '/api/board/oauth'
     | '/api/integrations/disconnect'
+    | '/api/integrations/mailboxes'
     | '/api/integrations/settings'
     | '/api/integrations/start'
     | '/api/integrations/test'
@@ -228,9 +262,9 @@ export interface FileRouteTypes {
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
+    | '/api/oauth/callback'
     | '/api/oauth/exchange'
     | '/api/oauth/start'
-    | '/api/oauth/callback'
     | '/api/webhooks/facebook'
     | '/api/integrations'
     | '/api/integrations/callback/$provider'
@@ -241,7 +275,10 @@ export interface FileRouteTypes {
     | '/panel/$slug'
     | '/api/agents/erebus'
     | '/api/auth/$'
+    | '/api/board/diag'
+    | '/api/board/oauth'
     | '/api/integrations/disconnect'
+    | '/api/integrations/mailboxes'
     | '/api/integrations/settings'
     | '/api/integrations/start'
     | '/api/integrations/test'
@@ -249,9 +286,9 @@ export interface FileRouteTypes {
     | '/api/keys/account'
     | '/api/keys/check'
     | '/api/keys/machine'
+    | '/api/oauth/callback'
     | '/api/oauth/exchange'
     | '/api/oauth/start'
-    | '/api/oauth/callback'
     | '/api/webhooks/facebook'
     | '/api/integrations/'
     | '/api/integrations/callback/$provider'
@@ -263,7 +300,10 @@ export interface RootRouteChildren {
   PanelSlugRoute: typeof PanelSlugRoute
   ApiAgentsErebusRoute: typeof ApiAgentsErebusRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiBoardDiagRoute: typeof ApiBoardDiagRoute
+  ApiBoardOauthRoute: typeof ApiBoardOauthRoute
   ApiIntegrationsDisconnectRoute: typeof ApiIntegrationsDisconnectRoute
+  ApiIntegrationsMailboxesRoute: typeof ApiIntegrationsMailboxesRoute
   ApiIntegrationsSettingsRoute: typeof ApiIntegrationsSettingsRoute
   ApiIntegrationsStartRoute: typeof ApiIntegrationsStartRoute
   ApiIntegrationsTestRoute: typeof ApiIntegrationsTestRoute
@@ -271,9 +311,9 @@ export interface RootRouteChildren {
   ApiKeysAccountRoute: typeof ApiKeysAccountRoute
   ApiKeysCheckRoute: typeof ApiKeysCheckRoute
   ApiKeysMachineRoute: typeof ApiKeysMachineRoute
+  ApiOauthCallbackRoute: typeof ApiOauthCallbackRoute
   ApiOauthExchangeRoute: typeof ApiOauthExchangeRoute
   ApiOauthStartRoute: typeof ApiOauthStartRoute
-  ApiOauthCallbackRoute: typeof ApiOauthCallbackRoute
   ApiWebhooksFacebookRoute: typeof ApiWebhooksFacebookRoute
   ApiIntegrationsIndexRoute: typeof ApiIntegrationsIndexRoute
   ApiIntegrationsCallbackProviderRoute: typeof ApiIntegrationsCallbackProviderRoute
@@ -316,6 +356,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/board/diag': {
+      id: '/api/board/diag'
+      path: '/api/board/diag'
+      fullPath: '/api/board/diag'
+      preLoaderRoute: typeof ApiBoardDiagRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/board/oauth': {
+      id: '/api/board/oauth'
+      path: '/api/board/oauth'
+      fullPath: '/api/board/oauth'
+      preLoaderRoute: typeof ApiBoardOauthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/integrations/': {
       id: '/api/integrations/'
       path: '/api/integrations'
@@ -328,6 +382,13 @@ declare module '@tanstack/react-router' {
       path: '/api/integrations/disconnect'
       fullPath: '/api/integrations/disconnect'
       preLoaderRoute: typeof ApiIntegrationsDisconnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/mailboxes': {
+      id: '/api/integrations/mailboxes'
+      path: '/api/integrations/mailboxes'
+      fullPath: '/api/integrations/mailboxes'
+      preLoaderRoute: typeof ApiIntegrationsMailboxesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/integrations/settings': {
@@ -379,6 +440,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiKeysMachineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/oauth/callback': {
+      id: '/api/oauth/callback'
+      path: '/api/oauth/callback'
+      fullPath: '/api/oauth/callback'
+      preLoaderRoute: typeof ApiOauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/oauth/exchange': {
       id: '/api/oauth/exchange'
       path: '/api/oauth/exchange'
@@ -391,13 +459,6 @@ declare module '@tanstack/react-router' {
       path: '/api/oauth/start'
       fullPath: '/api/oauth/start'
       preLoaderRoute: typeof ApiOauthStartRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/oauth/callback': {
-      id: '/api/oauth/callback'
-      path: '/api/oauth/callback'
-      fullPath: '/api/oauth/callback'
-      preLoaderRoute: typeof ApiOauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/webhooks/facebook': {
@@ -423,7 +484,10 @@ const rootRouteChildren: RootRouteChildren = {
   PanelSlugRoute: PanelSlugRoute,
   ApiAgentsErebusRoute: ApiAgentsErebusRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiBoardDiagRoute: ApiBoardDiagRoute,
+  ApiBoardOauthRoute: ApiBoardOauthRoute,
   ApiIntegrationsDisconnectRoute: ApiIntegrationsDisconnectRoute,
+  ApiIntegrationsMailboxesRoute: ApiIntegrationsMailboxesRoute,
   ApiIntegrationsSettingsRoute: ApiIntegrationsSettingsRoute,
   ApiIntegrationsStartRoute: ApiIntegrationsStartRoute,
   ApiIntegrationsTestRoute: ApiIntegrationsTestRoute,
@@ -431,9 +495,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiKeysAccountRoute: ApiKeysAccountRoute,
   ApiKeysCheckRoute: ApiKeysCheckRoute,
   ApiKeysMachineRoute: ApiKeysMachineRoute,
+  ApiOauthCallbackRoute: ApiOauthCallbackRoute,
   ApiOauthExchangeRoute: ApiOauthExchangeRoute,
   ApiOauthStartRoute: ApiOauthStartRoute,
-  ApiOauthCallbackRoute: ApiOauthCallbackRoute,
   ApiWebhooksFacebookRoute: ApiWebhooksFacebookRoute,
   ApiIntegrationsIndexRoute: ApiIntegrationsIndexRoute,
   ApiIntegrationsCallbackProviderRoute: ApiIntegrationsCallbackProviderRoute,

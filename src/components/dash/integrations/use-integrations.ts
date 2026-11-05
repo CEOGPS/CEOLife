@@ -4,7 +4,7 @@ import { PROVIDERS, providerMeta, type AccountView, type CheckView, type Integra
 import { catchReturn, GMAIL_ACCOUNT, rememberAccounts, SPOTIFY_CONNECT_URL, workerLinked } from "@/lib/lifeos/oauth";
 import { sheetKeys } from "@/lib/lifeos/sheet-keys";
 import { newId, type Memory } from "../memory";
-import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, COVERED_BY_LOGIN, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, PUBLIC_TEST, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
+import { ACCOUNT_SERVICES, BOARD_EMAIL_LIST, CARD_PREFIX, COVERED_BY_LOGIN, directoryCategory, EXTRA_FIELD, GOOGLE_FAMILY, KEY_SERVICES, KEY_TWINS, NO_KEY_NEEDED, PUBLIC_TEST, SERVER_HELD, recommendedPlan, type KeyService } from "./catalog";
 import { paintChecked } from "@/lib/integrations/worker-account";
 import { logFeed } from "@/lib/lifeos/truth";
 
@@ -53,8 +53,23 @@ function mergeChecks(local: Record<string, CheckView>, remote: Record<string, Ch
   return out;
 }
 
+/** Cards the owner added from the API Directory. */
+export function customServices(keys: KeySource[]): KeyService[] {
+  const builtIn = new Set(KEY_SERVICES.map((row) => row.name.toLowerCase()));
+  const out: KeyService[] = [];
+  for (const row of keys) {
+    if (!row.name.startsWith(CARD_PREFIX)) continue;
+    const name = row.name.slice(CARD_PREFIX.length).trim();
+    if (!name || builtIn.has(name.toLowerCase()) || out.some((item) => item.name === name)) continue;
+    let meta: { c?: string; u?: string } = {};
+    try { meta = JSON.parse(row.value) as typeof meta; } catch { /* old or hand-made row */ }
+    out.push({ name, category: directoryCategory(meta.c || ""), url: meta.u || "", custom: true });
+  }
+  return out;
+}
+
 export function buildKeyRows(keys: KeySource[], checks: Record<string, CheckView>): KeyRowModel[] {
-  return KEY_SERVICES
+  return [...KEY_SERVICES, ...customServices(keys)]
     .map((svc) => {
       const value = (keys.find((row) => row.name === svc.name)?.value || "").trim();
       const check = checks[`key:${svc.name}`] || null;
@@ -63,7 +78,7 @@ export function buildKeyRows(keys: KeySource[], checks: Record<string, CheckView
       const state: KeyState = value ? (mapped ?? "untested") : testableWithoutKey ? (mapped ?? "empty") : "empty";
       return { ...svc, value, check, state };
     })
-    .filter((row) => !COVERED_BY_LOGIN.has(row.name) || row.value);
+    .filter((row) => !COVERED_BY_LOGIN.has(row.name));
 }
 
 export function tally(rows: AccountView[], boxes: MailboxView[], keyRows: KeyRowModel[]) {
@@ -347,7 +362,7 @@ export function useIntegrations(args: {
         },
       }));
       await integrationsApi.setExpectedMany(recommendedPlan());
-      say("ok", "Account plan applied: Google → Gmail, the iCloud mailbox → iCloud, every other platform → your work address.");
+      say("ok", "Account plan applied: Google → your Gmail accounts, Facebook and the iCloud mailbox → cagednreality, every other platform → your work address.");
     } catch (error) {
       say("error", message(error, "The plan could not be applied."));
     } finally {
@@ -458,6 +473,25 @@ export function useIntegrations(args: {
     update((prev) => ({ ...prev, keys: [...names.map((item) => ({ id: newId(), name: item, value })), ...prev.keys.filter((item) => !names.includes(item.name))] }));
   }, [update]);
 
+  /** Adds an API Directory entry as a key card. Stored with the keys, so it syncs to every device. */
+  const addCard = useCallback((entry: { n: string; u: string; c: string }) => {
+    const name = entry.n.trim().slice(0, 60);
+    if (!name) return;
+    if (KEY_SERVICES.some((row) => row.name.toLowerCase() === name.toLowerCase())) {
+      say("info", `${name} already has a card on this page.`);
+      return;
+    }
+    const value = JSON.stringify({ c: entry.c.slice(0, 80), u: entry.u.slice(0, 300) });
+    update((prev) => ({ ...prev, keys: [{ id: newId(), name: `${CARD_PREFIX}${name}`, value }, ...prev.keys.filter((row) => row.name !== `${CARD_PREFIX}${name}`)] }));
+    say("ok", `${name} was added under ${directoryCategory(entry.c)}. Paste its key on the card.`);
+  }, [say, update]);
+
+  const removeCard = useCallback(async (name: string) => {
+    update((prev) => ({ ...prev, keys: prev.keys.filter((row) => row.name !== `${CARD_PREFIX}${name}` && row.name !== name) }));
+    await integrationsApi.forgetKey(name).catch(() => undefined);
+    say("info", `${name}: card removed.`);
+  }, [say, update]);
+
   const removeKey = useCallback(async (name: string) => {
     const names = KEY_TWINS[name] || [name];
     update((prev) => ({ ...prev, keys: prev.keys.filter((item) => !names.includes(item.name)) }));
@@ -479,7 +513,7 @@ export function useIntegrations(args: {
           key,
           secret: kind === "godaddy" ? extraValue : "",
           site: kind === "brilliant" ? extraValue : "",
-          email: kind === "search-console" || kind === "google-analytics" ? "chris@ceogps.com" : googleEmail,
+          email: kind === "search-console" || kind === "google-analytics" ? "" : googleEmail,
         });
         if (result.ok) {
           if (kind === "search-console" && result.site) saveKey("Search Console", result.site);
@@ -544,7 +578,7 @@ export function useIntegrations(args: {
                 key: row.value,
                 secret: kind === "godaddy" ? extraValue : "",
                 site: kind === "brilliant" ? extraValue : "",
-                email: kind === "search-console" || kind === "google-analytics" ? "chris@ceogps.com" : googleEmail,
+                email: kind === "search-console" || kind === "google-analytics" ? "" : googleEmail,
               });
             } else {
               const twin = (KEY_TWINS[row.name] || []).map(keyValue).find(Boolean) || "";
@@ -609,6 +643,6 @@ export function useIntegrations(args: {
     payload, loading, loadError, busy, notice, resultsOpen, dismiss: () => setNotice(null),
     byProvider, keyRows, stats, googleEmail,
     mailboxes, expected, inUse, setExpected, applyPlan, makePrimary, testMailbox, disconnectMailbox, removeAddress, addAddress,
-    refresh, connect, testAccount, disconnect, saveKey, removeKey, testKey, testAll, importSheet, saveApp,
+    refresh, connect, testAccount, disconnect, saveKey, removeKey, testKey, testAll, importSheet, saveApp, addCard, removeCard,
   };
 }

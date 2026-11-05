@@ -113,14 +113,17 @@ const WORKER = "https://lifeos1-api.ceogps.workers.dev";
 export function workerConnectUrl(provider: string, origin: string, email?: string) {
   const url = new URL(`${WORKER}/api/oauth/start`);
   url.searchParams.set("provider", provider);
-  url.searchParams.set("board", "1");
   url.searchParams.set("origin", origin);
   if (email) url.searchParams.set("account_email", email);
   return url.toString();
 }
 
 export async function workerLinked(): Promise<{ provider: OauthProvider; email: string }[]> {
-  const response = await fetch(`${WORKER}/api/oauth/linked?board=1`, { headers: { "X-Lifeos-Board": "1" } });
+  const response = await fetch("/api/board/oauth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ op: "linked" }),
+  });
   const body = await response.json().catch(() => ({ accounts: [] })) as { accounts?: { provider?: string; email?: string }[] };
   if (!response.ok || !Array.isArray(body.accounts)) return [];
   return body.accounts
@@ -180,10 +183,10 @@ export async function freshToken(provider: OauthProvider, email?: string): Promi
     if (token) return token;
   } catch { /* the board login stores tokens on the API worker */ }
   try {
-    const response = await fetch(`${WORKER}/api/oauth/token/fresh?board=1`, {
+    const response = await fetch("/api/board/oauth", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Lifeos-Board": "1" },
-      body: JSON.stringify({ provider, email: email || "" }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "token", provider, email: email || "" }),
     });
     const body = await response.json().catch(() => ({})) as { access_token?: string };
     return body.access_token || "";

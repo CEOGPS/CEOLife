@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { AccountView, ProviderMeta } from "@/lib/integrations/providers";
-import { BOARD_EMAIL_LIST, oauthStartHref } from "./catalog";
+import { BOARD_EMAIL_LIST, PLANNED_ACCOUNTS, oauthStartHref } from "./catalog";
+import { UsedBy, usedByLogin } from "./used-by";
 import { timeAgo } from "./format";
 import { Button, EmailText, StatusPill } from "./ui";
 
@@ -141,7 +142,10 @@ export function ProviderCard({ meta, accounts, expected, configured, app, busy, 
   const label = failed ? "Not working" : working ? "Working" : waiting ? "Not tested" : "Not connected";
   const [clientId, setClientId] = useState(app?.clientId || "");
   const [clientSecret, setClientSecret] = useState("");
-  const hint = meta.id === "google" ? "chrisgr33ninc@gmail.com" : expected;
+  const planned = PLANNED_ACCOUNTS[meta.id] || [];
+  const linked = new Set(accounts.map((row) => (row.email || "").toLowerCase()));
+  const missing = planned.filter((email) => !linked.has(email));
+  const hint = planned[0] || expected;
   const href = oauthStartHref(meta.id, hint);
   return (
     <article className="module-card flex flex-col gap-3 p-4" aria-label={`${meta.name} connection`}>
@@ -157,11 +161,25 @@ export function ProviderCard({ meta, accounts, expected, configured, app, busy, 
       </header>
       <p className="text-sm text-white/65">{meta.blurb}</p>
       <ExpectedRow expected={expected} busy={Boolean(busy[`expected:${meta.id}`])} onSave={onSaveExpected} label={meta.name} addresses={addresses} />
-      {!accounts.length ? (
+      {missing.length ? (
+        <ul className="space-y-2" aria-label={`${meta.name} accounts not connected yet`}>
+          {missing.map((email) => (
+            <li key={email} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-white/15 bg-black/10 p-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white"><EmailText value={email} /></p>
+                <p className="text-xs text-white/50">Not connected</p>
+              </div>
+              <a className="int-btn int-btn--primary" href={oauthStartHref(meta.id, email)} target="_top" rel="noopener">Connect</a>
+            </li>
+          ))}
+          {meta.id === "facebook" ? <li className="text-xs text-white/50">Facebook signs in with whichever account the browser is logged into. Log out of Facebook (or use a private window) before connecting the other account.</li> : null}
+        </ul>
+      ) : null}
+      {!accounts.length && !missing.length ? (
         <ul className="flex flex-wrap gap-1.5" aria-label="What it unlocks">
           {meta.gives.map((item) => <li key={item} className="rounded-md bg-white/5 px-2 py-0.5 text-xs text-white/60">{item}</li>)}
         </ul>
-      ) : (
+      ) : accounts.length ? (
         <ul className="space-y-2">
           {accounts.map((account) => (
             <AccountRow
@@ -176,7 +194,7 @@ export function ProviderCard({ meta, accounts, expected, configured, app, busy, 
             />
           ))}
         </ul>
-      )}
+      ) : null}
       <div className="mt-auto space-y-2 pt-1">
         {!configured ? (
           <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); onSaveApp(clientId.trim(), clientSecret.trim()); }}>
@@ -189,11 +207,13 @@ export function ProviderCard({ meta, accounts, expected, configured, app, busy, 
             <Button type="submit" busy={Boolean(busy[`app:${meta.id}`])}>Save app</Button>
           </form>
         ) : null}
-        <a className="int-btn int-btn--primary" href={href} target="_top" rel="noopener">
-          {failed ? "Reconnect" : accounts.length ? "Add another account" : `Connect ${meta.name}`}
-        </a>
-        <p className="text-[11px] text-white/40">Used by: {USES[meta.id] || "—"}</p>
+        {missing.length && !failed ? null : (
+          <a className={`int-btn ${accounts.length && !failed ? "" : "int-btn--primary"}`} href={href} target="_top" rel="noopener">
+            {failed ? "Reconnect" : accounts.length ? "Add another account" : `Connect ${meta.name}`}
+          </a>
+        )}
       </div>
+      <UsedBy places={usedByLogin(meta.id)} />
     </article>
   );
 }

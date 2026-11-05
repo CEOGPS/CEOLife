@@ -127,6 +127,20 @@ async function refreshAccess(provider: string, refreshToken: string, env: Env) {
   const tokenUrl = TOKEN_URLS[provider];
   const { clientId, clientSecret } = clientCreds(provider, env);
   if (!tokenUrl || !clientId || !clientSecret) throw new Error(`Missing ${provider} client credentials on the worker.`);
+  if (provider === "notion") {
+    const response = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken }),
+    });
+    const data = await response.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; expires_in?: number; error_description?: string; error?: string };
+    if (!response.ok || !data.access_token) throw new Error(data.error_description || data.error || `Refresh failed (HTTP ${response.status}).`);
+    return data;
+  }
   const params = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
   const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
   if (provider === "spotify" || provider === "twitter") headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
@@ -135,7 +149,8 @@ async function refreshAccess(provider: string, refreshToken: string, env: Env) {
     params.set("client_secret", clientSecret);
   }
   const response = await fetch(tokenUrl, { method: "POST", headers, body: params.toString() });
-  const data = await response.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; expires_in?: number; error_description?: string; error?: string };
+  const data = await response.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; expires_in?: number; error_description?: string; error?: string; ok?: boolean };
+  if (provider === "slack" && data.ok === false) throw new Error(data.error || "Slack refused the refresh");
   if (!response.ok || !data.access_token) throw new Error(data.error_description || data.error || `Refresh failed (HTTP ${response.status}).`);
   return data;
 }
@@ -484,10 +499,33 @@ async function requireOwner(request: Request, env: Env) {
 export async function handleTruth(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/$/, "") || "/";
-  const owned = path.startsWith("/api/checks") || path.startsWith("/api/activity") || path === "/api/mail/probe" || path.startsWith("/api/briefs") || path.startsWith("/api/projects") || path === "/api/features/probe";
+  const owned = path.startsWith("/api/checks") || path.startsWith("/api/activity") || path === "/api/mail/probe" || path.startsWith("/api/briefs") || path.startsWith("/api/projects") || path === "/api/features/probe" || path === "/api/board";
   if (!owned) return null;
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
   try {
+    // Cloudflare KV fallback for the board doc, used only when Supabase (the primary store) is
+    // unreachable. Mirrors the Supabase lifeos_board shape (device -> {doc, updated_at}) so the
+    // client's merge logic treats it the same way regardless of which store answered.
+    if (path === "/api/board" && request.method === "GET") {
+      const device = clip(url.searchParams.get("device"), 120);
+      if (!device) return json({ error: "device required" }, 400);
+      const kv = env.LIFEOS_KV as KVNamespace | undefined;
+      if (!kv) return json({ error: "KV not bound" }, 500);
+      const raw = await kv.get(`board:${device}`);
+      if (!raw) return json({ doc: null, at: 0 });
+      const parsed = JSON.parse(raw) as { doc: unknown; at: number };
+      return json(parsed);
+    }
+    if (path === "/api/board" && request.method === "POST") {
+      const device = clip(url.searchParams.get("device"), 120);
+      if (!device) return json({ error: "device required" }, 400);
+      const kv = env.LIFEOS_KV as KVNamespace | undefined;
+      if (!kv) return json({ error: "KV not bound" }, 500);
+      const body = await request.json().catch(() => null) as { doc?: unknown } | null;
+      if (!body || body.doc === undefined) return json({ error: "doc required" }, 400);
+      await kv.put(`board:${device}`, JSON.stringify({ doc: body.doc, at: Date.now() }));
+      return json({ ok: true });
+    }
     if (path === "/api/checks" && request.method === "GET") {
       const user = await session(request, env);
       if (!user) return json({ error: "Sign in required" }, 401);

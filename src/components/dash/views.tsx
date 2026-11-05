@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, ResponsiveContainer, XAxis } from "recharts";
 import { band } from "@/lib/lifeos/board";
 import { ActivityFeed, DailyKind } from "./live-feed";
-import { newId, useMemory, type Memory } from "./memory";
+import { newId, useMemory } from "./memory";
 import { WiredPanel } from "./panels";
 import { WeatherClock } from "./weather";
 import { ErebusDock } from "./dock";
@@ -173,24 +173,6 @@ function Add({ label, onAdd }: { label: string; onAdd: (value: string) => void }
 function clock() {
   return `${fmtTime()} · ${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}`;
 }
-
-function answer(text: string, data: Memory) {
-  const q = text.toLowerCase();
-  const openTasks = data.tasks.filter((row) => !row.done);
-  const net = data.accounts.reduce((sum, row) => sum + row.balance, 0);
-  if (q.includes("task")) return openTasks.length ? openTasks.map((row) => row.title).join(". ") : "No open tasks on the board.";
-  if (q.includes("lead") || q.includes("contact")) {
-    const names = [...data.leads.map((row) => row.name), ...data.contacts.map((row) => row.name)].filter(Boolean);
-    return names.length ? names.join(", ") : "No leads or contacts saved.";
-  }
-  if (q.includes("money") || q.includes("balance") || q.includes("pay")) {
-    const unpaid = data.expenses.filter((row) => !row.paid).map((row) => row.name);
-    return `Net on the board is $${net.toLocaleString()}.${unpaid.length ? ` Unpaid: ${unpaid.join(", ")}.` : ""}`;
-  }
-  if (q.includes("note")) return data.notes[0]?.body || data.notes[0]?.title || "No notes saved.";
-  return "I only use saved notes, tasks, leads, contacts, and balances. Ask about one of those.";
-}
-
 
 function listen(onText: (value: string) => void) {
   const host = window as unknown as { webkitSpeechRecognition?: new () => { start: () => void; onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null } };
@@ -367,7 +349,7 @@ export function Dashboard() {
       </div>
 
       <div className="order-1 xl:sticky xl:top-2 xl:order-2 xl:self-start">
-        <ErebusDock data={data} update={update} agent="Kranos" />
+        <ErebusDock data={data} update={update} agent="Kranos" planner />
       </div>
 
       <div className="order-3 flex min-w-0 flex-col gap-4">

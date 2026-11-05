@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12T02:52:20.224Z",
+  "date": "2026-11-04T16:20:37.499Z",
   "preset": "cloudflare-pages",
   "framework": {
     "name": "nitro",
@@ -16,6 +16,9 @@
   },
   "config": {
     "cloudflare": {
+      "wrangler": {
+        "name": "lifeos1"
+      },
       "deployConfig": true,
       "nodeCompat": true
     }

@@ -8,11 +8,13 @@ import processModule from "node:process";
 import { AsyncLocalStorage } from "node:async_hooks";
 //#region node_modules/.nitro/vite/services/ssr/index.js
 var ssr_exports = /* @__PURE__ */ __exportAll({
+	a: () => getServerFnById,
 	createServerEntry: () => createServerEntry,
 	default: () => server_default,
-	i: () => getServerFnById,
-	n: () => createServerFn,
-	r: () => TSS_SERVER_FUNCTION,
+	i: () => TSS_SERVER_FUNCTION,
+	n: () => createMiddleware,
+	o: () => getRequest,
+	r: () => createServerFn,
 	t: () => server_exports
 });
 require_react();
@@ -92,6 +94,9 @@ function getH3Event() {
 	if (!event) throw new Error(`No StartEvent found in AsyncLocalStorage. Make sure you are using the function within the server runtime.`);
 	return event.h3Event;
 }
+function getRequest() {
+	return getH3Event().req;
+}
 /**
 * Set a cookie value by name.
 * @param name Name of the cookie to set
@@ -118,7 +123,7 @@ var HEADERS = { TSS_SHELL: "X-TSS_SHELL" };
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-BYqqxKAI.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-CUmu_DJx.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -140,159 +145,183 @@ async function getStartManifest(matchedRoutes) {
 var manifest = {
 	"007c72a4dbd468f7bb947acf662864cef1a2bfed12e93a8f5782a8621f07d6fb": {
 		functionName: "freeImage_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"0b8b94a3630c6e896d2ee5afefdb6590d24dabd7c46648ea0170941be9bc7978": {
 		functionName: "googleCalendar_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"0e9cb9427dceee9f6c009b65d1eb1bddceda05330892c5f594a5b7dccdda7ff1": {
 		functionName: "pullInbox_createServerFn_handler",
-		importer: () => import("./env-keys-COvstG64.mjs")
+		importer: () => import("./env-keys-DASWRgHp.mjs")
 	},
 	"0f5c9a16bbf75095ca6512ba55df08ca26aa7f743ecb79d0cf3178b914c8df41": {
 		functionName: "sendChat_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"15e270b31a1e03cffcb2aaef1d66c411f05905ae11123cc8f6f2cc482334137e": {
 		functionName: "pullSocial_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"243ef87da392b13a51419654ed3183f34813a44c2f8a6d45d6171eff96ad90c0": {
 		functionName: "connectAccount_createServerFn_handler",
-		importer: () => import("./env-keys-COvstG64.mjs")
+		importer: () => import("./env-keys-DASWRgHp.mjs")
 	},
 	"254a50e3b12d7bcd8fb6becd187b92a02964cdeff36ea7e10abb329713a1080c": {
 		functionName: "pullProvider_createServerFn_handler",
-		importer: () => import("./env-keys-COvstG64.mjs")
+		importer: () => import("./env-keys-DASWRgHp.mjs")
 	},
 	"2758a974f5d1cf7d2124ca33668688b156532fa3a9deb266d457780c6d492f39": {
 		functionName: "checkEngines_createServerFn_handler",
-		importer: () => import("./engines-_RhSOK2v.mjs")
+		importer: () => import("./engines-BZczhOVn.mjs")
 	},
 	"28d925ed35b526718e29db73e934d0ddcffcda58fd4999b33c529493bb08712c": {
 		functionName: "spotifyHub_createServerFn_handler",
-		importer: () => import("./env-keys-COvstG64.mjs")
+		importer: () => import("./env-keys-DASWRgHp.mjs")
+	},
+	"2b72e9ab7211a865958934cd0e524dcbd31f5820376539b17d96dbc1e85cabdd": {
+		functionName: "pullSpotifyLibrary_createServerFn_handler",
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"2f727bfc5deb797c331c1bce4f0000acdf2974bd440c21b8fba516cd58c685fd": {
 		functionName: "runCliAgent_createServerFn_handler",
-		importer: () => import("./cli-agents-CjdzUcyK.mjs")
+		importer: () => import("./cli-agents-B4gap5Ze.mjs")
 	},
 	"38f8f2a469e57d261180d3f0ea9ac7084e07cf1e7d439820a2e9770e37204b40": {
 		functionName: "lookup_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"4a81d92ef559122cb98b92e0f843a426d96bacb759cc9bfff87727a19309c420": {
 		functionName: "editPicture_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"539485e889577aab54db87aebfd8688294fb3a3d8cb62fc2fa74d23da3631a3b": {
 		functionName: "telegramBot_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
+	},
+	"57ce11c2f4ddc7b1d0c0322ee61f0aefadb871db382a7cff7d49c7ccccbc4b6d": {
+		functionName: "pullCreator_createServerFn_handler",
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"62cbb925365b416c89e8e966158d875058306e05ec23b825ccd475ffbe0c2445": {
 		functionName: "locateArea_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"6e730b5e9c79d56d3084b2c9fd82075b3340881ff5d3c704b46fd5daecee1ed3": {
 		functionName: "pullCalendar_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"73684b61ea46f70be74bae3b953b25b6a70fb4f2055e206dd4df709b737bc0e2": {
 		functionName: "cloneVoice_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"75d661d7253a80bc7ed5f8f73061894a941ac4d4f5ab600880acf76c106ffe2e": {
 		functionName: "youtubeSearch_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"75fea98bf27623791051f47a2fee58403af52c371f1ac5ec85335b11de220752": {
 		functionName: "findCommunity_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"7cb23775ad14054a9572c492df202c42208a37e723293b4d3a20df7a50f030b9": {
 		functionName: "wanClip_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"856da3863629135dc5d0d81c26f4d9e30393a390eb379164ce02612428bcadf1": {
 		functionName: "runEngine_createServerFn_handler",
-		importer: () => import("./engines-_RhSOK2v.mjs")
+		importer: () => import("./engines-BZczhOVn.mjs")
+	},
+	"8a72dc5a243d3d28231d86c0ae6e5680bb72d269f0f26ec1fa47f2e3f59152ca": {
+		functionName: "runHostedAgent_createServerFn_handler",
+		importer: () => import("./cli-agents-B4gap5Ze.mjs")
 	},
 	"8e62ba3ef6b266603e88c7f4c03939952b46d175310dc965ed285cb6c6fdda96": {
 		functionName: "reverseImage_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"8ff78e516a6c63ce079cabdeecfd0d70ebfa59af2acfadbbf0ec00ceb4e95bf2": {
 		functionName: "loadEnvKeys_createServerFn_handler",
-		importer: () => import("./env-keys-COvstG64.mjs")
+		importer: () => import("./env-keys-DASWRgHp.mjs")
 	},
 	"91b8a075fb0651eb6013b3fd24ffeee7acf6f68266783393650db798f75b7a04": {
 		functionName: "watchQuote_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"9ad8776f168300649487079d53253432a6c42d6987f33a92cb55b9ea910f8e57": {
 		functionName: "makeClip_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"9c95b7f220d8c052f8115d09667283584724acc1b7aaa4c6ac7bde38dd268921": {
 		functionName: "makePicture_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"9cfd941d8bd78387fd8ebfd76a9afcdc28769fb6babc222e81c215898baad78d": {
 		functionName: "pullBoard_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"a58fe346b7eafd010f0b04e0a1fc2ea5a456b73076fa8465dc2af09bc9f15d7c": {
 		functionName: "publishSocial_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"add788fa70ee908ed28dd48bae0a0e289995e09c335223b2efac41202998ddd7": {
 		functionName: "pullChats_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"aeb8ac7d5a55382a017f106d50eae6b4842b3c2aa620933bcee7615114751b44": {
 		functionName: "marketQuotes_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"bc9410430ad17d721e558e93ff8e59fefa97da3dc3f5561ab58987406761e1be": {
 		functionName: "pullWithKey_createServerFn_handler",
-		importer: () => import("./env-keys-COvstG64.mjs")
+		importer: () => import("./env-keys-DASWRgHp.mjs")
 	},
 	"be998f075e8d8075f9256b47a873c47f348a89d05e1a44a2b1d2fda9bdde3b96": {
 		functionName: "askNyx_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"c274fb50470cc764bd6b8820e7ba76ba609765a95571cff580bd590efe071b1b": {
 		functionName: "findIdeas_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"c4af2e8b020209dc0a6dd8a87ea4c0f3c451bb893ada4ac531de78e38b073aee": {
 		functionName: "findPictures_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
+	},
+	"c76b3eee2e81cd29328499cefe8ccd3b505801644264f7db64034771b3f3cadf": {
+		functionName: "cloudAgent_createServerFn_handler",
+		importer: () => import("./cloud-agent-BKTs8TBG.mjs")
 	},
 	"cd3883a970f8e2f887ab53797e5002b6e3983b5de87fd5854bf0cf74a04ac86d": {
 		functionName: "inspectSite_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"ce35a548154c9b90a7e2f45d464930c682285d901f4de8762fe1b758b3c1ab96": {
 		functionName: "pullAnalytics_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"d73d2b54a81f1b75bc9256eb4ce9b725555d863cef2565a8e2a8aabfd4b7a040": {
 		functionName: "composeSong_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
+	},
+	"de0b8038847721402e076c8216695acd748cbb2a910ce41600dfaddf81a00f99": {
+		functionName: "askErebus_createServerFn_handler",
+		importer: () => import("./erebus-CTpn7vZm.mjs")
 	},
 	"e4c56ba0b714b6c7066344894e4bcef8177cf2d3647e2c1b6fdb6aeb0188f52e": {
 		functionName: "probeKey_createServerFn_handler",
-		importer: () => import("./env-keys-COvstG64.mjs")
+		importer: () => import("./env-keys-DASWRgHp.mjs")
 	},
 	"e58b3eddb041f4d9d956847f2ba9cb9d1a5fc19f8e2f9a60c18e299d98e7229c": {
 		functionName: "speakVoice_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
 	},
 	"e9d0e0346919adc719a37f581ec9395ad24ad1eb656a639fc7e8b18935b9e094": {
 		functionName: "pushBoard_createServerFn_handler",
-		importer: () => import("./sync-BVpCkBiV.mjs")
+		importer: () => import("./sync-CDmpwBBK.mjs")
+	},
+	"ef4e60febf6abd28e4546a2cc5329930c5f2c4f5ffdbaec1d1a7400b27691741": {
+		functionName: "draftDesign_createServerFn_handler",
+		importer: () => import("./design-BDlCuvDb.mjs")
 	}
 };
 async function getServerFnById(id, access) {
@@ -1697,7 +1726,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-jk04Kf3V.mjs").then((n) => n.t),
+		import("./router-C8kR0WvV.mjs").then((n) => n.t),
 		import("./start-5Z2QO8AU.mjs"),
 		import("./empty-plugin-adapters-D9UWiqvJ.mjs")
 	]);
@@ -2154,7 +2183,10 @@ async function handleServerRoutes({ getRouter, request, url, executeRouter, cont
 		handlerType: "router"
 	}, request.signal, terminalNext));
 }
-var server_exports = /* @__PURE__ */ __exportAll$1({ setCookie: () => setCookie$1 });
+var server_exports = /* @__PURE__ */ __exportAll$1({
+	getRequest: () => getRequest,
+	setCookie: () => setCookie$1
+});
 var fetch = createStartHandler(defaultStreamHandler);
 function createServerEntry(entry) {
 	return { async fetch(...args) {
@@ -2163,4 +2195,4 @@ function createServerEntry(entry) {
 }
 var server_default = createServerEntry({ fetch });
 //#endregion
-export { ssr_exports as a, createServerEntry, server_default as default, getServerFnById as i, createServerFn as n, TSS_SERVER_FUNCTION as r, server_exports as t };
+export { getServerFnById as a, createServerEntry, server_default as default, TSS_SERVER_FUNCTION as i, createMiddleware as n, getRequest as o, createServerFn as r, ssr_exports as s, server_exports as t };

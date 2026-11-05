@@ -21,6 +21,7 @@ const OAUTH_PATHS = new Set([
   "/api/oauth/status",
   "/api/oauth/token/fresh",
   "/api/oauth/disconnect",
+  "/api/oauth/facebook/check",
 ]);
 
 export default {
@@ -135,7 +136,7 @@ function cors(response: Response, request: Request, allowed: Set<string>) {
   headers.set("Access-Control-Allow-Origin", origin);
   headers.set("Access-Control-Allow-Credentials", "true");
   headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-Id, X-Lifeos-Board");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-Id");
   headers.set("Vary", "Origin");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }

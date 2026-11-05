@@ -1,6 +1,7 @@
 import { agentActLine, agentToolCatalog, runAgentAct } from "@/lib/agents/agent-acts";
 import { executeKit, runHand } from "@/lib/agents/kit-run";
 import { kitLine, type AgentId } from "@/lib/agents/kit";
+import { decideReply, plannerLineFor } from "@/lib/agents/planner-reply";
 import type { Lead } from "@/lib/lifeos/board";
 import type { Memory } from "./memory";
 
@@ -80,7 +81,16 @@ function readLife(data: Memory, key: string) {
     const rows = data.events.slice(0, 16).map((row) => `${row.date || `day ${row.day}`} ${row.start || ""} ${row.title}`.trim());
     return rows.length ? rows.join("\n") : "No calendar events saved.";
   }
-  return "Use crm, tasks, goals, or calendar.";
+  if (name.startsWith("bill") || name.startsWith("money") || name.startsWith("finance") || name.startsWith("expense")) {
+    const rows = data.expenses.slice(0, 20).map((row) => `${row.paid ? "paid" : "due"} | ${row.amount} | ${row.name}`);
+    return rows.length ? rows.join("\n") : "No bills saved.";
+  }
+  if (name.startsWith("note")) {
+    const row = data.notes[0];
+    if (!row) return "No notes saved.";
+    return `latest | ${row.title} | ${(row.body || "").replace(/\s+/g, " ").slice(0, 240)}`;
+  }
+  return "Use crm, tasks, goals, calendar, bills, or notes.";
 }
 
 export async function runPlannerLine(data: Memory, line: string): Promise<PlannerAct> {
@@ -191,6 +201,18 @@ export async function askWithAbilities(data: Memory, question: string, preface: 
     prompt = `Continue as ${agent} from that tool result. Emit DONE: and the answer, or one more tool line.`;
   }
   return { text: acts.at(-1)?.text || last.text || "Stopped after two tools.", ok: last.ok, mind: last.mind || "", acts };
+}
+
+/** Homepage replies: one planner tool, then a next step. No paid model. */
+export async function planHomepageReply(data: Memory, text: string): Promise<{ text: string; acts: PlannerAct[] }> {
+  const url = text.match(/https?:\/\/\S+/i)?.[0] || "";
+  if (url && /\b(open|browse|page|site)\b/i.test(text) && !/\bapproved=yes\b/i.test(text)) {
+    return { text: "Approval required before BROWSE_URL. Reply approved=yes to run it. Nothing ran.", acts: [] };
+  }
+  const line = plannerLineFor(text);
+  if (!line) return { text: "Name a task, lead, bill, note, or calendar question. I will read that through a tool, then pick a next step.", acts: [] };
+  const act = await runPlannerLine(data, line);
+  return { text: decideReply(line, act.text), acts: [act] };
 }
 
 function applyLocal(data: Memory, act: PlannerAct): Memory {

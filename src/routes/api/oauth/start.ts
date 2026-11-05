@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { verifyAccess } from "@/lib/auth/access.server";
+import { boardFetch } from "@/lib/lifeos/board.server";
 
-const WORKER = "https://lifeos1-api.ceogps.workers.dev";
 const CALLBACK = "https://lifeos1-api.ceogps.workers.dev/oauth/callback";
 const GMAIL = "chrisgr33ninc@gmail.com";
 
@@ -18,16 +19,21 @@ export const Route = createFileRoute("/api/oauth/start")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        try {
+          await verifyAccess(request);
+        } catch {
+          return back("Sign in through Cloudflare Access first.");
+        }
         const requestUrl = new URL(request.url);
         const provider = (requestUrl.searchParams.get("provider") || "").trim().toLowerCase();
         const account = (requestUrl.searchParams.get("account") || (provider === "google" ? GMAIL : "")).trim().toLowerCase();
         if (!provider) return back("That service has no sign-in here.");
-        if (provider === "nylas" || account.endsWith("@icloud.com")) return back("iCloud connects through Nylas, not this sign-in.");
+        if (provider === "nylas" || (account.endsWith("@icloud.com") && provider !== "facebook")) return back("iCloud mail connects through Nylas, not this sign-in.");
         let response: Response;
         try {
-          response = await fetch(`${WORKER}/api/oauth/start?board=1`, {
+          response = await boardFetch("/api/oauth/start", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-Lifeos-Board": "1", Accept: "application/json" },
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
             body: JSON.stringify({ provider, account_email: account, origin: "https://lifeos.ceogps.com" }),
             redirect: "manual",
             signal: AbortSignal.timeout(15000),

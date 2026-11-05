@@ -44,9 +44,16 @@ export function ollamaTarget(saved = "") {
   const value = clean(saved);
   const fromValue = hostBase(value);
   const fromEnv = hostBase(process.env.OLLAMA_URL || process.env.OLLAMA_HOST || process.env.OLLAMA_BASE_URL || "");
-  const base = fromValue || fromEnv || DEFAULT_BASE;
+  // The dashboard runs in the cloud, so a saved localhost address cannot work there. The tunnel address wins.
+  const localOnly = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/i.test(fromValue);
+  const base = (fromValue && !(localOnly && fromEnv) ? fromValue : "") || fromEnv || DEFAULT_BASE;
   const prefer = !fromValue && looksLikeModel(value) ? value : clean(process.env.OLLAMA_MODEL || "");
-  const key = fromValue || looksLikeModel(value) ? clean(process.env.OLLAMA_API_KEY || "") : value || clean(process.env.OLLAMA_API_KEY || "");
+  // The server's gate key always wins: a key typed on the card (for example an old Ollama cloud key) must not
+  // replace it, or the tunnel refuses every call. The card's own text is used only when the server has none.
+  const cardKey = fromValue || looksLikeModel(value) ? "" : value;
+  // The gate key only ever goes to the server's own Ollama address, never to an address typed on the card.
+  // OLLAMA_GATE_KEY unlocks the tunnel to this PC. OLLAMA_API_KEY is the Ollama Cloud key (ollama-cloud.ts).
+  const key = (base === fromEnv ? clean(process.env.OLLAMA_GATE_KEY || "") : "") || cardKey;
   return { base, key, prefer };
 }
 
@@ -60,8 +67,18 @@ function pickModel(models: string[], prefer: string) {
     || "";
 }
 
+/**
+ * The PC's Ollama is reached through a Cloudflare Tunnel (ollama.ceogps.com) that Cloudflare Access locks.
+ * Only this server holds the Access service token, so the browser and the internet cannot use the tunnel.
+ */
+function accessHeaders(): Record<string, string> {
+  const id = clean(process.env.OLLAMA_ACCESS_CLIENT_ID || "");
+  const token = clean(process.env.OLLAMA_ACCESS_CLIENT_SECRET || "");
+  return id && token ? { "CF-Access-Client-Id": id, "CF-Access-Client-Secret": token } : {};
+}
+
 async function readTags(base: string, key: string) {
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", ...accessHeaders() };
   if (key) headers.Authorization = `Bearer ${key}`;
   const response = await fetch(`${base}/api/tags`, { headers, redirect: "manual", signal: AbortSignal.timeout(4000) });
   const raw = await response.text();
@@ -95,17 +112,20 @@ export async function probeOllama(saved = ""): Promise<OllamaProbe> {
     if (result.status === 401 || result.status === 403) {
       return { ...empty, ok: false, text: target.key ? "Ollama refused the saved key." : `Ollama at ${target.base} requires an API key. Paste it on this card.` };
     }
+    if (!result.json && result.status >= 300 && result.status < 400) {
+      return { ...empty, ok: false, text: `Cloudflare Access blocked ${target.base}. The dashboard needs the tunnel's service token (OLLAMA_ACCESS_CLIENT_ID and its pair).` };
+    }
     if (!result.json) {
       return { ...empty, ok: false, text: `Ollama at ${target.base} did not answer /api/tags (HTTP ${result.status}).` };
     }
     if (!result.models.length) {
       return { ...empty, ok: false, text: `Ollama is running at ${target.base} but no model is installed. Pull one, then Erebus and Kranos can use it.` };
     }
-    const model = pickModel(result.models, target.prefer);
-    if (!model) {
-      return { ...empty, ok: false, models: result.models, text: `Ollama is running at ${target.base}, but ${target.prefer} is not installed. Installed: ${result.models.slice(0, 3).join(", ")}.` };
-    }
-    return { ok: true, checked: true, text: connectedText(target.base, result.models, note), base: target.base, model, models: result.models };
+    const picked = pickModel(result.models, target.prefer);
+    // A missing default should not stop the agents: use what is installed and say so on the card.
+    const model = picked || result.models[0];
+    const fallback = picked ? "" : ` · default ${target.prefer} is not installed, using ${model}`;
+    return { ok: true, checked: true, text: connectedText(target.base, result.models, `${note}${fallback}`), base: target.base, model, models: result.models };
   } catch {
     return { ...empty, ok: false, text: `Ollama is not running at ${target.base}. Start it on this computer, then check again.` };
   }
@@ -115,7 +135,7 @@ export async function chatOllama(messages: { role: string; content: string }[], 
   const status = await probeOllama(saved);
   if (!status.ok || !status.model) return "";
   const target = ollamaTarget(saved);
-  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json", ...accessHeaders() };
   if (target.key) headers.Authorization = `Bearer ${target.key}`;
   try {
     const response = await fetch(`${status.base}/api/chat`, {
@@ -123,7 +143,7 @@ export async function chatOllama(messages: { role: string; content: string }[], 
       headers,
       redirect: "manual",
       body: JSON.stringify({ model: status.model, messages, stream: false }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(120000),
     });
     if (!response.ok) return "";
     const body = await response.json() as { message?: { content?: string } };

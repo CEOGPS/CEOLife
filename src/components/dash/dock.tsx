@@ -7,7 +7,7 @@ import { boardFacts } from "./facts";
 import { matchedSkill, skillBrief } from "./agent-tools";
 import { hostPrompt } from "@/lib/agents/kit";
 import { runHand, runShared } from "@/lib/agents/kit-run";
-import { applyActs, askWithAbilities, coldLeadNotice } from "./erebus-abilities";
+import { applyActs, askWithAbilities, coldLeadNotice, planHomepageReply } from "./erebus-abilities";
 import { YoutubeBox } from "./media-desk";
 
 type Update = (recipe: (prev: Memory) => Memory) => void;
@@ -120,7 +120,7 @@ export function VoiceClone({ data, update, onReady }: { data: Memory; update: Up
   );
 }
 
-export function ErebusDock({ data, update, agent = "Erebus", compact = false }: { data: Memory; update: Update; agent?: "Erebus" | "Kranos"; compact?: boolean }) {
+export function ErebusDock({ data, update, agent = "Erebus", compact = false, planner = false }: { data: Memory; update: Update; agent?: "Erebus" | "Kranos"; compact?: boolean; planner?: boolean }) {
   const [mode, setMode] = useState<Mode>("chat");
   const [draft, setDraft] = useState("");
   const [mic, setMic] = useState(false);
@@ -272,6 +272,15 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
         setStatus("Playing");
         return;
       }
+      if (planner && hand === "off") {
+        const turned = await planHomepageReply(data, text);
+        applyActs(update, turned.acts);
+        update((prev) => ({ ...prev, thread: [...prev.thread, { id: newId(), who: agent, text: turned.text, mine: false, platform: tag }] }));
+        say(turned.text);
+        setUsed("Planner");
+        setStatus("Planner");
+        return;
+      }
       const packed = [facts(data, text), skillBrief(), matchedSkill(text), tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
       const { askNyx } = await import("@/lib/lifeos/sync");
       const turned = await askWithAbilities(data, text, packed, async (question, sheet) => {
@@ -400,14 +409,14 @@ export function ErebusDock({ data, update, agent = "Erebus", compact = false }: 
         {HANDS.map((row) => <button key={row.id} type="button" className={`quiet ${hand === row.id ? "is-on" : ""}`} onClick={() => setHand(row.id)}>{row.label}</button>)}
         <span className="text-xs text-white/45">{used}</span>
       </div>
-      {hand === "off" ? (
+      {hand === "off" && !planner ? (
       <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1">
         {MINDS.map((row) => <button key={row.id} type="button" className={`quiet ${mind === row.id ? "is-on" : ""}`} onClick={() => setMind(row.id)}>{row.label}</button>)}
       </div>
       ) : null}
       <div className="az-thread min-h-0 w-full min-w-0 flex-1 overflow-y-auto px-3 py-2 text-sm leading-5">
         {mode === "chat" ? lines.slice(-12).map((row) => <p key={row.id} className={`py-1 ${row.mine ? "text-right" : ""}`}><span className="text-white/45">{row.who}: </span>{row.text}</p>) : null}
-        {!lines.length && mode === "chat" ? <p className="text-sm text-white/40">Ask about the board. I only use what is saved.</p> : null}
+        {!lines.length && mode === "chat" ? <p className="text-sm text-white/40">{planner ? "Ask a question. I pick a tool, then a next step." : "Ask about the board. I only use what is saved."}</p> : null}
         {mode === "video" ? <YoutubeBox apiKey={data.keys.find((row) => row.name === "YouTube")?.value || ""} query={clip} /> : null}
         {mode === "image" ? <p className="text-white/70">{status}. The picture is saved on Media when the service returns a file.</p> : null}
         {mode === "writer" ? <p className="text-white/70">{status}. The draft is saved under Notes.</p> : null}

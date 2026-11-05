@@ -3,6 +3,8 @@ import { sessionMiddleware } from "./session-middleware";
 import { SERVICE_ENV } from "./sheet-keys";
 import { probeOllama } from "./ollama";
 import { probeProvider, providerId } from "./providers";
+import { NO_API, NO_CHECK, probeExtra } from "./key-probes";
+import { chatOllamaCloud } from "./ollama-cloud";
 
 export { sheetKeys } from "./sheet-keys";
 
@@ -374,13 +376,29 @@ export async function runProbe(data: { name: string; key: string; email: string 
       const result = await probeOllama(key);
       return { ok: result.ok as boolean, checked: true as const, text: result.text, host: result.base };
     }
+    if (data.name === "Ollama Cloud") {
+      // A key on the card is tested as typed; with no card key, the server's OLLAMA_API_KEY is tested.
+      const reply = await chatOllamaCloud([{ role: "user", content: "Reply with the single word PONG" }], { key, maxTokens: 8, timeoutMs: 30_000 });
+      return reply.error
+        ? { ok: false as const, checked: true as const, text: reply.error }
+        : { ok: true as const, checked: true as const, text: `Connected · ${reply.model} answered${key ? "" : " with the server key"}.` };
+    }
     const cloudflareName = data.name === "Cloudflare" || data.name === "Cloudflare Token" || data.name === "Cloudflare Account";
     if (!key && !cloudflareName) return { ok: false as const, checked: false as const, text: "No key is saved for this service." };
     const auth = { Authorization: `Bearer ${key}` };
     try {
       const hosted = providerId(data.name);
       if (hosted) return probeProvider(hosted, key);
-      if (data.name === "Anthropic") return readBody(await timed(fetch("https://api.anthropic.com/v1/models", { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" }, signal: AbortSignal.timeout(8000) })));
+      if (data.name === "Anthropic") {
+        // "x-api-key" is the name of Anthropic's key header, not xAI. Say what it actually means.
+        const result = await readBody(await timed(fetch("https://api.anthropic.com/v1/models", { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" }, signal: AbortSignal.timeout(8000) })));
+        if (result.ok) return { ...result, text: "Connected. The Anthropic key works." };
+        if (/x-api-key|authentication/i.test(result.text)) {
+          const hint = key.startsWith("sk-ant-") ? "It was revoked or mistyped." : "Anthropic keys start with sk-ant-. This one does not, so it may be a key from another service.";
+          return { ok: false as const, checked: true as const, text: `Anthropic refused this key. ${hint} Make a new one at console.anthropic.com → API Keys.` };
+        }
+        return result;
+      }
       if (data.name === "xAI") {
         const result = await readBody(await timed(fetch("https://api.x.ai/v1/models", { headers: auth, signal: AbortSignal.timeout(8000) })));
         if (!result.ok && /credits or licenses/i.test(result.text)) return { ok: false as const, checked: true as const, text: "The key is for chris@ceogps.com. xAI refused it because that team has no credits yet." };
@@ -454,20 +472,35 @@ export async function runProbe(data: { name: string; key: string; email: string 
       if (data.name === "Linear") return readBody(await timed(fetch("https://api.linear.app/graphql", { method: "POST", headers: { Authorization: key, "Content-Type": "application/json" }, body: JSON.stringify({ query: "{ viewer { id } }" }), signal: AbortSignal.timeout(8000) })));
       if (data.name === "Stability AI") return readBody(await timed(fetch("https://api.stability.ai/v1/user/account", { headers: auth, signal: AbortSignal.timeout(8000) })));
       if (data.name === "Slack") return readBody(await timed(fetch("https://slack.com/api/auth.test", { headers: auth, signal: AbortSignal.timeout(8000) })));
-      if (data.name === "X") return readBody(await timed(fetch("https://api.x.com/2/users/me", { headers: auth, signal: AbortSignal.timeout(8000) })));
+      if (data.name === "X") {
+        // A pasted X key is an app-only bearer token. /2/users/me needs a user login, so check the key on a public lookup.
+        const result = await readBody(await timed(fetch("https://api.x.com/2/users/by/username/X", { headers: auth, signal: AbortSignal.timeout(8000) })));
+        return result.ok ? { ...result, text: "App key works. Posting and your timeline use Connect on the X login card." } : result;
+      }
       if (data.name === "Jotform") return readBody(await timed(fetch(`https://api.jotform.com/user?apiKey=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) })));
       if (data.name === "Qwen") {
         const token = key || process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY || "";
         if (!token) return { ok: false as const, checked: true as const, text: "No Qwen key is saved, and the server has no DashScope key." };
-        const base = (process.env.DASHSCOPE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
-        return readBody(await timed(fetch(`${base}/models`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) })));
+        // DASHSCOPE_BASE_URL is only used when it is one clean https address. Anything else is ignored, never shown.
+        const custom = (process.env.DASHSCOPE_BASE_URL || "").trim();
+        const bases = [...new Set([
+          /^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i.test(custom) ? custom.replace(/\/$/, "") : "",
+          "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+          "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        ].filter(Boolean))];
+        let last: Awaited<ReturnType<typeof readBody>> = { ok: false, checked: true, text: "Qwen refused the key." };
+        for (const base of bases) {
+          last = await readBody(await timed(fetch(`${base}/models`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) })));
+          if (last.ok) return last;
+        }
+        return last;
       }
-      if (data.name === "Runwav") return readBody(await timed(fetch("https://api.dev.runwayml.com/v1/tasks?pageSize=1", { headers: { ...auth, "X-Runway-Version": "2024-11-06" }, signal: AbortSignal.timeout(8000) })));
+      if (data.name === "Runwav") return readBody(await timed(fetch("https://api.dev.runwayml.com/v1/organization", { headers: { ...auth, "X-Runway-Version": "2024-11-06" }, signal: AbortSignal.timeout(8000) })));
       const bearer: Record<string, string> = {
         Asana: "https://app.asana.com/api/1.0/users/me",
         Calendly: "https://api.calendly.com/users/me",
         Cohere: "https://api.cohere.com/v1/models",
-        Firecrawl: "https://api.firecrawl.dev/v1/team",
+        Firecrawl: "https://api.firecrawl.dev/v1/team/credit-usage",
         HubSpot: "https://api.hubapi.com/account-info/v3/details",
         Todoist: "https://api.todoist.com/rest/v2/projects",
       };
@@ -479,6 +512,10 @@ export async function runProbe(data: { name: string; key: string; email: string 
         if (!/^[a-z]{2}\d+$/i.test(dc)) return { ok: false as const, checked: true as const, text: "Mailchimp keys end with a datacenter, like -us21. This one does not." };
         return readBody(await timed(fetch(`https://${dc}.api.mailchimp.com/3.0/ping`, { headers: { Authorization: `Basic ${btoa(`lifeos:${key}`)}` }, signal: AbortSignal.timeout(8000) })));
       }
+      const extra = await probeExtra(data.name, key);
+      if (extra) return extra;
+      if (NO_API.has(data.name)) return { ok: false as const, checked: false as const, text: "Stored only. This service has no API that can confirm a connection." };
+      if (NO_CHECK.has(data.name)) return { ok: false as const, checked: false as const, text: "Stored. This service has no free check, so the key is confirmed the first time a feature uses it." };
       const savedKey = key.trim() && !/^https?:\/\//i.test(key);
       const openGet: Record<string, { url: string; text: string }> = {
         Kraken: { url: "https://api.kraken.com/0/public/Time", text: "Kraken public API answered. This is not your account." },

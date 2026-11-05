@@ -2,7 +2,8 @@ name = "lifeos1-oauth"
 main = "worker/lifeos1-oauth.js"
 compatibility_date = "2026-07-01"
 account_id = "4cb5c0d8553b8c0c9156ee4f2bad9e6f"
-workers_dev = true
+# Private: reachable only through the OAUTH service binding on lifeos1-api.
+workers_dev = false
 
 # Client secrets stay on this worker. Deploy keeps them.
 [[kv_namespaces]]

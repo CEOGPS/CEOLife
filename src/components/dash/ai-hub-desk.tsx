@@ -10,6 +10,7 @@ import { AGENT_SKILLS, matchedSkill, skillBrief } from "./agent-tools";
 import { applyActs, askWithAbilities } from "./erebus-abilities";
 import { askHermes, askQwen, askQwenChat, pingGateway } from "./local-agents";
 import { boardFacts } from "./facts";
+import { isEmptyMemory, learnFromMessage, MEMORY_KINDS, MEMORY_LABELS, memoryBlock, memoryLines, memoryText, normalizeMemory, pullAgentMemory, pushAgentMemory, readMemoryCache, type AgentMemory } from "@/lib/agents/memory";
 
 type Update = (recipe: (prev: Memory) => Memory) => void;
 type Section = "erebus" | "kranos" | "agents" | "hierarchy" | "models" | "hermes" | "qwen" | "messaging" | "workers" | "assignments" | "skills";
@@ -192,6 +193,59 @@ function saveAgent(update: Update, name: string, form: AgentSettings) {
   }));
 }
 
+/** Everything that makes this agent who it is: soul, personality, instructions, rules, and what it remembers. */
+function personaOf(name: string, form: AgentSettings, blurb: string, mem: AgentMemory) {
+  const parts = [
+    `You are ${name}.`,
+    form.soul.trim() ? `## Soul\n${form.soul.trim()}` : "",
+    form.personality.trim() ? `## Personality\n${form.personality.trim()}` : "",
+    form.instructions.trim() ? `## Instructions\n${form.instructions.trim()}` : blurb,
+    form.rules.trim() ? `## Rules you must follow\n${form.rules.trim()}` : "",
+    isEmptyMemory(mem) ? "" : `## Your memory (persistent; use it, don't recite it)\n${memoryBlock(mem)}`,
+  ];
+  return parts.filter(Boolean).join("\n\n");
+}
+
+function MemoryPanel({ name, mem, onChange }: { name: string; mem: AgentMemory; onChange: (next: AgentMemory) => void }) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [state, setState] = useState("");
+  const [loaded, setLoaded] = useState(name);
+  if (loaded !== name) { setLoaded(name); setDrafts({}); setState(""); }
+  const value = (kind: typeof MEMORY_KINDS[number]) => drafts[kind] ?? memoryText(mem[kind]);
+  async function save() {
+    const next = normalizeMemory(Object.fromEntries(MEMORY_KINDS.map((kind) => [kind, memoryLines(value(kind))])));
+    setState("Saving");
+    const ok = await pushAgentMemory(name, next);
+    onChange(next);
+    setDrafts({});
+    setState(ok ? "Saved" : "Saved on this device only");
+  }
+  async function clear() {
+    const next = normalizeMemory({});
+    setState("Clearing");
+    const ok = await pushAgentMemory(name, next);
+    onChange(next);
+    setDrafts({});
+    setState(ok ? "Cleared" : "Cleared on this device only");
+  }
+  return (
+    <div className="mt-5">
+      <p className="mb-1 text-[10px] tracking-widest text-white/35">MEMORY · {MEMORY_KINDS.reduce((sum, kind) => sum + mem[kind].length, 0)} ITEMS</p>
+      <p className="text-[11px] text-white/40">One item per line. {name} also learns from chat: say "remember …", "always …", "I prefer …", or "forget …".</p>
+      {MEMORY_KINDS.map((kind) => (
+        <label key={kind} className="mt-3 block text-[11px] uppercase tracking-wider text-white/40">{MEMORY_LABELS[kind]}
+          <textarea className={field} value={value(kind)} onChange={(event) => setDrafts({ ...drafts, [kind]: event.target.value })} />
+        </label>
+      ))}
+      <div className="mt-2 flex items-center gap-4">
+        <button type="button" className="quiet is-on" onClick={() => void save()}>Save memory</button>
+        <button type="button" className="link-remove" onClick={() => void clear()}>Clear memory</button>
+        {state ? <span className="text-[11px] text-white/45">{state}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 function Profile({ name, blurb, data, update, stamp }: { name: string; blurb: string; data: Memory; update: Update; stamp: number }) {
   const roster = ROSTER.find((agent) => agent.name === name);
   const saved = Boolean(readAgentCache()[name]) || data.notes.some((row) => row.title === `Agent · ${name}`);
@@ -202,7 +256,13 @@ function Profile({ name, blurb, data, update, stamp }: { name: string; blurb: st
   const [seen, setSeen] = useState(stamp);
   const [skinName, setSkinName] = useState("");
   const [skinNote, setSkinNote] = useState("");
-  if (loaded !== name || seen !== stamp) { setLoaded(name); setSeen(stamp); setForm(readAgent(data, name)); }
+  const [mem, setMem] = useState<AgentMemory>(() => readMemoryCache(name));
+  if (loaded !== name || seen !== stamp) { setLoaded(name); setSeen(stamp); setForm(readAgent(data, name)); setMem(readMemoryCache(name)); }
+  useEffect(() => {
+    let live = true;
+    void pullAgentMemory(name).then((next) => { if (live) setMem(next); });
+    return () => { live = false; };
+  }, [name]);
   const skins = readSkins(data);
   const clip = AVATARS.includes(form.avatar) ? `/agents/avatars/${form.avatar}.mp4` : "";
   return (
@@ -258,12 +318,13 @@ function Profile({ name, blurb, data, update, stamp }: { name: string; blurb: st
         <input className="mt-1 h-8 w-full rounded-full border border-line bg-black/40 px-3 text-sm" value={form.task} onChange={(event) => setForm({ ...form, task: event.target.value })} />
       </label>
       <button type="button" className="bg-blue mt-4" onClick={() => saveAgent(update, name, form)}>Save</button>
-      <AgentChat name={name} prompt={form.instructions || blurb} voice={form.voice} data={data} update={update} onVoice={(id) => { const next = { ...form, voice: id }; setForm(next); saveAgent(update, name, next); }} />
+      <MemoryPanel name={name} mem={mem} onChange={setMem} />
+      <AgentChat name={name} prompt={personaOf(name, form, blurb, mem)} mem={mem} onMemory={setMem} voice={form.voice} data={data} update={update} onVoice={(id) => { const next = { ...form, voice: id }; setForm(next); saveAgent(update, name, next); }} />
     </div>
   );
 }
 
-function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: string; prompt: string; voice: string; data: Memory; update: Update; onVoice: (id: string) => void }) {
+function AgentChat({ name, prompt, mem, onMemory, voice, data, update, onVoice }: { name: string; prompt: string; mem: AgentMemory; onMemory: (next: AgentMemory) => void; voice: string; data: Memory; update: Update; onVoice: (id: string) => void }) {
   const stored = readChat(data, name);
   const [lines, setLines] = useState(stored);
   const [loaded, setLoaded] = useState(name);
@@ -278,6 +339,16 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
     setLines(next);
     setText("");
     setNote("Thinking");
+    const study = learnFromMessage(mem, question);
+    const memo = [study.learned.length ? `Remembered: ${study.learned.join("; ")}` : "", study.forgot.length ? `Forgot: ${study.forgot.join("; ")}` : ""].filter(Boolean).join("\n");
+    let liveMem = mem;
+    if (memo) {
+      liveMem = study.mem;
+      onMemory(liveMem);
+      await pushAgentMemory(name, liveMem);
+    }
+    const remembers = isEmptyMemory(liveMem) ? "" : `## ${name}'s memory\n${memoryBlock(liveMem)}`;
+    const memoTail = memo ? `\n\n_${memo}_` : "";
     const history = next.slice(-6).map((line) => `${line.role === "user" ? "User" : name}: ${line.text}`).join("\n");
     let tool = await runShared(data, question);
     if (tool?.hand) {
@@ -288,7 +359,7 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
     if (tool?.noteTitle) update((prev) => ({ ...prev, notes: [{ id: newId(), title: tool?.noteTitle || "Note", body: tool?.noteBody || "" }, ...prev.notes] }));
     const command = /^\/(plugins|plugin|telegram|skill|search|page|apify|contacts|finance|quote|youtube|task|note|csv|check|open)\b/i.test(question);
     if (command && tool) {
-      const done = [...next, { role: "ai" as const, text: tool.text }];
+      const done = [...next, { role: "ai" as const, text: tool.text + memoTail }];
       setLines(done);
       setNote(name);
       saveChat(update, name, done);
@@ -297,7 +368,7 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
     const { askNyx } = await import("@/lib/lifeos/sync");
     const row = CATALOG.find((item) => item.id === model);
     const named = name === "Erebus" || name === "Kranos" || name === "Hermes" || name === "Qwen";
-    const preface = [named ? briefFor(name as AgentId) : "", boardFacts(data, question), history, skillBrief(), matchedSkill(question), prompt, tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
+    const preface = [named ? briefFor(name as AgentId) : "", boardFacts(data, question), remembers, history, skillBrief(), matchedSkill(question), prompt, tool ? `Tool result:\n${tool.text}` : ""].filter(Boolean).join("\n\n");
     const call = (nextQuestion: string, sheet: string) => askNyx({ data: { question: nextQuestion, facts: sheet, name, prompt, model, key: keyFor(data, model), mind: mindOf(row?.key || ""), endpoint: data.keys.find((item) => item.name === "Ollama (local)")?.value || "" } });
     if (name === "Hermes" || name === "Qwen") {
       const picture = /\b(image|picture|photo|draw)\b/i.test(question);
@@ -310,7 +381,7 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
             ? await askQwen(data, question, "image")
             : await askQwenChat(data, hostPrompt("Qwen", question, preface));
       const reply = [tool?.text, job.text].filter(Boolean).join("\n\n") || "No reply.";
-      const done = [...next, { role: "ai" as const, text: reply }];
+      const done = [...next, { role: "ai" as const, text: reply + memoTail }];
       setLines(done);
       setNote(job.ok ? name : "Not working");
       saveChat(update, name, done);
@@ -337,7 +408,7 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
         applyActs(update, turned.acts || []);
         const hosted = await hostFromActs(data, turned.acts || []);
         const reply = [tool?.text, turned.text, hosted].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
-        const done = [...next, { role: "ai" as const, text: reply }];
+        const done = [...next, { role: "ai" as const, text: reply + memoTail }];
         setLines(done);
         setNote(turned.ok ? turned.mind : "Offline");
         saveChat(update, name, done);
@@ -347,7 +418,7 @@ function AgentChat({ name, prompt, voice, data, update, onVoice }: { name: strin
     const turned = await askWithAbilities(data, question, preface, call, named ? name as AgentId : "Erebus");
     applyActs(update, turned.acts);
     const reply = [tool?.text, turned.text].filter(Boolean).join("\n\n") || "No reply. Save a key for this model, or check xAI / NVIDIA / OpenAI on the machine.";
-    const done = [...next, { role: "ai" as const, text: reply }];
+    const done = [...next, { role: "ai" as const, text: reply + memoTail }];
     setLines(done);
     setNote(turned.ok ? turned.mind : "Offline");
     saveChat(update, name, done);

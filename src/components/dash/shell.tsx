@@ -243,7 +243,7 @@ export function Shell({
               />
               <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[8px]">⌘K</kbd>
               {searchOpen && query.trim() ? (
-                <div className="absolute top-11 left-0 z-50 w-full rounded-lg border border-white/10 bg-black/95 p-1 text-left shadow-lg">
+                <div className="absolute top-11 left-0 z-[2000] w-full rounded-lg border border-white/10 bg-black/95 p-1 text-left shadow-lg">
                   {hits.length === 0 ? <p className="px-2 py-2 text-xs text-white/40">No panel matches.</p> : hits.map((item) => (
                     <Link
                       key={item.slug}
@@ -279,7 +279,7 @@ export function Shell({
                 ) : null}
               </button>
               {bellOpen ? (
-                <div className="absolute top-11 right-0 z-50 w-72 rounded-lg border border-white/10 bg-black/95 p-2 text-left shadow-lg">
+                <div className="absolute top-11 right-0 z-[2000] w-72 rounded-lg border border-white/10 bg-black/95 p-2 text-left shadow-lg">
                   <div className="flex items-center justify-between px-2 py-1">
                     <p className="text-[10px] tracking-widest text-white/40">NOTIFICATIONS{unread ? ` · ${unread}` : ""}</p>
                     {unread ? <button type="button" className="text-[10px] text-orange-300" onClick={() => markNoticesRead()}>Mark read</button> : null}
@@ -303,7 +303,7 @@ export function Shell({
                 {profile.photo ? <img src={profile.photo} alt="" className="h-full w-full object-cover" /> : <Settings size={16} />}
               </button>
               {accountOpen ? (
-                <div className="absolute top-11 right-0 z-50 w-72 rounded-lg border border-white/10 bg-black/95 p-3 text-left shadow-lg">
+                <div className="absolute top-11 right-0 z-[2000] w-72 rounded-lg border border-white/10 bg-black/95 p-3 text-left shadow-lg">
                   <Link to="/panel/$slug" params={{ slug: "settings" }} className="block px-1 py-1 text-sm text-white" onClick={() => setAccountOpen(false)}>Settings</Link>
                   <p className="mt-2 px-1 text-[10px] tracking-widest text-white/40">PROFILE</p>
                   <label className="mt-2 block text-[10px] text-white/40">Photo

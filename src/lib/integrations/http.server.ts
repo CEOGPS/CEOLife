@@ -1,5 +1,6 @@
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
 import { UnauthorizedError } from "@/lib/auth/verify.server";
+import { verifyAccess } from "@/lib/auth/access.server";
 import { env } from "@/lib/env.server";
 import { ensureDbReady, getSql } from "@/lib/db";
 import { encryptionSecret } from "./crypto.server.ts";
@@ -26,9 +27,10 @@ export function throttle(userId: string, bucket: "start" | "test" | "token" | "r
 /** This board is one person's. Each card signs into its own service, so the dashboard login is not the account. */
 const BOARD_OWNER = "lifeos-owner";
 
-/** The board owner. A dashboard session is ignored so one app login cannot become every card's email. */
+/** The board owner, after the Cloudflare Access login is verified. A dashboard session is ignored so one app login cannot become every card's email. */
 export async function requireUser(request: Request): Promise<string> {
   assertSameSiteRequest();
+  await verifyAccess(request);
   return env("AI_OWNER_ID") || BOARD_OWNER;
 }
 

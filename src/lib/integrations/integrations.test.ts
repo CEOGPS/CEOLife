@@ -136,6 +136,57 @@ describe("code exchange", () => {
     assert.equal(headers["Content-Type"], "application/json");
     assert.equal(JSON.parse(String(calls[0].init?.body)).grant_type, "authorization_code");
   });
+  it("notion refresh sends Basic and a JSON body with no client secret", async () => {
+    const { f, calls } = mockFetch({ "https://api.notion.com/v1/oauth/token": () => ({ access_token: "n-2", expires_in: 3600 }) });
+    await refreshAccess({ id: "notion", refreshToken: "n-r", read, f });
+    const headers = calls[0].init?.headers as Record<string, string>;
+    const body = JSON.parse(String(calls[0].init?.body)) as Record<string, string>;
+    assert.equal(headers.Authorization, `Basic ${btoa("n-id:n-secret")}`);
+    assert.equal(headers["Content-Type"], "application/json");
+    assert.equal(body.grant_type, "refresh_token");
+    assert.equal(body.refresh_token, "n-r");
+    assert.equal("client_id" in body, false);
+    assert.equal("client_secret" in body, false);
+  });
+  it("slack refresh puts the client secret in the form and treats ok:false as failure", async () => {
+    const ok = mockFetch({ "https://slack.com/api/oauth.v2.access": () => ({ ok: true, access_token: "s-1", expires_in: 3600 }) });
+    await refreshAccess({ id: "slack", refreshToken: "s-r", read, f: ok.f });
+    const body = new URLSearchParams(String(ok.calls[0].init?.body));
+    const headers = ok.calls[0].init?.headers as Record<string, string>;
+    assert.equal(body.get("grant_type"), "refresh_token");
+    assert.equal(body.get("client_id"), "s-id");
+    assert.equal(body.get("client_secret"), "s-secret");
+    assert.equal(headers.Authorization, undefined);
+    const bad = mockFetch({ "https://slack.com/api/oauth.v2.access": () => ({ ok: false, error: "invalid_refresh_token" }) });
+    await assert.rejects(refreshAccess({ id: "slack", refreshToken: "s-r", read, f: bad.f }), /invalid_refresh_token/);
+  });
+  it("linkedin and discord refresh put credentials in the form body", async () => {
+    const extra: Record<string, string> = { DISCORD_CLIENT_ID: "d-id", DISCORD_CLIENT_SECRET: "d-secret", LINKEDIN_CLIENT_ID: "li-id", LINKEDIN_CLIENT_SECRET: "li-secret" };
+    const readMore = (name: string) => read(name) || extra[name];
+    for (const [id, url, clientId] of [
+      ["linkedin", "https://www.linkedin.com/oauth/v2/accessToken", "li-id"],
+      ["discord", "https://discord.com/api/oauth2/token", "d-id"],
+    ] as const) {
+      const { f, calls } = mockFetch({ [url]: () => ({ access_token: "a-1", expires_in: 3600 }) });
+      await refreshAccess({ id, refreshToken: "r-1", read: readMore, f });
+      const body = new URLSearchParams(String(calls[0].init?.body));
+      const headers = calls[0].init?.headers as Record<string, string>;
+      assert.equal(body.get("client_id"), clientId);
+      assert.equal(body.has("client_secret"), true);
+      assert.equal(headers.Authorization, undefined);
+      assert.equal(headers["Content-Type"], "application/x-www-form-urlencoded");
+    }
+  });
+  it("twitter refresh sends Basic and leaves the secret out of the body", async () => {
+    const { f, calls } = mockFetch({ "https://api.twitter.com/2/oauth2/token": () => ({ access_token: "t-2", expires_in: 7200 }) });
+    await refreshAccess({ id: "twitter", refreshToken: "t-r", read, f });
+    const body = new URLSearchParams(String(calls[0].init?.body));
+    const headers = calls[0].init?.headers as Record<string, string>;
+    assert.equal(body.get("grant_type"), "refresh_token");
+    assert.equal(body.get("refresh_token"), "t-r");
+    assert.equal(body.has("client_secret"), false);
+    assert.equal(headers.Authorization, `Basic ${btoa("t-id:t-secret")}`);
+  });
   it("spotify refresh sends Basic and leaves the secret out of the body", async () => {
     const { f, calls } = mockFetch({ "https://accounts.spotify.com/api/token": () => ({ access_token: "sp-1", expires_in: 3600 }) });
     await refreshAccess({ id: "spotify", refreshToken: "sp-r", read, f });

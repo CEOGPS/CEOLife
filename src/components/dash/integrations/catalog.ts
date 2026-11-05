@@ -4,7 +4,25 @@ import { PROVIDERS, type Category, type ProviderId } from "@/lib/integrations/pr
  * Services that connect with a pasted API key. The key is stored in the board memory
  * (`data.keys`) exactly as before, so every desk that reads it keeps working.
  */
-export type KeyService = { name: string; category: Category };
+export type KeyService = { name: string; category: Category; url?: string; custom?: boolean };
+
+/** Cards added from the API Directory are stored as a key row with this prefix, so they sync like keys. */
+export const CARD_PREFIX = "Directory card: ";
+
+/** Maps a directory category onto this page's groups. */
+export function directoryCategory(raw: string): Category {
+  const c = raw.toLowerCase();
+  if (/\b(ai|ml|generative|recognition|translation|text analysis|voice)\b/.test(c)) return "AI";
+  if (/email|sms|calendar|chats|messaging/.test(c)) return "Mail & Calendar";
+  if (/finance|payment|blockchain|crypto|commerce|business|real estate/.test(c)) return "Finance";
+  if (/marketing|seo|analytics|crm|forms|surveys|statistics|visitor/.test(c)) return "Marketing";
+  if (/social|bots|comment/.test(c)) return "Social";
+  if (/music|video|media|images|photo|news|entertainment|games|books|comics|weather|maps|geo|travel|sport|space|fun|animals|food/.test(c)) return "Media";
+  if (/project|collaboration|documents|productivity|issue|wiki|bookmarks|education|jobs/.test(c)) return "Productivity";
+  if (/cloud|iaas|paas|baas|hosting|cdn|dns|storage|databases|managed data|major cloud/.test(c)) return "Cloud";
+  if (/dev|code|ci and cd|testing|monitoring|log|security|auth|docker|ide|artifact|package|tunnel|crash|feature|low-code|captcha|validation|urls|scrapers|screenshot|open source/.test(c)) return "Developer";
+  return "Other";
+}
 
 export const KEY_SERVICES: KeyService[] = [
   { name: "Ahrefs", category: "Marketing" },
@@ -84,7 +102,6 @@ export const KEY_SERVICES: KeyService[] = [
   { name: "LinkedIn", category: "Social" },
   { name: "Luma", category: "AI" },
   { name: "Lumin", category: "AI" },
-  { name: "LunarCrush", category: "Finance" },
   { name: "Mailchimp", category: "Marketing" },
   { name: "Make (Integromat)", category: "Productivity" },
   { name: "Malwarebytes", category: "Productivity" },
@@ -101,6 +118,7 @@ export const KEY_SERVICES: KeyService[] = [
   { name: "NVIDIA NIM", category: "AI" },
   { name: "Nylas", category: "Mail & Calendar" },
   { name: "Ollama (local)", category: "AI" },
+  { name: "Ollama Cloud", category: "AI" },
   { name: "OpenAI", category: "AI" },
   { name: "OpenRouter", category: "AI" },
   { name: "Opera", category: "Media" },
@@ -169,10 +187,38 @@ export const KEY_SERVICES: KeyService[] = [
   { name: "Weather", category: "Media" },
   { name: "Xiaomi", category: "Productivity" },
   { name: "Zoom", category: "Mail & Calendar" },
+  { name: "NewsAPI", category: "Media" },
+  { name: "Open Weather", category: "Media" },
+  { name: "Alpha Vantage", category: "Finance" },
+  { name: "Hunter.io", category: "Marketing" },
+  { name: "DeepL", category: "AI" },
+  { name: "NASA", category: "Media" },
+  { name: "CoinGecko", category: "Finance" },
+  { name: "Numverify", category: "Developer" },
+  { name: "Serpstack", category: "Marketing" },
+  { name: "Mailboxlayer", category: "Marketing" },
+  { name: "Scrapestack", category: "Developer" },
+  { name: "Mediastack", category: "Media" },
+  { name: "IPstack", category: "Developer" },
 ];
 
-/** Redundant now that a one-click login covers them. They only appear when a key is already saved. */
-export const COVERED_BY_LOGIN = new Set(["Outlook", "Outlook Calendar", "Google Calendar", "Gmail (OAuth)", "Twitter/X", "X"]);
+/**
+ * These run on a one-click login card, so they get no key card. A key saved earlier stays stored
+ * (features that read it keep working), but the card is hidden so each service has one way to connect.
+ */
+export const COVERED_BY_LOGIN = new Set([
+  "Outlook", "Outlook Calendar", "Google Calendar", "Gmail (OAuth)", "Twitter/X", "X", "LinkedIn", "Microsoft",
+  "GitHub", "Slack", "Notion", "Facebook App ID",
+]);
+
+/** The accounts each login card is meant to hold. Each gets its own Connect button. */
+export const PLANNED_ACCOUNTS: Partial<Record<ProviderId, string[]>> = {
+  google: ["chrisgr33ninc@gmail.com", "ceogps.marketinggod@gmail.com"],
+  facebook: ["cagednreality@icloud.com", "cagednreality@outlook.com"],
+};
+
+/** Google accounts tried, in order, for Search Console and Analytics. */
+export const GOOGLE_DATA_ACCOUNTS = ["ceogps.marketinggod@gmail.com", "chrisgr33ninc@gmail.com", "chris@ceogps.com"];
 
 /** OAuth apps that live on lifeos1-api. A missing copy in this page's env does not block Connect. */
 export const WORKER_OAUTH = new Set<ProviderId>([
@@ -212,7 +258,7 @@ export const KEY_LABEL: Record<string, string> = {
 
 export const NO_KEY_NEEDED = new Set(["Search Console"]);
 /** These can be tested with nothing pasted because the server holds the credential. */
-export const SERVER_HELD = new Set(["Cloudflare", "Cloudflare Account", "Cloudflare Token"]);
+export const SERVER_HELD = new Set(["Cloudflare", "Cloudflare Account", "Cloudflare Token", "Ollama Cloud"]);
 
 /** No account API. Test hits a public endpoint and says so. A saved key is not marked working. */
 export const PUBLIC_TEST = new Set([
@@ -232,15 +278,17 @@ export const CATEGORY_ORDER: Category[] = ["Mail & Calendar", "AI", "Developer",
 /** The mailboxes the dashboard is built around. */
 export const MAILBOXES = {
   google: "chrisgr33ninc@gmail.com",
+  marketing: "ceogps.marketinggod@gmail.com",
   work: "chris@ceogps.com",
   icloud: "cagednreality@icloud.com",
+  outlook: "cagednreality@outlook.com",
 } as const;
 
-export const BOARD_EMAIL_LIST: string[] = [MAILBOXES.work, MAILBOXES.google, MAILBOXES.icloud];
+export const BOARD_EMAIL_LIST: string[] = [MAILBOXES.work, MAILBOXES.google, MAILBOXES.marketing, MAILBOXES.icloud, MAILBOXES.outlook];
 
-/** Google services use the Gmail account, the Email desk uses iCloud, and every other platform uses the work address. */
+/** Google uses the Gmail accounts, Facebook and the Email desk use cagednreality, every other platform uses the work address. */
 export function recommendedPlan(): Partial<Record<ProviderId, string>> {
-  const plan: Partial<Record<ProviderId, string>> = { google: MAILBOXES.google, nylas: MAILBOXES.icloud };
-  for (const meta of PROVIDERS) if (meta.id !== "google") plan[meta.id] = MAILBOXES.work;
+  const plan: Partial<Record<ProviderId, string>> = { google: MAILBOXES.google, facebook: MAILBOXES.icloud, nylas: MAILBOXES.icloud };
+  for (const meta of PROVIDERS) if (!plan[meta.id]) plan[meta.id] = MAILBOXES.work;
   return plan;
 }

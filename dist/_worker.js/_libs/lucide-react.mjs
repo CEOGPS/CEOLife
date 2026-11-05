@@ -625,6 +625,37 @@ var NotebookPen = createLucideIcon("notebook-pen", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Pause = createLucideIcon("pause", [["rect", {
+	x: "14",
+	y: "4",
+	width: "4",
+	height: "16",
+	rx: "1",
+	key: "zuxfzm"
+}], ["rect", {
+	x: "6",
+	y: "4",
+	width: "4",
+	height: "16",
+	rx: "1",
+	key: "1okwgv"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var Play = createLucideIcon("play", [["polygon", {
+	points: "6 3 20 12 6 21 6 3",
+	key: "1oa8hb"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Plug = createLucideIcon("plug", [
 	["path", {
 		d: "M12 22v-5",
@@ -713,6 +744,38 @@ var Share2 = createLucideIcon("share-2", [
 		key: "1n3mei"
 	}]
 ]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var SkipBack = createLucideIcon("skip-back", [["polygon", {
+	points: "19 20 9 12 19 4 19 20",
+	key: "o2sva"
+}], ["line", {
+	x1: "5",
+	x2: "5",
+	y1: "19",
+	y2: "5",
+	key: "1ocqjk"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var SkipForward = createLucideIcon("skip-forward", [["polygon", {
+	points: "5 4 15 12 5 20 5 4",
+	key: "16p6eg"
+}], ["line", {
+	x1: "19",
+	x2: "19",
+	y1: "5",
+	y2: "19",
+	key: "futhcm"
+}]]);
 /**
 * @license lucide-react v0.510.0 - ISC
 *
@@ -865,6 +928,65 @@ var Users = createLucideIcon("users", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Volume1 = createLucideIcon("volume-1", [["path", {
+	d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",
+	key: "uqj9uw"
+}], ["path", {
+	d: "M16 9a5 5 0 0 1 0 6",
+	key: "1q6k2b"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var Volume2 = createLucideIcon("volume-2", [
+	["path", {
+		d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",
+		key: "uqj9uw"
+	}],
+	["path", {
+		d: "M16 9a5 5 0 0 1 0 6",
+		key: "1q6k2b"
+	}],
+	["path", {
+		d: "M19.364 18.364a9 9 0 0 0 0-12.728",
+		key: "ijwkga"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var VolumeX = createLucideIcon("volume-x", [
+	["path", {
+		d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",
+		key: "uqj9uw"
+	}],
+	["line", {
+		x1: "22",
+		x2: "16",
+		y1: "9",
+		y2: "15",
+		key: "1ewh16"
+	}],
+	["line", {
+		x1: "16",
+		x2: "22",
+		y1: "9",
+		y2: "15",
+		key: "5ykzw1"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Wind = createLucideIcon("wind", [
 	["path", {
 		d: "M12.8 19.6A2 2 0 1 0 14 16H2",
@@ -880,4 +1002,4 @@ var Wind = createLucideIcon("wind", [
 	}]
 ]);
 //#endregion
-export { Bot as A, FileText as C, ChartColumn as D, Clapperboard as E, CalendarDays as O, FolderKanban as S, Dices as T, Lock as _, Sun as a, Landmark as b, Settings as c, NotebookPen as d, Music as f, Mail as g, Map as h, Target as i, Bell as j, Briefcase as k, Search as l, Megaphone as m, Users as n, Sparkles as o, MessageSquare as p, TriangleAlert as r, Share2 as s, Wind as t, Plug as u, Library as v, Droplets as w, Images as x, LayoutDashboard as y };
+export { FileText as A, Mail as C, Landmark as D, LayoutDashboard as E, CalendarDays as F, Briefcase as I, Bot as L, Dices as M, Clapperboard as N, Images as O, ChartColumn as P, Bell as R, Map as S, Library as T, Pause as _, Users as a, MessageSquare as b, Sun as c, SkipBack as d, Share2 as f, Play as g, Plug as h, Volume1 as i, Droplets as j, FolderKanban as k, Sparkles as l, Search as m, VolumeX as n, TriangleAlert as o, Settings as p, Volume2 as r, Target as s, Wind as t, SkipForward as u, NotebookPen as v, Lock as w, Megaphone as x, Music as y };

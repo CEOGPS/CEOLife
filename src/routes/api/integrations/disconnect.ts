@@ -3,8 +3,8 @@ import { guarded, json, makeCtx, readBody, requireUser, throttle } from "@/lib/i
 import { IntegrationError, removeAccount, removeMailbox } from "@/lib/integrations/service.server";
 import { clearCheck } from "@/lib/integrations/store.server";
 import { workerAccountRef } from "@/lib/integrations/worker-account";
+import { boardFetch } from "@/lib/lifeos/board.server";
 
-const WORKER = "https://lifeos1-api.ceogps.workers.dev";
 
 export const Route = createFileRoute("/api/integrations/disconnect")({
   server: {
@@ -18,9 +18,9 @@ export const Route = createFileRoute("/api/integrations/disconnect")({
           const id = String(body.account_id);
           const workerRef = workerAccountRef(id);
           if (workerRef) {
-            const response = await fetch(`${WORKER}/api/oauth/disconnect?board=1`, {
+            const response = await boardFetch("/api/oauth/disconnect", {
               method: "POST",
-              headers: { "Content-Type": "application/json", "X-Lifeos-Board": "1" },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ provider: workerRef.provider, account_email: workerRef.email }),
               signal: AbortSignal.timeout(12000),
             });

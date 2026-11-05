@@ -523,20 +523,54 @@ function unionNotes(local: { id: string; title: string; body: string }[], remote
 }
 
 function takeCloud(current: Memory, incoming: Memory): Memory {
+  // "Cloud is newer" used to mean "cloud wins outright" — any collection that only existed
+  // locally (e.g. contacts hydrated from IndexedDB, or anything created while this device's
+  // last push predates the cloud's) was silently discarded. Every ID-keyed collection is now
+  // merged the same way absorb() merges them, so a newer cloud timestamp never erases local data.
   const hiddenEmails = mergeAddresses(current.emailHub.hiddenEmails, incoming.emailHub.hiddenEmails);
   const hidden = new Set(hiddenEmails);
   const extraEmails = mergeAddresses(current.emailHub.extraEmails, incoming.emailHub.extraEmails).filter((email) => !hidden.has(email));
   return {
     ...incoming,
-    mail: incoming.mail.filter((row) => !mentionsHidden(row, hidden)),
+    mail: unionById(current.mail, incoming.mail).filter((row) => keptMail(row) && !mentionsHidden(row, hidden)),
+    thread: unionById(current.thread, incoming.thread),
     emailHub: {
-      ...incoming.emailHub,
-      accounts: incoming.emailHub.accounts.filter((row) => !hidden.has(row.email.toLowerCase())),
+      accounts: unionById(current.emailHub.accounts, incoming.emailHub.accounts).filter((row) => !hidden.has(row.email.toLowerCase())),
+      lists: unionById(current.emailHub.lists, incoming.emailHub.lists),
+      campaigns: unionById(current.emailHub.campaigns, incoming.emailHub.campaigns),
+      domains: unionById(current.emailHub.domains, incoming.emailHub.domains),
       extraEmails,
       hiddenEmails,
     },
     notes: unionNotes(current.notes, incoming.notes),
+    tasks: unionById(current.tasks, incoming.tasks),
+    leads: unionById(current.leads, incoming.leads),
+    notifs: unionById(current.notifs, incoming.notifs),
     jobs: unionById(current.jobs, incoming.jobs),
+    accounts: unionById(current.accounts, incoming.accounts),
+    products: unionById(current.products, incoming.products),
+    expenses: unionById(current.expenses, incoming.expenses),
+    events: unionById(current.events, incoming.events),
+    links: unionById(current.links, incoming.links),
+    tracks: unionById(current.tracks, incoming.tracks),
+    social: unionById(current.social, incoming.social),
+    marketing: unionById(current.marketing, incoming.marketing),
+    contacts: unionById(current.contacts, incoming.contacts),
+    journal: unionById(current.journal, incoming.journal),
+    projects: unionById(current.projects, incoming.projects),
+    legal: unionById(current.legal, incoming.legal),
+    media: unionById(current.media, incoming.media),
+    songs: unionById(current.songs, incoming.songs),
+    ideas: unionById(current.ideas, incoming.ideas),
+    deals: unionById(current.deals, incoming.deals),
+    facts: unionById(current.facts, incoming.facts),
+    socialAccounts: unionById(current.socialAccounts, incoming.socialAccounts),
+    socialPosts: unionById(current.socialPosts, incoming.socialPosts),
+    stats: unionById(current.stats, incoming.stats),
+    groups: unionById(current.groups, incoming.groups),
+    query: current.query || incoming.query,
+    fico: current.fico || incoming.fico,
+    vantage: current.vantage || incoming.vantage,
     keys: current.keys.length ? current.keys : incoming.keys,
     vault: current.vault.length ? current.vault : incoming.vault,
     banner: incoming.banner || current.banner,

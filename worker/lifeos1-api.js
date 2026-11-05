@@ -136,6 +136,26 @@ async function refreshAccessToken(provider, refreshToken, env) {
   const tokenUrl = TOKEN_URLS[provider];
   const { clientId, clientSecret } = clientCreds(provider, env);
   if (!tokenUrl || !clientId || !clientSecret) throw new Error(`Missing ${provider} client credentials`);
+  if (provider === "notion") {
+    const response = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.access_token) {
+      throw new Error(data.error_description || data.error || `Refresh failed: ${response.status}`);
+    }
+    return {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token || refreshToken,
+      expires_in: data.expires_in ?? null
+    };
+  }
   const params = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
   const headers = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
   if (provider === "spotify" || provider === "twitter") {
@@ -146,6 +166,9 @@ async function refreshAccessToken(provider, refreshToken, env) {
   }
   const response = await fetch(tokenUrl, { method: "POST", headers, body: params.toString() });
   const data = await response.json().catch(() => ({}));
+  if (provider === "slack" && data.ok === false) {
+    throw new Error(data.error || "Slack refused the refresh");
+  }
   if (!response.ok || !data.access_token) {
     throw new Error(data.error_description || data.error || `Refresh failed: ${response.status}`);
   }
@@ -444,6 +467,21 @@ async function providerEmail(provider, accessToken) {
   const body = await response.json().catch(() => ({}));
   return String(body.email || body.mail || body.userPrincipalName || "").trim().toLowerCase();
 }
+function detailProvider(hinted, referer) {
+  const names = { spotify: "Spotify", discord: "Discord", slack: "Slack", notion: "Notion", linkedin: "LinkedIn", twitter: "X", x: "X" };
+  const key = hinted === "x" ? "twitter" : hinted;
+  if (names[key]) return { label: names[key] };
+  const rules = [
+    [/accounts\.spotify\.com/i, "Spotify"],
+    [/discord\.com/i, "Discord"],
+    [/slack\.com/i, "Slack"],
+    [/notion\.so|api\.notion\.com/i, "Notion"],
+    [/linkedin\.com/i, "LinkedIn"],
+    [/twitter\.com|\/\/x\.com|\.x\.com/i, "X"]
+  ];
+  for (const [rule, label] of rules) if (rule.test(referer || "")) return { label };
+  return null;
+}
 router.get("/callback", async (request, env) => {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -455,9 +493,9 @@ router.get("/callback", async (request, env) => {
   if (error) return back({ oauth_error: url.searchParams.get("error_description") || error });
   if (!code || !state.includes("|")) {
     const referer = request.headers.get("referer") || "";
-    const spotify = hinted === "spotify" || /accounts\.spotify\.com/i.test(referer);
-    if (spotify) {
-      const described = url.searchParams.get("error_description") || url.searchParams.get("error") || "Spotify returned no code and no error. Press Connect again.";
+    const named = detailProvider(hinted, referer);
+    if (named) {
+      const described = url.searchParams.get("error_description") || url.searchParams.get("error") || named.label + " returned no code and no error. Press Connect again.";
       return back({ oauth_error: described });
     }
     return back({ oauth_error: "Missing code or state" });

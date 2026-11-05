@@ -3,6 +3,7 @@ import type { Memory } from "./memory";
 import { PROVIDERS, type Category } from "@/lib/integrations/providers";
 import { CATEGORY_ORDER, EXTRA_FIELD, WORKER_OAUTH } from "./integrations/catalog";
 import { AccountsInUse } from "./integrations/accounts-in-use";
+import { ApiDirectory } from "./integrations/api-directory";
 import { KeyRow } from "./integrations/key-row";
 import { MailboxSection } from "./integrations/mailbox-section";
 import { ProviderCard } from "./integrations/provider-card";
@@ -110,7 +111,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
           {[
             { label: "Working", value: hub.stats.working, tone: "text-emerald-300" },
             { label: "Needs attention", value: hub.stats.attention, tone: hub.stats.attention ? "text-rose-300" : "text-white" },
-            { label: "Saved, not verified", value: hub.stats.untested, tone: "text-amber-200" },
+            { label: "Not tested or stored only", value: hub.stats.untested, tone: "text-amber-200" },
           ].map((tile) => (
             <div key={tile.label} className="rounded-xl border border-white/10 bg-black/20 p-3">
               <dt className="text-xs text-white/55">{tile.label}</dt>
@@ -178,7 +179,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
           onApplyPlan={() => void hub.applyPlan()}
           onConnect={(email) => {
             const key = email.toLowerCase();
-            const google = key === "chrisgr33ninc@gmail.com" || key === "chris@ceogps.com";
+            const google = key.endsWith("@gmail.com") || key === "chris@ceogps.com";
             void hub.connect(google ? "google" : "nylas", email);
           }}
           onRemove={(email) => void hub.removeAddress(email)}
@@ -253,6 +254,7 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
                     onSave={saveAndTest}
                     onTest={(name) => void hub.testKey(name)}
                     onRemove={(name) => void hub.removeKey(name)}
+                    onRemoveCard={(name) => void hub.removeCard(name)}
                   />
                 ))}
               </ul>
@@ -263,6 +265,8 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
           <p className="module-card p-4 text-sm text-white/60">Nothing matches that search. Clear the filters to see everything.</p>
         ) : null}
       </div>
+
+      <ApiDirectory added={new Set(hub.keyRows.map((row) => row.name.toLowerCase()))} onAdd={hub.addCard} />
 
       <details className="module-card p-4">
         <summary className="cursor-pointer text-sm font-medium text-white">Paste a whole key sheet</summary>

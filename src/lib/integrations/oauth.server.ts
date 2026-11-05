@@ -210,9 +210,10 @@ export const PROVIDER_CONFIG: Record<ProviderId, ProviderConfig> = {
       return { id: str(r.body.id), email: str(r.body.email).toLowerCase(), name: str(r.body.name) };
     },
     health: async (token, f) => {
-      const response = await f("https://lifeos1-oauth.ceogps.workers.dev/api/oauth/facebook/check?board=1", {
+      const { boardFetch } = await import("@/lib/lifeos/board.server");
+      const response = await boardFetch("/api/oauth/facebook/check", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", "X-Lifeos-Board": "1" },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ access_token: token }),
         signal: AbortSignal.timeout(10000),
       });
