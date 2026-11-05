@@ -53,18 +53,18 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
     return true;
   }), [hub.byProvider, needle, category, filter]);
 
-  const keysByCategory = useMemo(() => {
-    const groups = new Map<Category, KeyRowModel[]>();
+  const sortedKeyRows = useMemo(() => {
+    const rows: KeyRowModel[] = [];
     for (const row of hub.keyRows) {
       if (needle && !row.name.toLowerCase().includes(needle)) continue;
       if (category !== "All" && row.category !== category) continue;
       if (!keyMatches(row, filter)) continue;
-      groups.set(row.category, [...(groups.get(row.category) || []), row]);
+      rows.push(row);
     }
-    return CATEGORY_ORDER.filter((name) => groups.has(name)).map((name) => ({ name, rows: groups.get(name) as KeyRowModel[] }));
+    return rows.sort((a, b) => a.name.localeCompare(b.name));
   }, [hub.keyRows, needle, category, filter]);
 
-  const keyTotal = keysByCategory.reduce((sum, group) => sum + group.rows.length, 0);
+  const keyTotal = sortedKeyRows.length;
   const nextStep = useMemo(() => {
     const payload = hub.payload;
     if (!payload) return "";
@@ -78,7 +78,6 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
     if (missing.length) parts.push(`Not set up on the server: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? "…" : ""}.`);
     return parts.join(" ");
   }, [hub.payload]);
-  const open = Boolean(needle) || filter !== "all" || category !== "All";
   const signedOut = hub.loadError?.status === 401;
   const categories: (Category | "All")[] = ["All", ...CATEGORY_ORDER.filter((name) => PROVIDERS.some((p) => p.category === name) || hub.keyRows.some((row) => row.category === name))];
   const extraSaved = (name: string) => {
@@ -233,35 +232,23 @@ export function IntegrationsDesk({ data, update, setAccounts, setNote }: {
           <h3 className="text-sm font-semibold uppercase tracking-wide text-white/60">API keys · {keyTotal}</h3>
           <StatusPill tone="idle">Keys stay in your account memory</StatusPill>
         </div>
-        {keysByCategory.map((group) => {
-          const failing = group.rows.filter((row) => row.state === "error").length;
-          const saved = group.rows.filter((row) => row.value).length;
-          return (
-            <details key={`${group.name}-${open}-${failing > 0}-${hub.resultsOpen}`} open={open || failing > 0 || hub.resultsOpen} className="module-card group p-4">
-              <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-sm font-medium text-white">
-                <span>{group.name} <span className="font-normal text-white/50">· {group.rows.length}</span></span>
-                <span className="text-xs font-normal text-white/50">
-                  {saved ? `${saved} saved` : "none saved"}{failing ? ` · ${failing} failing` : ""}
-                </span>
-              </summary>
-              <ul className="mt-3 grid gap-2 md:grid-cols-2">
-                {group.rows.map((row) => (
-                  <KeyRow
-                    key={row.name}
-                    row={row}
-                    busy={Boolean(hub.busy[`key:${row.name}`])}
-                    extraSaved={extraSaved(row.name)}
-                    onSave={saveAndTest}
-                    onTest={(name) => void hub.testKey(name)}
-                    onRemove={(name) => void hub.removeKey(name)}
-                    onRemoveCard={(name) => void hub.removeCard(name)}
-                  />
-                ))}
-              </ul>
-            </details>
-          );
-        })}
-        {!providers.length && !keysByCategory.length && !hub.loading ? (
+        {sortedKeyRows.length ? (
+          <ul className="grid gap-2 md:grid-cols-2">
+            {sortedKeyRows.map((row) => (
+              <KeyRow
+                key={row.name}
+                row={row}
+                busy={Boolean(hub.busy[`key:${row.name}`])}
+                extraSaved={extraSaved(row.name)}
+                onSave={saveAndTest}
+                onTest={(name) => void hub.testKey(name)}
+                onRemove={(name) => void hub.removeKey(name)}
+                onRemoveCard={(name) => void hub.removeCard(name)}
+              />
+            ))}
+          </ul>
+        ) : null}
+        {!providers.length && !sortedKeyRows.length && !hub.loading ? (
           <p className="module-card p-4 text-sm text-white/60">Nothing matches that search. Clear the filters to see everything.</p>
         ) : null}
       </div>
